@@ -25,7 +25,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_tasks_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_tasks_status (status),
-    INDEX idx_tasks_category (category)
+    INDEX idx_tasks_category (category),
+    INDEX idx_tasks_created_id (created_at, id),
+    INDEX idx_tasks_status_created (status, created_at, id),
+    INDEX idx_tasks_category_created (category, created_at, id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS bids (
@@ -40,7 +43,8 @@ CREATE TABLE IF NOT EXISTS bids (
     CONSTRAINT fk_bids_task FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
     CONSTRAINT fk_bids_bidder FOREIGN KEY (bidder_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY uq_bid_task_user (task_id, bidder_id),
-    INDEX idx_bids_status (status)
+    INDEX idx_bids_status (status),
+    INDEX idx_bids_status_task (status, task_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -54,7 +58,8 @@ CREATE TABLE IF NOT EXISTS messages (
     CONSTRAINT fk_messages_task FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
     CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_messages_recipient FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_messages_thread (task_id, sender_id, recipient_id, created_at)
+    INDEX idx_messages_thread (task_id, sender_id, recipient_id, created_at),
+    INDEX idx_messages_task_recipient_read (task_id, recipient_id, read_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS notification_reads (

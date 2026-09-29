@@ -9,6 +9,7 @@ try {
     $taskId = filter_var($data['task_id'] ?? $_GET['task_id'] ?? null, FILTER_VALIDATE_INT);
 
     if ($action === 'my_bids') {
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
         $statement = db()->prepare('SELECT b.id, b.task_id, b.amount, b.message, b.status, b.removal_reason, b.created_at, t.user_id AS owner_id, t.title, t.category, t.location, t.status AS task_status, u.first_name, u.last_name, (SELECT COUNT(*) FROM messages m WHERE m.task_id = b.task_id AND m.recipient_id = b.bidder_id AND m.sender_id = t.user_id AND m.read_at IS NULL) AS unread_message_count FROM bids b JOIN tasks t ON t.id = b.task_id JOIN users u ON u.id = t.user_id WHERE b.bidder_id = ? ORDER BY b.created_at DESC');
         $statement->bind_param('i', $user['id']);
         $statement->execute();

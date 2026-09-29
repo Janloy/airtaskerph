@@ -31,11 +31,6 @@ function db(): mysqli
     if (!$connection) {
         $connection = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
         $connection->set_charset('utf8mb4');
-        try { $connection->query('ALTER TABLE users ADD COLUMN avatar_path VARCHAR(255) NULL AFTER role'); } catch (mysqli_sql_exception $ignored) {}
-        $connection->query('CREATE TABLE IF NOT EXISTS notification_reads (user_id INT UNSIGNED NOT NULL, notification_type ENUM(\'bid\') NOT NULL, reference_id INT UNSIGNED NOT NULL, read_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, notification_type, reference_id), CONSTRAINT fk_notification_reads_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE) ENGINE=InnoDB');
-        $connection->query('CREATE TABLE IF NOT EXISTS saved_tasks (user_id INT UNSIGNED NOT NULL, task_id INT UNSIGNED NOT NULL, saved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, task_id), CONSTRAINT fk_saved_tasks_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, CONSTRAINT fk_saved_tasks_task FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE, INDEX idx_saved_tasks_saved_at (user_id, saved_at)) ENGINE=InnoDB');
-        try { $connection->query('ALTER TABLE messages ADD COLUMN read_at TIMESTAMP NULL DEFAULT NULL AFTER body'); } catch (mysqli_sql_exception $ignored) {}
-        try { $connection->query('ALTER TABLE bids ADD COLUMN removal_reason VARCHAR(1000) NULL AFTER status'); } catch (mysqli_sql_exception $ignored) {}
     }
     return $connection;
 }

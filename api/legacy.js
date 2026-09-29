@@ -20,13 +20,13 @@ const touchPresence = async (s, userId, isLogin = false) => {
   if (error) console.error('Account presence update failed:', error.message);
 };
 const rows = async (q) => { const { data, error } = await q; if (error) throw fail(error.message, error.code === '23505' ? 409 : 400); return data; };
-const userFor = async (req, s) => {
+const userFor = async (req, s, trackActivity = true) => {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token) throw fail('Please log in to continue.', 401);
   const { data, error } = await s.auth.getUser(token);
   if (error || !data.user) throw fail('Your session has ended. Please log in again.', 401);
   const profile = await getProfile(s, data.user.id);
-  await touchPresence(s, profile.id);
+  if (trackActivity) await touchPresence(s, profile.id);
   return { auth: data.user, profile, token };
 };
 const isMod = (u) => ['admin', 'superadmin'].includes(u.role);
@@ -111,7 +111,7 @@ export default async function handler(req, res) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
-      try { ({ profile } = await userFor(req, s)); } catch {}
+      try { ({ profile } = await userFor(req, s, false)); } catch {}
       let q = s.from('tasks').select('*').order('created_at', { ascending: false });
       if (query.get('mine') === '1') { if (!profile) throw fail('Please log in to continue.', 401); q = q.eq('user_id', profile.id); }
       if (['Open','In Progress','Completed'].includes(query.get('status'))) q = q.eq('status', query.get('status'));
@@ -269,7 +269,7 @@ export default async function handler(req, res) {
       if(action==='remove_bid') {if(Number(task.user_id)!==Number(profile.id)&&!isMod(profile)) throw fail('Only the task owner or a moderator can remove a bidder.',403);const reason=clean(body.reason,1000);if(!reason)throw fail('Please provide a reason for removing the bidder.',422);const removed=await rows(s.from('bids').update({status:'Pending',removal_reason:reason}).eq('id',bidId).eq('task_id',taskId).in('status',['Pending','Accepted']).select('id'));if(!removed.length)throw fail('Only pending or accepted bidders can be removed.',409);return res.status(200).json(ok('The bidder was removed and the reason was saved.'));}
     }
     if (route === 'messages') {
-      ({ profile } = await userFor(req,s)); const taskId=Number(body.task_id||query.get('task_id')), other=Number(body.other_user_id||query.get('other_user_id'));
+      ({ profile } = await userFor(req,s, action !== 'list')); const taskId=Number(body.task_id||query.get('task_id')), other=Number(body.other_user_id||query.get('other_user_id'));
       const t=await rows(s.from('tasks').select('user_id').eq('id',taskId).maybeSingle());
       const [myBid,otherBid]=await Promise.all([rows(s.from('bids').select('id').eq('task_id',taskId).eq('bidder_id',profile.id).maybeSingle()),rows(s.from('bids').select('id').eq('task_id',taskId).eq('bidder_id',other).maybeSingle())]);
       const permitted=t && ((Number(t.user_id)===Number(profile.id)&&Boolean(otherBid)) || (Number(t.user_id)===other&&Boolean(myBid)) || isMod(profile));
@@ -278,7 +278,7 @@ export default async function handler(req, res) {
       if(action==='send') {const text=clean(body.body,2000);if(!text)throw fail('Message cannot be empty.',422);const [message]=await rows(s.from('messages').insert({task_id:taskId,sender_id:profile.id,recipient_id:other,body:text}).select('*'));return res.status(200).json(ok('Message sent.',{message}));}
     }
     if (route === 'notifications') {
-      ({ profile } = await userFor(req,s));
+      ({ profile } = await userFor(req,s, action !== 'counts' && action !== 'task_messages'));
       if(action==='counts') {const tasks=await rows(s.from('tasks').select('id').eq('user_id',profile.id));const ownedIds=tasks.map(x=>x.id);const bidderLinks=await rows(s.from('bids').select('task_id').eq('bidder_id',profile.id));const bidderIds=[...new Set(bidderLinks.map(x=>x.task_id))];let pending=0,unread=0;if(ownedIds.length){const bs=await rows(s.from('bids').select('id,task_id').in('task_id',ownedIds).eq('status','Pending'));const reads=await rows(s.from('notification_reads').select('reference_id').eq('user_id',profile.id));const seen=new Set(reads.map(x=>x.reference_id));pending=bs.filter(x=>!seen.has(x.id)).length;}if(bidderIds.length){const [unreadRows,taskOwners]=await Promise.all([rows(s.from('messages').select('task_id,sender_id').in('task_id',bidderIds).eq('recipient_id',profile.id).is('read_at',null)),rows(s.from('tasks').select('id,user_id').in('id',bidderIds))]);const ownerByTask=new Map(taskOwners.map(t=>[Number(t.id),Number(t.user_id)]));unread=unreadRows.filter(m=>ownerByTask.get(Number(m.task_id))===Number(m.sender_id)).length;}return res.status(200).json(ok('',{pending_bids:pending,bidder_unread_messages:unread}));}
       if(action==='read_bids') {const bs=await rows(s.from('bids').select('id').eq('task_id',Number(query.get('task_id'))).eq('status','Pending'));if(bs.length)await rows(s.from('notification_reads').upsert(bs.map(b=>({user_id:profile.id,notification_type:'bid',reference_id:b.id})),{onConflict:'user_id,notification_type,reference_id',ignoreDuplicates:true}));return res.status(200).json(ok());}
       if(action==='task_messages') {const {count}=await s.from('messages').select('id',{count:'exact',head:true}).eq('task_id',Number(query.get('task_id'))).eq('recipient_id',profile.id).is('read_at',null);return res.status(200).json(ok('',{unread_count:count||0}));}

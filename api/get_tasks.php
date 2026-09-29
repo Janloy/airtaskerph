@@ -8,6 +8,10 @@ try {
     $search = clean_string($_GET['search'] ?? '', 100);
     $mine = ($_GET['mine'] ?? '') === '1';
     $viewer = current_user();
+    $user = $mine ? require_login() : null;
+    // Release PHP's per-session lock before the database query so polling and
+    // other requests from the same signed-in browser can run concurrently.
+    if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
     $query = $viewer
         ? 'SELECT t.id, t.user_id, t.title, t.category, t.budget, t.location, t.description, t.status, t.created_at, u.first_name, u.last_name, EXISTS(SELECT 1 FROM bids viewer_bid WHERE viewer_bid.task_id = t.id AND viewer_bid.bidder_id = ?) AS has_bid, EXISTS(SELECT 1 FROM saved_tasks viewer_saved WHERE viewer_saved.task_id = t.id AND viewer_saved.user_id = ?) AS is_saved, (SELECT COUNT(*) FROM bids task_bid WHERE task_bid.task_id = t.id) AS bid_count, (SELECT COUNT(*) FROM messages task_message WHERE task_message.task_id = t.id AND task_message.recipient_id = ? AND task_message.read_at IS NULL) AS unread_message_count FROM tasks t JOIN users u ON u.id = t.user_id WHERE 1=1'
         : 'SELECT t.id, t.user_id, t.title, t.category, t.budget, t.location, t.description, t.status, t.created_at, u.first_name, u.last_name, 0 AS has_bid, 0 AS is_saved, (SELECT COUNT(*) FROM bids task_bid WHERE task_bid.task_id = t.id) AS bid_count, 0 AS unread_message_count FROM tasks t JOIN users u ON u.id = t.user_id WHERE 1=1';
@@ -17,7 +21,6 @@ try {
         $types .= 'iii'; $values[] = (int) $viewer['id']; $values[] = (int) $viewer['id']; $values[] = (int) $viewer['id'];
     }
     if ($mine) {
-        $user = require_login();
         $query .= ' AND t.user_id = ?'; $types .= 'i'; $values[] = (int) $user['id'];
     }
     if (in_array($status, ['Open', 'In Progress', 'Completed'], true)) {

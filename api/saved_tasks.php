@@ -8,6 +8,7 @@ try {
     $action = $_GET['action'] ?? $data['action'] ?? 'list';
 
     if ($action === 'list') {
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
         $statement = db()->prepare('SELECT t.id, t.user_id, t.title, t.category, t.budget, t.location, t.description, t.status, t.created_at, u.first_name, u.last_name, s.saved_at, EXISTS(SELECT 1 FROM bids viewer_bid WHERE viewer_bid.task_id = t.id AND viewer_bid.bidder_id = ?) AS has_bid, 1 AS is_saved, (SELECT COUNT(*) FROM bids task_bid WHERE task_bid.task_id = t.id) AS bid_count, (SELECT COUNT(*) FROM messages task_message WHERE task_message.task_id = t.id AND task_message.recipient_id = ? AND task_message.read_at IS NULL) AS unread_message_count FROM saved_tasks s JOIN tasks t ON t.id = s.task_id JOIN users u ON u.id = t.user_id WHERE s.user_id = ? AND t.user_id <> ? ORDER BY s.saved_at DESC');
         $statement->bind_param('iiii', $user['id'], $user['id'], $user['id'], $user['id']);
         $statement->execute();

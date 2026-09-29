@@ -7,6 +7,7 @@ try {
     $action = $_GET['action'] ?? request_data()['action'] ?? 'counts';
 
     if ($action === 'counts') {
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
         $statement = db()->prepare('SELECT
             (SELECT COUNT(*) FROM bids b JOIN tasks t ON t.id = b.task_id LEFT JOIN notification_reads nr ON nr.user_id = ? AND nr.notification_type = \'bid\' AND nr.reference_id = b.id WHERE t.user_id = ? AND b.status = \'Pending\' AND nr.reference_id IS NULL) AS pending_bids,
             (SELECT COUNT(*) FROM messages WHERE recipient_id = ? AND read_at IS NULL AND EXISTS(SELECT 1 FROM bids bidder_link WHERE bidder_link.task_id = messages.task_id AND bidder_link.bidder_id = messages.recipient_id) AND EXISTS(SELECT 1 FROM tasks bidder_task WHERE bidder_task.id = messages.task_id AND bidder_task.user_id = messages.sender_id)) AS bidder_unread_messages');

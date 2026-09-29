@@ -989,7 +989,7 @@ function startMobileSplash() {
   if (!splash || document.documentElement.classList.contains('mobile-splash-seen') || !window.matchMedia('(max-width: 1023px)').matches) return null;
   const status = $('#mobile-splash-status');
   const messages = ['Connecting to Tasker PH...', 'Loading latest marketplace data...', 'Almost ready...'];
-  const controller = { splash, slowTimer: 0, rotateTimer: 0, minimumDisplay: new Promise((resolve) => window.setTimeout(resolve, 500)) };
+  const controller = { splash, slowTimer: 0, rotateTimer: 0 };
   controller.slowTimer = window.setTimeout(() => {
     splash.classList.add('is-waiting');
     let index = 0;
@@ -1003,7 +1003,6 @@ function startMobileSplash() {
 }
 async function finishMobileSplash(controller) {
   if (!controller) return;
-  await controller.minimumDisplay;
   window.clearTimeout(controller.slowTimer);
   window.clearInterval(controller.rotateTimer);
   controller.splash.classList.add('is-exiting');
@@ -1063,8 +1062,11 @@ async function init() {
   else applySystemAppearance();
   loadUserGlassPreference(state.user);
   try { localStorage.removeItem('taskerph-glass-opacity'); } catch (error) { void error; }
-  if (state.user) { try { await refreshSavedTaskData(); } catch (error) { notify(error.message, 'error'); } }
-  await loadTasks(); startNotificationPolling(); startTaskPolling(); await finishMobileSplash(mobileSplash); maybeShowInstallGuide();
+  const initialLoads = [loadTasks()];
+  if (state.user) initialLoads.push(refreshSavedTaskData().catch((error) => notify(error.message, 'error')));
+  await Promise.all(initialLoads);
+  if (state.user) renderTasks();
+  startNotificationPolling(); startTaskPolling(); await finishMobileSplash(mobileSplash); maybeShowInstallGuide();
 }
 window.addEventListener('storage', async (event) => {
   if (event.key !== AUTH_SYNC_KEY) return;
