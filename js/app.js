@@ -1352,7 +1352,7 @@ document.addEventListener('input', (event) => {
 });
 $('#status-filter').addEventListener('change', (event) => { state.filters.status = event.target.value; loadTasks(); });
 $('#category-filter').addEventListener('change', (event) => { state.filters.category = event.target.value; loadTasks(); });
-$('#refresh-tasks-button')?.addEventListener('click', async (event) => {
+$('#refresh-tasks-button').addEventListener('click', async (event) => {
   const button = event.currentTarget;
   if (button.disabled) return;
   const icon = button.querySelector('i');
