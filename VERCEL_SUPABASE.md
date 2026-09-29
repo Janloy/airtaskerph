@@ -14,7 +14,7 @@ Existing MySQL accounts and task data are not automatically copied. Export/impor
 
 Task posts can include up to three JPG, PNG, or WEBP images. The browser resizes them to JPEG before upload; the API accepts up to 450 KB per compressed image and stores them in the public `task-photos` Supabase Storage bucket. Public task images are viewable by anyone who can view the task. Task owners can open photos in a full-screen viewer and remove or replace individual photos while editing a task.
 
-The superadmin-only **Account activity** dashboard lists admins and users, their most recent login and authenticated activity times, plus the 250 most recent account, profile, task, bid, message-sent, and admin-provisioning actions. It records future events only; older login/action history cannot be reconstructed. Message contents and passwords are never stored in this log.
+The superadmin-only **Account activity** dashboard lists admins and users with their most recent login and authenticated activity times. It does not show a recent actions feed. The account presence migration records login and activity timestamps going forward; older history cannot be reconstructed.
 
 ## Deploy code changes through GitHub
 
