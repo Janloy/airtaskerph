@@ -346,6 +346,7 @@ function renderExistingTaskPhotos(form) {
     const image = document.createElement('img');
     image.src = url;
     image.alt = `Current task photo ${index + 1}`;
+    view.appendChild(image);
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'task-photo-remove';
