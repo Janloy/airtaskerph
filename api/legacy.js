@@ -182,7 +182,7 @@ export default async function handler(req, res) {
       const permitted=t && ((Number(t.user_id)===Number(profile.id)&&Boolean(otherBid)) || (Number(t.user_id)===other&&Boolean(myBid)) || isMod(profile));
       if(!permitted) throw fail('You can only message users connected to this task.',403);
       if(action==='list') { const ms=await rows(s.from('messages').select('*').eq('task_id',taskId).or(`and(sender_id.eq.${profile.id},recipient_id.eq.${other}),and(sender_id.eq.${other},recipient_id.eq.${profile.id})`).order('created_at')); await rows(s.from('messages').update({read_at:new Date().toISOString()}).eq('task_id',taskId).eq('sender_id',other).eq('recipient_id',profile.id).is('read_at',null));const messages=await Promise.all(ms.map(async m=>{const p=await rows(s.from('user_profiles').select('first_name,last_name').eq('id',m.sender_id).single());return {...m,sender_name:`${p.first_name} ${p.last_name}`};}));return res.status(200).json(ok('',{messages})); }
-      if(action==='send') {await rows(s.from('messages').insert({task_id:taskId,sender_id:profile.id,recipient_id:other,body:clean(body.body,2000)}));return res.status(200).json(ok('Message sent.'));}
+      if(action==='send') {const text=clean(body.body,2000);if(!text)throw fail('Message cannot be empty.',422);const [message]=await rows(s.from('messages').insert({task_id:taskId,sender_id:profile.id,recipient_id:other,body:text}).select('*'));return res.status(200).json(ok('Message sent.',{message}));}
     }
     if (route === 'notifications') {
       ({ profile } = await userFor(req,s));

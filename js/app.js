@@ -1,4 +1,4 @@
-const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, conversationReturnPage: 'marketplace-page', conversationTimer: null, notificationTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
+const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], pendingMessages: [], sendingMessage: false, notificationTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
 const AUTH_SYNC_KEY = 'taskerph-auth-sync';
 const AUTH_TOKEN_KEY = 'taskerph-supabase-access-token';
 document.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
@@ -530,7 +530,8 @@ async function refreshConversation() {
     const payload = await api(`api/messages.php?action=list&task_id=${taskId}&other_user_id=${otherUserId}`);
     // Discard a response if the user switched conversations while it was loading.
     if (taskId !== Number($('#conversation-task-id')?.value) || otherUserId !== Number($('#conversation-user-id')?.value) || document.hidden || $('#conversation-modal')?.classList.contains('hidden')) return;
-    renderConversation(payload.messages, false);
+    state.conversationMessages = payload.messages;
+    renderConversation(state.conversationMessages, false);
     if (state.activeTask) { state.activeTask.unread_message_count = 0; updateTaskMessageCount(0); }
     const badgeSelector = state.conversationReturnPage === 'my-bids-page'
       ? `[data-bid-message-count="${taskId}"]`
@@ -542,6 +543,7 @@ async function refreshConversation() {
 async function openConversation(taskId, otherUserId) {
   if (state.conversationTimer) clearInterval(state.conversationTimer);
   state.conversationReturnPage = document.querySelector('.app-page:not(.hidden)')?.id || 'marketplace-page';
+  state.conversationMessages = [];
   $('#conversation-task-id').value = taskId;
   $('#conversation-user-id').value = otherUserId;
   $('#conversation-list').innerHTML = '<p class="text-sm text-[#68727c]">Loading conversation...</p>';
@@ -559,7 +561,19 @@ document.addEventListener('visibilitychange', () => {
     state.conversationTimer = setInterval(refreshConversation, 5000);
   }
 });
-function renderConversation(messages, scrollToBottom = true) { $('#conversation-list').innerHTML = messages.length ? messages.map((message) => { const mine = Number(message.sender_id) === Number(state.user.id); const status = mine ? (message.read_at ? 'Seen' : 'Sent · Delivered') : ''; return `<div class="message-bubble ${mine ? 'message-mine' : 'message-theirs'}"><p class="text-sm">${escapeHtml(message.body)}</p><p class="mt-1 text-[11px] opacity-70">${escapeHtml(message.sender_name)} &middot; ${escapeHtml(formatMessageTime(message.created_at))}</p>${mine ? `<p class="message-status">${status}</p>` : ''}</div>`; }).join('') : '<p class="text-sm text-[#68727c]">Start the conversation about this task.</p>'; if (scrollToBottom) $('#conversation-list').scrollTop = $('#conversation-list').scrollHeight; }
+function renderConversation(messages, scrollToBottom = true) {
+  const confirmedIds = new Set(messages.map((message) => String(message.id)));
+  state.pendingMessages = state.pendingMessages.filter((message) => !message.server_id || !confirmedIds.has(String(message.server_id)));
+  const taskId = Number($('#conversation-task-id').value), otherId = Number($('#conversation-user-id').value);
+  const pending = state.pendingMessages.filter((message) => message.task_id === taskId && message.other_user_id === otherId);
+  const items = [...messages, ...pending].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  $('#conversation-list').innerHTML = items.length ? items.map((message) => {
+    const mine = Number(message.sender_id) === Number(state.user.id);
+    const status = mine ? (message.delivery_status || (message.read_at ? 'Seen' : 'Sent · Delivered')) : '';
+    return `<div class="message-bubble ${mine ? 'message-mine' : 'message-theirs'}"><p class="text-sm">${escapeHtml(message.body)}</p><p class="mt-1 text-[11px] opacity-70">${escapeHtml(message.sender_name)} &middot; ${escapeHtml(formatMessageTime(message.created_at))}</p>${mine ? `<p class="message-status">${status}</p>` : ''}</div>`;
+  }).join('') : '<p class="text-sm text-[#68727c]">Start the conversation about this task.</p>';
+  if (scrollToBottom) $('#conversation-list').scrollTop = $('#conversation-list').scrollHeight;
+}
 function startMobileSplash() {
   const splash = $('.mobile-splash');
   if (!splash || document.documentElement.classList.contains('mobile-splash-seen') || !window.matchMedia('(max-width: 1023px)').matches) return null;
@@ -849,7 +863,42 @@ $('#profile-picture-input').addEventListener('change', async (event) => { const 
 $('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(new FormData(event.target)) }) }); const taskId = Number(new FormData(event.target).get('task_id')); closeModal('edit-modal'); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#bid-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!state.user) { requestBidAuthGate(Number($('#task-detail-id').value), event.submitter || event.target.querySelector('[type="submit"]')); return; } setBusy(event.target, true); try { const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'place', task_id: $('#task-detail-id').value, ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#task-detail-id').value)) || state.activeTask; if (task) openTask(task); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#conversation-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { await api('api/messages.php', { method: 'POST', body: JSON.stringify({ action: 'send', task_id: $('#conversation-task-id').value, other_user_id: $('#conversation-user-id').value, body: $('#conversation-body').value }) }); $('#conversation-body').value = ''; const messages = await api(`api/messages.php?action=list&task_id=${$('#conversation-task-id').value}&other_user_id=${$('#conversation-user-id').value}`); renderConversation(messages.messages); await updateNotificationCounts(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#conversation-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (state.sendingMessage) return;
+  const form = event.currentTarget, input = $('#conversation-body'), body = input.value.trim();
+  if (!body) return;
+  const taskId = Number($('#conversation-task-id').value), otherUserId = Number($('#conversation-user-id').value);
+  const sendButton = form.querySelector('button');
+  const optimistic = { id: `pending-${Date.now()}`, task_id: taskId, other_user_id: otherUserId, sender_id: state.user.id, recipient_id: otherUserId, sender_name: `${state.user.first_name} ${state.user.last_name}`, body, created_at: new Date().toISOString(), delivery_status: 'Sending…' };
+  state.sendingMessage = true;
+  state.pendingMessages.push(optimistic);
+  input.value = '';
+  input.disabled = true;
+  sendButton.disabled = true;
+  form.setAttribute('aria-busy', 'true');
+  renderConversation(state.conversationMessages);
+  try {
+    const payload = await api('api/messages.php', { method: 'POST', body: JSON.stringify({ action: 'send', task_id: taskId, other_user_id: otherUserId, body }) });
+    if (payload.message) state.conversationMessages = [...state.conversationMessages, { ...payload.message, sender_name: optimistic.sender_name }];
+    else optimistic.delivery_status = 'Sent';
+    optimistic.server_id = payload.message?.id || null;
+    optimistic.delivery_status = 'Sent';
+    renderConversation(state.conversationMessages);
+    updateNotificationCounts();
+  } catch (error) {
+    state.pendingMessages = state.pendingMessages.filter((message) => message !== optimistic);
+    input.value = body;
+    notify(error.message, 'error');
+    renderConversation(state.conversationMessages);
+  } finally {
+    state.sendingMessage = false;
+    input.disabled = false;
+    sendButton.disabled = false;
+    form.removeAttribute('aria-busy');
+    input.focus();
+  }
+});
 document.addEventListener('submit', async (event) => { const form = event.target.closest('[data-bid-edit-form]'); if (!form) return; event.preventDefault(); setBusy(form, true); try { const taskId = form.closest('article')?.querySelector('[data-message-task]')?.dataset.messageTask; const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update', bid_id: form.dataset.bidEditForm, task_id: taskId, ...Object.fromEntries(new FormData(form)) }) }); notify(payload.message); form.classList.add('hidden'); loadMyBids(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); } });
 $('#conversation-body').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#conversation-form').requestSubmit(); } });
 $('#confirm-delete-bid').addEventListener('click', async () => { const button = $('#confirm-delete-bid'); button.disabled = true; try { const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'delete', bid_id: $('#delete-bid-id').value, task_id: $('#delete-bid-task-id').value }) }); closeModal('delete-bid-modal'); notify(payload.message); await loadMyBids(); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { button.disabled = false; } });
