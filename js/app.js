@@ -9,6 +9,9 @@ const AUTH_REFRESH_TOKEN_KEY = 'taskerph-supabase-refresh-token';
 const AUTH_ACTIVITY_KEY = 'taskerph-last-active-at';
 const AUTH_INACTIVITY_LIMIT = 30 * 24 * 60 * 60 * 1000;
 let authRefreshPromise = null;
+const INSTALL_GUIDE_DISMISSED_KEY = 'taskerph-install-guide-dismissed';
+const INSTALL_GUIDE_INSTALLED_KEY = 'taskerph-installed';
+let deferredInstallPrompt = null;
 document.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
 const $ = (selector) => document.querySelector(selector);
 function broadcastAuthChange() {
@@ -995,7 +998,7 @@ async function init() {
   loadUserGlassPreference(state.user);
   try { localStorage.removeItem('taskerph-glass-opacity'); } catch (error) { void error; }
   if (state.user) { try { await refreshSavedTaskData(); } catch (error) { notify(error.message, 'error'); } }
-  await loadTasks(); startNotificationPolling(); startTaskPolling(); await finishMobileSplash(mobileSplash);
+  await loadTasks(); startNotificationPolling(); startTaskPolling(); await finishMobileSplash(mobileSplash); maybeShowInstallGuide();
 }
 window.addEventListener('storage', async (event) => {
   if (event.key !== AUTH_SYNC_KEY) return;
@@ -1050,6 +1053,55 @@ async function performLogout() {
   await loadTasks();
   notify('You have been logged out.');
 }
+function isStandaloneApp() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.matchMedia('(display-mode: window-controls-overlay)').matches
+    || navigator.standalone === true
+    || document.referrer.startsWith('android-app://');
+}
+function markTaskerInstalled() {
+  try { localStorage.setItem(INSTALL_GUIDE_INSTALLED_KEY, '1'); } catch (error) { void error; }
+  closeModal('install-guide-modal');
+}
+function maybeShowInstallGuide() {
+  const appleTouchDevice = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const androidDevice = /Android/i.test(navigator.userAgent);
+  const compactTouchDevice = window.matchMedia('(max-width: 1023px) and (pointer: coarse)').matches;
+  const mobileOrTablet = appleTouchDevice || androidDevice || compactTouchDevice;
+  if (isStandaloneApp()) markTaskerInstalled();
+  let alreadyInstalled = false;
+  let dismissed = false;
+  try {
+    alreadyInstalled = localStorage.getItem(INSTALL_GUIDE_INSTALLED_KEY) === '1';
+    dismissed = localStorage.getItem(INSTALL_GUIDE_DISMISSED_KEY) === '1';
+  } catch (error) { void error; }
+  if (!mobileOrTablet || alreadyInstalled || dismissed || document.querySelector('.modal-backdrop:not(.hidden)')) return;
+  const guideId = appleTouchDevice ? '#install-guide-ios' : androidDevice ? '#install-guide-android' : '#install-guide-other';
+  $(guideId)?.classList.remove('hidden');
+  openModal('#install-guide-modal');
+}
+document.querySelectorAll('[data-dismiss-install-guide]').forEach((button) => {
+  button.addEventListener('click', () => {
+    try { localStorage.setItem(INSTALL_GUIDE_DISMISSED_KEY, '1'); } catch (error) { void error; }
+    closeModal('install-guide-modal');
+  });
+});
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  $('#install-guide-native')?.classList.remove('hidden');
+  $('#install-guide-native')?.classList.add('inline-flex');
+});
+window.addEventListener('appinstalled', markTaskerInstalled);
+$('#install-guide-native')?.addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  const promptEvent = deferredInstallPrompt;
+  deferredInstallPrompt = null;
+  await promptEvent.prompt();
+  const result = await promptEvent.userChoice;
+  if (result?.outcome === 'accepted') markTaskerInstalled();
+});
 async function resumeAuthIntent(intent) {
   if (!intent) return;
   if (typeof intent === 'object' && intent.route === 'task-detail') {
