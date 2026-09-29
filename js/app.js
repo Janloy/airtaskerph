@@ -1059,10 +1059,14 @@ function isStandaloneApp() {
     || navigator.standalone === true
     || document.referrer.startsWith('android-app://');
 }
-function markTaskerInstalled() {
-  try { localStorage.setItem(INSTALL_GUIDE_INSTALLED_KEY, '1'); } catch (error) { void error; }
+function dismissInstallGuide(installed = false) {
+  try {
+    localStorage.setItem(installed ? INSTALL_GUIDE_INSTALLED_KEY : INSTALL_GUIDE_DISMISSED_KEY, '1');
+  } catch (error) { void error; }
   closeModal('install-guide-modal');
+  $('#install-guide-modal')?.remove();
 }
+function markTaskerInstalled() { dismissInstallGuide(true); }
 function maybeShowInstallGuide() {
   const appleTouchDevice = /iPhone|iPad|iPod/i.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -1081,12 +1085,17 @@ function maybeShowInstallGuide() {
   $(guideId)?.classList.remove('hidden');
   openModal('#install-guide-modal');
 }
-document.querySelectorAll('[data-dismiss-install-guide]').forEach((button) => {
-  button.addEventListener('click', () => {
-    try { localStorage.setItem(INSTALL_GUIDE_DISMISSED_KEY, '1'); } catch (error) { void error; }
-    closeModal('install-guide-modal');
-  });
-});
+function handleInstallGuideDismiss(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const done = target?.closest('#install-guide-done');
+  const dismiss = target?.closest('[data-dismiss-install-guide]');
+  if (!done && !dismiss) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  dismissInstallGuide(Boolean(done));
+}
+document.addEventListener('pointerup', handleInstallGuideDismiss, true);
+document.addEventListener('click', handleInstallGuideDismiss, true);
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault();
   deferredInstallPrompt = event;
@@ -1094,7 +1103,6 @@ window.addEventListener('beforeinstallprompt', (event) => {
   $('#install-guide-native')?.classList.add('inline-flex');
 });
 window.addEventListener('appinstalled', markTaskerInstalled);
-$('#install-guide-done')?.addEventListener('click', markTaskerInstalled);
 const installDisplayMode = window.matchMedia('(display-mode: standalone)');
 const handleInstallDisplayModeChange = () => { if (isStandaloneApp()) markTaskerInstalled(); };
 if (installDisplayMode.addEventListener) installDisplayMode.addEventListener('change', handleInstallDisplayModeChange);
