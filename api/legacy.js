@@ -229,6 +229,19 @@ export default async function handler(req, res) {
       const cleanTasks=shaped.map((t)=>({...t,saved_at:savedAt.get(Number(t.id))})); return res.status(200).json(ok('',{tasks:cleanTasks,count:cleanTasks.length}));
     }
     if (route === 'profile_actions') {
+      if (action === 'public' && req.method === 'GET') {
+        const publicId = Number(query.get('id'));
+        if (!Number.isSafeInteger(publicId) || publicId < 1) throw fail('Invalid tasker profile.', 400);
+        const publicProfile = await rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,avatar_path,created_at').eq('id', publicId).maybeSingle());
+        if (!publicProfile) throw fail('This tasker profile could not be found.', 404);
+        const [listingResult, totalResult, completedResult] = await Promise.all([
+          s.from('tasks').select('id,user_id,title,category,budget,location,description,status,created_at,image_urls').eq('user_id', publicId).order('created_at', { ascending: false }).limit(12),
+          s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId),
+          s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId).eq('status', 'Completed')
+        ]);
+        if (listingResult.error || totalResult.error || completedResult.error) throw fail((listingResult.error || totalResult.error || completedResult.error).message, 500);
+        return res.status(200).json(ok('', { profile: { id: Number(publicProfile.id), first_name: publicProfile.first_name, middle_initial: publicProfile.middle_initial || '', last_name: publicProfile.last_name, avatar_path: publicProfile.avatar_path || null, created_at: publicProfile.created_at }, tasks: (listingResult.data || []).map((task) => ({ ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget) })), total_tasks: totalResult.count || 0, completed_tasks: completedResult.count || 0 }));
+      }
       ({ profile } = await userFor(req, s, action !== 'get'));
       if (action === 'get') return res.status(200).json(ok('',{user:publicUser(profile)}));
       if (action === 'update_profile') {
