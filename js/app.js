@@ -604,8 +604,25 @@ function formatActivityTimestamp(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Not recorded yet' : new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
+let accountActivityData = { users: [], recent_activity: [] };
+function renderAccountActivityUsers() {
+  const filter = $('#account-activity-filter')?.value || 'all';
+  const now = Date.now();
+  const users = accountActivityData.users.filter((user) => filter === 'admins'
+    ? user.role === 'admin' || user.role === 'superadmin'
+    : filter === 'users' ? user.role === 'user' : true);
+  $('#account-activity-users').innerHTML = users.length ? users.map((user) => {
+    const recentlyActive = user.last_seen_at && now - new Date(user.last_seen_at).getTime() <= 5 * 60 * 1000;
+    const name = `${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`.trim();
+    return `<article class="rounded-lg border border-[#dbe3e7] p-3"><div class="flex flex-wrap items-start justify-between gap-2"><div class="min-w-0"><strong class="block truncate">${escapeHtml(name)}</strong><span class="block truncate text-xs text-[#68727c]">${escapeHtml(user.email)}</span></div><span class="account-activity-role">${escapeHtml(user.role)}</span></div><div class="mt-2 grid gap-1 text-xs text-[#4c5962] sm:grid-cols-2"><p>Last login: <strong>${escapeHtml(formatActivityTimestamp(user.last_login_at))}</strong></p><p>Last activity: <strong>${escapeHtml(recentlyActive ? 'Active in the last 5 min' : formatActivityTimestamp(user.last_seen_at))}</strong></p></div></article>`;
+  }).join('') : `<p class="text-sm text-[#68727c]">No ${filter === 'admins' ? 'admins' : filter === 'users' ? 'users' : 'accounts'} found.</p>`;
+}
 function renderAccountActivity(payload) {
-  const users = Array.isArray(payload.users) ? payload.users : [];
+  accountActivityData = {
+    users: Array.isArray(payload.users) ? payload.users : [],
+    recent_activity: Array.isArray(payload.recent_activity) ? payload.recent_activity : []
+  };
+  const users = accountActivityData.users;
   const events = Array.isArray(payload.recent_activity) ? payload.recent_activity : [];
   const now = Date.now();
   const active = users.filter((user) => user.last_seen_at && now - new Date(user.last_seen_at).getTime() <= 5 * 60 * 1000).length;
@@ -614,11 +631,7 @@ function renderAccountActivity(payload) {
   $('#account-activity-summary').innerHTML = [
     ['Admins', admins], ['Users', members], ['Active in last 5 min', active]
   ].map(([label, value]) => `<div class="rounded-lg border border-[#dbe3e7] bg-[#f8fafc] px-3 py-2"><span class="block text-xs text-[#68727c]">${label}</span><strong class="text-lg">${value}</strong></div>`).join('');
-  $('#account-activity-users').innerHTML = users.length ? users.map((user) => {
-    const recentlyActive = user.last_seen_at && now - new Date(user.last_seen_at).getTime() <= 5 * 60 * 1000;
-    const name = `${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`.trim();
-    return `<article class="rounded-lg border border-[#dbe3e7] p-3"><div class="flex flex-wrap items-start justify-between gap-2"><div class="min-w-0"><strong class="block truncate">${escapeHtml(name)}</strong><span class="block truncate text-xs text-[#68727c]">${escapeHtml(user.email)}</span></div><span class="account-activity-role">${escapeHtml(user.role)}</span></div><div class="mt-2 grid gap-1 text-xs text-[#4c5962] sm:grid-cols-2"><p>Last login: <strong>${escapeHtml(formatActivityTimestamp(user.last_login_at))}</strong></p><p>Last activity: <strong>${escapeHtml(recentlyActive ? 'Active in the last 5 min' : formatActivityTimestamp(user.last_seen_at))}</strong></p></div></article>`;
-  }).join('') : '<p class="text-sm text-[#68727c]">No accounts found.</p>';
+  renderAccountActivityUsers();
   $('#account-activity-events').innerHTML = events.length ? events.map((entry) => `<article class="rounded-lg border border-[#dbe3e7] p-3"><div class="flex flex-wrap items-start justify-between gap-2"><strong>${escapeHtml(entry.user_name)}</strong><time class="text-xs text-[#68727c]">${escapeHtml(formatActivityTimestamp(entry.created_at))}</time></div><p class="mt-1 text-sm">${escapeHtml(entry.summary)}</p><p class="mt-1 text-xs text-[#68727c]">${escapeHtml(entry.role)}${entry.reference_type && entry.reference_id ? ` · ${escapeHtml(entry.reference_type)} #${escapeHtml(entry.reference_id)}` : ''}</p></article>`).join('') : '<p class="text-sm text-[#68727c]">No activity recorded yet.</p>';
 }
 async function loadAccountActivity() {
@@ -1375,6 +1388,7 @@ $('#change-email-form').addEventListener('submit', async (event) => { event.prev
 $('#change-password-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating password…'); try { const payload = await api('api/profile_actions.php', { method: 'POST', body: JSON.stringify({ action: 'change_password', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#profile-picture-input').addEventListener('change', async (event) => { const input = event.target, file = input.files?.[0]; if (!file) return; const edit = input.closest('.profile-avatar-wrap')?.querySelector('.profile-avatar-edit'); const original = edit?.innerHTML; setActionProgress(input, 'Uploading profile photo…', true); input.disabled = true; input.closest('.profile-avatar-wrap')?.setAttribute('aria-busy', 'true'); if (edit) edit.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">Uploading photo…</span>'; try { const avatar_data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const payload = await api('api/profile_actions.php?action=upload_avatar', { method: 'POST', body: JSON.stringify({ avatar_data }) }); state.user = payload.user; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setActionProgress(input, '', false); input.value = ''; input.disabled = false; input.closest('.profile-avatar-wrap')?.removeAttribute('aria-busy'); if (edit) edit.innerHTML = original; } });
 $('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#account-activity-filter')?.addEventListener('change', renderAccountActivityUsers);
 $('#refresh-account-activity')?.addEventListener('click', async (event) => { const button = event.currentTarget; button.disabled = true; try { await loadAccountActivity(); } finally { button.disabled = false; } });
 $('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task…'); try { const form = event.target; const formData = new FormData(form); const photoPayload = await taskFormPayload(form); const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(formData), photos: photoPayload.photos, keep_image_urls: photoPayload.keep_image_urls }) }); const taskId = Number(formData.get('task_id')); closeModal('edit-modal'); setBusy(form, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#bid-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!state.user) { requestBidAuthGate(Number($('#task-detail-id').value), event.submitter || event.target.querySelector('[type="submit"]')); return; } setBusy(event.target, true); try { const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'place', task_id: $('#task-detail-id').value, ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#task-detail-id').value)) || state.activeTask; if (task) openTask(task); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
