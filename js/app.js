@@ -573,6 +573,9 @@ function renderAuth() {
   $('#mobile-post').classList.toggle('hidden', !loggedIn);
   $('#hero-post').classList.toggle('hidden', !loggedIn);
   $('#hero-post').classList.toggle('inline-flex', loggedIn);
+  $('#hero-login')?.classList.toggle('hidden', loggedIn);
+  $('#hero-login')?.classList.toggle('inline-flex', !loggedIn);
+  document.querySelector('.mobile-bottom-nav')?.classList.toggle('is-guest-hidden', !loggedIn);
   $('#my-bids-button').classList.toggle('hidden', !loggedIn);
   $('#mobile-my-bids').classList.toggle('hidden', !loggedIn);
   $('#my-tasks-button').classList.toggle('hidden', !loggedIn);
