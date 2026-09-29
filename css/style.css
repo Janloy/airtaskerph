@@ -77,11 +77,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .task-photo-field { display: grid; gap: .65rem; }
 .task-photo-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; font-size: .9rem; font-weight: 700; }
 .task-photo-label small, .task-photo-picker small { color: #64748b; font-size: .76rem; font-weight: 500; }
+.task-existing-photo-section { display: grid; min-width: 0; gap: .55rem; }
+.task-existing-photo-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .25rem .75rem; color: #334155; font-size: .78rem; }
+.task-existing-photo-heading small { color: #64748b; font-size: .7rem; }
+.task-existing-photos { display: flex; width: 100%; min-width: 0; gap: .65rem; overflow-x: auto; overscroll-behavior-inline: contain; padding: .2rem .1rem .55rem; scroll-snap-type: x mandatory; }
+.task-existing-photos::-webkit-scrollbar { display: block; height: .35rem; }
+.task-existing-photos::-webkit-scrollbar-thumb { border-radius: 99px; background: #cbd5e1; }
 .task-photo-picker { display: flex; min-height: 3.5rem; align-items: center; gap: .65rem; padding: .75rem 1rem; border: 1px dashed #94a3b8; border-radius: .85rem; color: #047857; cursor: pointer; }
 .task-photo-picker input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); }
 .task-photo-picker:focus-within { outline: 2px solid #059669; outline-offset: 2px; }
 .task-photo-picker span { font-weight: 700; }
 .task-photo-previews, .task-photo-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; }
+.task-photo-previews { grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr)); }
 .task-photo-preview { position: relative; min-width: 0; overflow: hidden; border: 1px solid #e2e8f0; border-radius: .7rem; background: #f8fafc; }
 .task-photo-preview img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
 .task-photo-preview span { display: block; overflow: hidden; padding: .35rem .45rem; color: #475569; font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
@@ -94,8 +101,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .task-photo-gallery.is-compact { margin-top: 1rem; }
 .task-photo-gallery.is-compact .task-photo-view { border-radius: .6rem; }
 .task-photo-gallery.is-compact img { aspect-ratio: 16 / 10; }
-.task-photo-existing { position: relative; }
-.task-photo-existing .task-photo-view { width: 100%; border-radius: 0; }
+.task-photo-existing { flex: 0 0 clamp(112px, 30%, 148px); scroll-snap-align: start; }
+.task-photo-existing .task-photo-view { width: 100%; border-radius: .65rem .65rem 0 0; }
+.task-photo-existing .task-photo-view img { aspect-ratio: 1.2 / 1; }
 .task-photo-remove { position: absolute; top: .35rem; right: .35rem; z-index: 1; display: grid; width: 2rem; height: 2rem; place-items: center; border: 0; border-radius: 999px; color: #fff; background: #b91c1c; box-shadow: 0 2px 8px rgba(15,23,42,.3); }
 .photo-lightbox { position: fixed; inset: 0; z-index: 2147483600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; padding: max(4.5rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom)); background: rgba(2,6,23,.94); }
 .photo-lightbox.hidden { display: none; }
@@ -106,6 +114,8 @@ body.dark-mode .task-photo-picker { border-color: #64748b; color: #6ee7b7; }
 body.dark-mode .task-photo-label small, body.dark-mode .task-photo-picker small { color: #cbd5e1; }
 body.dark-mode .task-photo-preview { border-color: #475569; background: #1e293b; }
 body.dark-mode .task-photo-preview span { color: #cbd5e1; }
+body.dark-mode .task-existing-photo-heading { color: #e2e8f0; }
+body.dark-mode .task-existing-photo-heading small { color: #cbd5e1; }
 .task-save-button.is-saving { position: relative; color: #047857; opacity: 1; }
 .task-save-button.is-saving > i { opacity: .18; }
 .task-save-button.is-saving::after { position: absolute; width: 1rem; height: 1rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; content: ""; animation: save-button-spin .7s linear infinite; }

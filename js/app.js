@@ -284,7 +284,7 @@ function initializeTaskPhotoInputs() {
     if (!form || !description || form.querySelector('[data-task-photo-input]')) return;
     const field = document.createElement('div');
     field.className = 'task-photo-field';
-    field.innerHTML = `<span class="task-photo-label">Task photos <small>Optional · up to 3 images</small></span><div class="task-existing-photos hidden" aria-live="polite"></div><label class="task-photo-picker"><i class="fa-regular fa-image" aria-hidden="true"></i><span>Add photos</span><input data-task-photo-input type="file" accept="image/jpeg,image/png,image/webp" multiple><small>JPG, PNG, or WEBP</small></label><div class="task-photo-previews" aria-live="polite"></div>`;
+    field.innerHTML = `<span class="task-photo-label">Task photos <small>Optional · up to 3 images total</small></span><div class="task-existing-photo-section hidden"><div class="task-existing-photo-heading"><strong>Current photos</strong><small>Tap to view · × to remove</small></div><div class="task-existing-photos" aria-live="polite"></div></div><label class="task-photo-picker"><i class="fa-regular fa-image" aria-hidden="true"></i><span>Add photos</span><input data-task-photo-input type="file" accept="image/jpeg,image/png,image/webp" multiple><small>JPG, PNG, or WEBP</small></label><div class="task-photo-previews" aria-live="polite"></div>`;
     description.insertAdjacentElement('afterend', field);
     const input = field.querySelector('[data-task-photo-input]');
     input.addEventListener('change', () => {
@@ -331,7 +331,7 @@ function renderExistingTaskPhotos(form) {
   let urls = [];
   try { urls = JSON.parse(form.dataset.keepImageUrls || '[]'); } catch { urls = []; }
   container.replaceChildren();
-  container.classList.toggle('hidden', !urls.length);
+  container.closest('.task-existing-photo-section')?.classList.toggle('hidden', !urls.length);
   urls.forEach((url, index) => {
     const tile = document.createElement('div');
     tile.className = 'task-photo-preview task-photo-existing';
@@ -356,7 +356,7 @@ function renderExistingTaskPhotos(form) {
       form.querySelector('[data-task-photo-input]')?.dispatchEvent(new Event('change'));
     });
     const caption = document.createElement('span');
-    caption.textContent = 'Current photo';
+    caption.textContent = `Photo ${index + 1}`;
     tile.append(view, remove, caption);
     container.appendChild(tile);
   });
