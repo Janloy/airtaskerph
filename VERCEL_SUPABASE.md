@@ -12,4 +12,4 @@ The existing UI and CSS are retained. `index.html` is the static Vercel entry po
 
 Existing MySQL accounts and task data are not automatically copied. Export/import them separately if you need to preserve existing records. Do not put the service-role key in browser code.
 
-Task posts can include up to three JPG, PNG, or WEBP images. The browser resizes them to JPEG before upload; the API accepts up to 450 KB per compressed image and stores them in the public `task-photos` Supabase Storage bucket. Public task images are viewable by anyone who can view the task.
+Task posts can include up to three JPG, PNG, or WEBP images. The browser resizes them to JPEG before upload; the API accepts up to 450 KB per compressed image and stores them in the public `task-photos` Supabase Storage bucket. Public task images are viewable by anyone who can view the task. Task owners can open photos in a full-screen viewer and remove or replace individual photos while editing a task.

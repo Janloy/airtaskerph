@@ -180,10 +180,47 @@ export default async function handler(req, res) {
         const {data,error}=await s.auth.admin.createUser({email:clean(body.email,190).toLowerCase(),password:String(body.password||''),email_confirm:true,user_metadata:{first_name:clean(body.first_name,80),middle_initial:clean(body.middle_initial,1),last_name:clean(body.last_name,80)}});
         if(error) throw fail(error.message,400); await rows(s.from('user_profiles').update({role:'admin'}).eq('auth_user_id',data.user.id)); return res.status(200).json(ok('Admin account provisioned.'));
       }
-      const id=Number(body.task_id); const t=await rows(s.from('tasks').select('user_id').eq('id',id).maybeSingle());
+      const id=Number(body.task_id); const taskColumns=['update_task','delete_task'].includes(action)?'user_id,image_urls':'user_id'; const t=await rows(s.from('tasks').select(taskColumns).eq('id',id).maybeSingle());
       if(!t || (!isMod(profile)&&Number(t.user_id)!==Number(profile.id))) throw fail('You can only manage your own task postings.',403);
-      if(action==='delete_task') { await rows(s.from('tasks').delete().eq('id',id)); return res.status(200).json(ok('Task removed from the marketplace.')); }
-      if(action==='update_task') { const patch={title:clean(body.title,180),category:clean(body.category,80),budget:Number(body.budget),location:clean(body.location,160),description:clean(body.description,2000),status:body.status}; await rows(s.from('tasks').update(patch).eq('id',id)); return res.status(200).json(ok('Task updated.')); }
+      if(action==='delete_task') {
+        await rows(s.from('tasks').delete().eq('id',id));
+        const bucketPrefix=`${url.replace(/\/$/,'')}/storage/v1/object/public/task-photos/`;
+        const photoPaths=(Array.isArray(t.image_urls)?t.image_urls:[]).filter((photoUrl)=>photoUrl.startsWith(bucketPrefix)).map((photoUrl)=>decodeURIComponent(photoUrl.slice(bucketPrefix.length).split('?')[0]));
+        if(photoPaths.length) await s.storage.from('task-photos').remove(photoPaths).catch(()=>{});
+        return res.status(200).json(ok('Task removed from the marketplace.'));
+      }
+      if(action==='update_task') {
+        const patch={title:clean(body.title,180),category:clean(body.category,80),budget:Number(body.budget),location:clean(body.location,160),description:clean(body.description,2000),status:body.status};
+        const photos=Array.isArray(body.photos)?body.photos:[];
+        const oldUrls=Array.isArray(t.image_urls)?t.image_urls:[];
+        const keepUrls=body.keep_image_urls===undefined?oldUrls:body.keep_image_urls;
+        if(!Array.isArray(keepUrls)||photos.length>3||keepUrls.length>3||photos.some((photo)=>typeof photo!=='string'||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo))) throw fail('Choose up to 3 valid task photos.',422);
+        const uniqueKeepUrls=[...new Set(keepUrls)];
+        if(uniqueKeepUrls.length!==keepUrls.length||uniqueKeepUrls.some((photoUrl)=>!oldUrls.includes(photoUrl))) throw fail('One of the selected task photos is invalid. Refresh the page and try again.',422);
+        if(uniqueKeepUrls.length+photos.length>3) throw fail('Keep or upload no more than 3 task photos.',422);
+        const uploadedPaths=[];
+        try {
+          const newUrls=[];
+          for(const photo of photos){
+            const bytes=Buffer.from(photo.slice(photo.indexOf(',')+1),'base64');
+            if(!bytes.length||bytes.length>450*1024) throw fail('Each task photo must be smaller than 450 KB after compression.',422);
+            const path=`${profile.id}/${id}/${randomUUID()}.jpg`;
+            const {error}=await s.storage.from('task-photos').upload(path,bytes,{contentType:'image/jpeg',upsert:false});
+            if(error) throw fail('Could not upload a task photo. Confirm the task-photos bucket migration is applied.',500);
+            uploadedPaths.push(path);
+            newUrls.push(s.storage.from('task-photos').getPublicUrl(path).data.publicUrl);
+          }
+          patch.image_urls=[...uniqueKeepUrls,...newUrls];
+          await rows(s.from('tasks').update(patch).eq('id',id));
+        } catch(error) {
+          if(uploadedPaths.length) await s.storage.from('task-photos').remove(uploadedPaths).catch(()=>{});
+          throw error;
+        }
+        const bucketPrefix=`${url.replace(/\/$/,'')}/storage/v1/object/public/task-photos/`;
+        const removedPaths=oldUrls.filter((photoUrl)=>!uniqueKeepUrls.includes(photoUrl)&&photoUrl.startsWith(bucketPrefix)).map((photoUrl)=>decodeURIComponent(photoUrl.slice(bucketPrefix.length).split('?')[0]));
+        if(removedPaths.length) await s.storage.from('task-photos').remove(removedPaths).catch(()=>{});
+        return res.status(200).json(ok('Task updated.'));
+      }
     }
     if (route === 'bid_actions') {
       ({ profile } = await userFor(req,s));

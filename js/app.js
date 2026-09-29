@@ -278,26 +278,27 @@ function setBusy(form, busy, label = 'Saving…') {
   setButtonBusy(button, busy, label);
 }
 function initializeTaskPhotoInputs() {
-  ['task-form', 'create-task-form'].forEach((formId) => {
+  ['task-form', 'create-task-form', 'edit-form'].forEach((formId) => {
     const form = $(`#${formId}`);
     const description = form?.querySelector('textarea[name="description"]')?.closest('label');
     if (!form || !description || form.querySelector('[data-task-photo-input]')) return;
     const field = document.createElement('div');
     field.className = 'task-photo-field';
-    field.innerHTML = `<span class="task-photo-label">Task photos <small>Optional · up to 3 images</small></span><label class="task-photo-picker"><i class="fa-regular fa-image" aria-hidden="true"></i><span>Choose photos</span><input data-task-photo-input type="file" accept="image/jpeg,image/png,image/webp" multiple><small>JPG, PNG, or WEBP</small></label><div class="task-photo-previews" aria-live="polite"></div>`;
+    field.innerHTML = `<span class="task-photo-label">Task photos <small>Optional · up to 3 images</small></span><div class="task-existing-photos hidden" aria-live="polite"></div><label class="task-photo-picker"><i class="fa-regular fa-image" aria-hidden="true"></i><span>Add photos</span><input data-task-photo-input type="file" accept="image/jpeg,image/png,image/webp" multiple><small>JPG, PNG, or WEBP</small></label><div class="task-photo-previews" aria-live="polite"></div>`;
     description.insertAdjacentElement('afterend', field);
     const input = field.querySelector('[data-task-photo-input]');
     input.addEventListener('change', () => {
       const files = [...input.files];
       const preview = field.querySelector('.task-photo-previews');
       preview.replaceChildren();
-      if (files.length > 3) { input.value = ''; notify('Choose no more than 3 photos.', 'error'); return; }
+      const retainedCount = JSON.parse(form.dataset.keepImageUrls || '[]').length;
+      if (files.length + retainedCount > 3) { input.value = ''; notify(`You can keep or upload up to 3 photos total. Remove ${Math.max(0, files.length + retainedCount - 3)} existing photo(s) first.`, 'error'); return; }
       if (files.some((file) => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024)) {
         input.value = '';
         notify('Use JPG, PNG, or WEBP photos under 8 MB each.', 'error');
         return;
       }
-      files.forEach((file) => {
+      files.forEach((file, fileIndex) => {
         const tile = document.createElement('div');
         tile.className = 'task-photo-preview';
         const image = document.createElement('img');
@@ -306,13 +307,90 @@ function initializeTaskPhotoInputs() {
         image.onload = () => URL.revokeObjectURL(image.src);
         const caption = document.createElement('span');
         caption.textContent = file.name;
-        tile.append(image, caption);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'task-photo-remove';
+        remove.setAttribute('aria-label', `Remove selected photo ${fileIndex + 1}`);
+        remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+        remove.addEventListener('click', () => {
+          const transfer = new DataTransfer();
+          [...input.files].forEach((selected, index) => { if (index !== fileIndex) transfer.items.add(selected); });
+          input.files = transfer.files;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        tile.append(image, remove, caption);
         preview.appendChild(tile);
       });
     });
   });
 }
 initializeTaskPhotoInputs();
+function renderExistingTaskPhotos(form) {
+  const container = form.querySelector('.task-existing-photos');
+  if (!container) return;
+  let urls = [];
+  try { urls = JSON.parse(form.dataset.keepImageUrls || '[]'); } catch { urls = []; }
+  container.replaceChildren();
+  container.classList.toggle('hidden', !urls.length);
+  urls.forEach((url, index) => {
+    const tile = document.createElement('div');
+    tile.className = 'task-photo-preview task-photo-existing';
+    const view = document.createElement('button');
+    view.type = 'button';
+    view.className = 'task-photo-view';
+    view.setAttribute('data-photo-url', url);
+    view.setAttribute('data-photo-alt', `Current task photo ${index + 1}`);
+    const image = document.createElement('img');
+    image.src = url;
+    image.alt = `Current task photo ${index + 1}`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'task-photo-remove';
+    remove.setAttribute('aria-label', `Remove photo ${index + 1}`);
+    remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    remove.addEventListener('click', () => {
+      const kept = JSON.parse(form.dataset.keepImageUrls || '[]');
+      kept.splice(index, 1);
+      form.dataset.keepImageUrls = JSON.stringify(kept);
+      renderExistingTaskPhotos(form);
+      form.querySelector('[data-task-photo-input]')?.dispatchEvent(new Event('change'));
+    });
+    const caption = document.createElement('span');
+    caption.textContent = 'Current photo';
+    tile.append(view, remove, caption);
+    container.appendChild(tile);
+  });
+}
+function openPhotoViewer(url, alt = 'Task photo') {
+  let viewer = $('#photo-lightbox');
+  if (!viewer) {
+    viewer = document.createElement('div');
+    viewer.id = 'photo-lightbox';
+    viewer.className = 'photo-lightbox hidden';
+    viewer.setAttribute('role', 'dialog');
+    viewer.setAttribute('aria-modal', 'true');
+    viewer.setAttribute('aria-label', 'Task photo viewer');
+    viewer.innerHTML = '<button type="button" class="photo-lightbox-close" aria-label="Close photo" data-photo-viewer-close><i class="fa-solid fa-xmark" aria-hidden="true"></i></button><img class="photo-lightbox-image" alt=""><p class="photo-lightbox-caption"></p>';
+    document.body.appendChild(viewer);
+    viewer.addEventListener('click', (event) => {
+      if (event.target === viewer || event.target.closest('[data-photo-viewer-close]')) closePhotoViewer();
+    });
+  }
+  viewer.dataset.bodyWasLocked = String(document.body.classList.contains('overflow-hidden'));
+  viewer.querySelector('img').src = url;
+  viewer.querySelector('img').alt = alt;
+  viewer.querySelector('.photo-lightbox-caption').textContent = alt;
+  viewer.classList.remove('hidden');
+  document.body.classList.add('overflow-hidden');
+  viewer.querySelector('[data-photo-viewer-close]').focus({ preventScroll: true });
+}
+function closePhotoViewer() {
+  const viewer = $('#photo-lightbox');
+  if (!viewer) return;
+  viewer.classList.add('hidden');
+  if (viewer.dataset.bodyWasLocked !== 'true') document.body.classList.remove('overflow-hidden');
+  delete viewer.dataset.bodyWasLocked;
+}
 async function compressTaskPhoto(file) {
   let source, sourceWidth, sourceHeight, releaseSource = () => {};
   try {
@@ -359,12 +437,13 @@ async function taskFormPayload(form) {
   delete payload.photos;
   const files = [...(form.querySelector('[data-task-photo-input]')?.files || [])];
   payload.photos = await Promise.all(files.map(compressTaskPhoto));
+  try { payload.keep_image_urls = JSON.parse(form.dataset.keepImageUrls || '[]'); } catch { payload.keep_image_urls = []; }
   return payload;
 }
 function taskPhotoMarkup(task, compact = false) {
   const photos = Array.isArray(task.image_urls) ? task.image_urls.slice(0, 3) : [];
   if (!photos.length) return '';
-  return `<div class="task-photo-gallery${compact ? ' is-compact' : ''}" aria-label="Task photos">${photos.map((url) => `<img src="${escapeHtml(url)}" alt="Photo for ${escapeHtml(task.title)}" loading="lazy">`).join('')}</div>`;
+  return `<div class="task-photo-gallery${compact ? ' is-compact' : ''}" aria-label="Task photos">${photos.map((url, index) => `<button type="button" class="task-photo-view" data-photo-url="${escapeHtml(url)}" data-photo-alt="${escapeHtml(task.title)} — photo ${index + 1}" aria-label="View photo ${index + 1} for ${escapeHtml(task.title)}"><img src="${escapeHtml(url)}" alt="Photo for ${escapeHtml(task.title)}" loading="lazy"><span><i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i></span></button>`).join('')}</div>`;
 }
 function requestAuthGate(route, trigger = null) {
   if (state.user) return false;
@@ -652,7 +731,16 @@ async function toggleSavedTask(task) {
 }
 function markSubmittedBids() { state.tasks.filter((task) => task.has_bid).forEach((task) => { const card = document.querySelector(`[data-task="${task.id}"]`); if (card && !card.querySelector('.submitted-bid-mark')) card.insertAdjacentHTML('afterbegin', '<span class="submitted-bid-mark"><i class="fa-solid fa-check"></i> Bid submitted</span>'); }); }
 async function loadTasks() { const params = new URLSearchParams(Object.entries(state.filters).filter(([, value]) => value)); try { const payload = await api(`api/get_tasks.php?${params}`); state.tasks = payload.tasks; renderTasks(); markSubmittedBids(); } catch (error) { notify(error.message, 'error'); } }
-function fillEditForm(task) { Object.entries(task).forEach(([key, value]) => { const input = $(`#edit-${key}`); if (input) input.value = value; }); openModal('#edit-modal'); }
+function fillEditForm(task) {
+  Object.entries(task).forEach(([key, value]) => { const input = $(`#edit-${key}`); if (input) input.value = value; });
+  const form = $('#edit-form');
+  form.dataset.keepImageUrls = JSON.stringify(Array.isArray(task.image_urls) ? task.image_urls.slice(0, 3) : []);
+  const photoInput = form.querySelector('[data-task-photo-input]');
+  if (photoInput) photoInput.value = '';
+  form.querySelector('.task-photo-previews')?.replaceChildren();
+  renderExistingTaskPhotos(form);
+  openModal('#edit-modal');
+}
 async function openTask(task) {
   const currentPage = document.querySelector('.app-page:not(.hidden)')?.id;
   if (currentPage !== 'task-detail-modal') {
@@ -879,6 +967,8 @@ async function resumeAuthIntent(intent) {
   }
 }
 document.addEventListener('click', async (event) => {
+  const photoButton = event.target.closest('[data-photo-url]');
+  if (photoButton) { event.preventDefault(); event.stopPropagation(); openPhotoViewer(photoButton.dataset.photoUrl, photoButton.dataset.photoAlt); return; }
   const blockedRoute = protectedRouteForElement(event.target);
   if (!state.user && blockedRoute) {
     event.preventDefault();
@@ -936,6 +1026,11 @@ document.addEventListener('click', async (event) => {
   const deleteBidButton = event.target.closest('[data-delete-bid]'); if (deleteBidButton) { $('#delete-bid-id').value = deleteBidButton.dataset.deleteBid; $('#delete-bid-task-id').value = deleteBidButton.dataset.deleteBidTask; openModal('#delete-bid-modal'); }
 });
 document.addEventListener('keydown', (event) => {
+  const photoViewer = $('#photo-lightbox');
+  if (event.key === 'Escape' && photoViewer && !photoViewer.classList.contains('hidden')) {
+    closePhotoViewer();
+    return;
+  }
   const logoutDialog = $('#logout-confirm-modal');
   if (event.key === 'Tab' && logoutDialog && !logoutDialog.classList.contains('hidden')) {
     const focusable = [...logoutDialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((element) => element.offsetParent !== null);
@@ -1030,7 +1125,7 @@ $('#change-email-form').addEventListener('submit', async (event) => { event.prev
 $('#change-password-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating password…'); try { const payload = await api('api/profile_actions.php', { method: 'POST', body: JSON.stringify({ action: 'change_password', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#profile-picture-input').addEventListener('change', async (event) => { const input = event.target, file = input.files?.[0]; if (!file) return; const edit = input.closest('.profile-avatar-wrap')?.querySelector('.profile-avatar-edit'); const original = edit?.innerHTML; setActionProgress(input, 'Uploading profile photo…', true); input.disabled = true; input.closest('.profile-avatar-wrap')?.setAttribute('aria-busy', 'true'); if (edit) edit.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">Uploading photo…</span>'; try { const avatar_data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const payload = await api('api/profile_actions.php?action=upload_avatar', { method: 'POST', body: JSON.stringify({ avatar_data }) }); state.user = payload.user; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setActionProgress(input, '', false); input.value = ''; input.disabled = false; input.closest('.profile-avatar-wrap')?.removeAttribute('aria-busy'); if (edit) edit.innerHTML = original; } });
 $('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task…'); try { const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(new FormData(event.target)) }) }); const taskId = Number(new FormData(event.target).get('task_id')); closeModal('edit-modal'); setBusy(event.target, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task…'); try { const form = event.target; const formData = new FormData(form); const photoPayload = await taskFormPayload(form); const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(formData), photos: photoPayload.photos, keep_image_urls: photoPayload.keep_image_urls }) }); const taskId = Number(formData.get('task_id')); closeModal('edit-modal'); setBusy(form, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#bid-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!state.user) { requestBidAuthGate(Number($('#task-detail-id').value), event.submitter || event.target.querySelector('[type="submit"]')); return; } setBusy(event.target, true); try { const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'place', task_id: $('#task-detail-id').value, ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#task-detail-id').value)) || state.activeTask; if (task) openTask(task); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#conversation-form').addEventListener('submit', async (event) => {
   event.preventDefault();
