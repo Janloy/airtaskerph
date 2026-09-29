@@ -233,7 +233,12 @@ function closeModal(id) {
     $('#profile-confirm-error')?.replaceChildren();
   }
   if (id === 'conversation-modal' && state.conversationTimer) { clearInterval(state.conversationTimer); state.conversationTimer = null; }
-  if (!document.querySelector('.modal-backdrop:not(.hidden)')) document.body.classList.remove('overflow-hidden');
+  if (!document.querySelector('.modal-backdrop:not(.hidden)')) {
+    document.body.classList.remove('overflow-hidden');
+    document.documentElement.classList.remove('overflow-hidden');
+    document.body.style.removeProperty('overflow');
+    document.documentElement.style.removeProperty('overflow');
+  }
   if (id === 'logout-confirm-modal' && state.logoutTrigger) {
     const trigger = state.logoutTrigger;
     state.logoutTrigger = null;
@@ -1065,6 +1070,12 @@ function dismissInstallGuide(installed = false) {
   } catch (error) { void error; }
   closeModal('install-guide-modal');
   $('#install-guide-modal')?.remove();
+  if (!document.querySelector('.modal-backdrop:not(.hidden)')) {
+    document.body.classList.remove('overflow-hidden');
+    document.documentElement.classList.remove('overflow-hidden');
+    document.body.style.removeProperty('overflow');
+    document.documentElement.style.removeProperty('overflow');
+  }
 }
 function markTaskerInstalled() { dismissInstallGuide(true); }
 function maybeShowInstallGuide() {
