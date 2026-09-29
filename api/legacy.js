@@ -52,8 +52,8 @@ export default async function handler(req, res) {
   if (!url || !anon || !service) return res.status(500).json({ success: false, message: 'Set SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY in Vercel.' });
   const s = db(); const ac = authClient(); const query = new URL(req.url, 'https://local').searchParams;
   const route = (query.get('path') || '').replace(/^\/+|\/+$/g, '').replace(/\.php$/, '');
-  const action = query.get('action') || '';
   const body = await jsonBody(req);
+  const action = query.get('action') || body.action || '';
   let viewer = null; let profile = null;
   try {
     if (route === 'auth') {
