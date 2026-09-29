@@ -1,4 +1,7 @@
-const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], pendingMessages: [], sendingMessage: false, notificationTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
+const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], pendingMessages: [], sendingMessage: false, notificationTimer: null, taskRefreshTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
+let taskFetchSequence = 0;
+let taskFetchInFlight = false;
+let taskListLoaded = false;
 const pendingSavedTaskIds = new Set();
 const AUTH_SYNC_KEY = 'taskerph-auth-sync';
 const AUTH_TOKEN_KEY = 'taskerph-supabase-access-token';
@@ -730,7 +733,29 @@ async function toggleSavedTask(task) {
   }
 }
 function markSubmittedBids() { state.tasks.filter((task) => task.has_bid).forEach((task) => { const card = document.querySelector(`[data-task="${task.id}"]`); if (card && !card.querySelector('.submitted-bid-mark')) card.insertAdjacentHTML('afterbegin', '<span class="submitted-bid-mark"><i class="fa-solid fa-check"></i> Bid submitted</span>'); }); }
-async function loadTasks() { const params = new URLSearchParams(Object.entries(state.filters).filter(([, value]) => value)); try { const payload = await api(`api/get_tasks.php?${params}`); state.tasks = payload.tasks; renderTasks(); markSubmittedBids(); } catch (error) { notify(error.message, 'error'); } }
+async function fetchTaskList({ silent = false } = {}) {
+  const requestId = ++taskFetchSequence;
+  taskFetchInFlight = true;
+  const params = new URLSearchParams(Object.entries(state.filters).filter(([, value]) => value));
+  try {
+    const payload = await api(`api/get_tasks.php?${params}`);
+    if (requestId !== taskFetchSequence) return;
+    const changed = !taskListLoaded || JSON.stringify(payload.tasks) !== JSON.stringify(state.tasks);
+    state.tasks = payload.tasks;
+    taskListLoaded = true;
+    if (changed) { renderTasks(); markSubmittedBids(); }
+  } catch (error) { if (!silent) notify(error.message, 'error'); }
+  finally { if (requestId === taskFetchSequence) taskFetchInFlight = false; }
+}
+function loadTasks() { return fetchTaskList(); }
+function refreshMarketplaceTasks() {
+  if (document.hidden || !navigator.onLine || taskFetchInFlight || document.querySelector('.app-page:not(.hidden)')?.id !== 'marketplace-page') return;
+  return fetchTaskList({ silent: true });
+}
+function startTaskPolling() {
+  if (state.taskRefreshTimer) clearInterval(state.taskRefreshTimer);
+  state.taskRefreshTimer = setInterval(refreshMarketplaceTasks, 10000);
+}
 function fillEditForm(task) {
   Object.entries(task).forEach(([key, value]) => { const input = $(`#edit-${key}`); if (input) input.value = value; });
   const form = $('#edit-form');
@@ -894,7 +919,7 @@ async function init() {
   loadUserGlassPreference(state.user);
   try { localStorage.removeItem('taskerph-glass-opacity'); } catch (error) { void error; }
   if (state.user) { try { await refreshSavedTaskData(); } catch (error) { notify(error.message, 'error'); } }
-  await loadTasks(); startNotificationPolling(); await finishMobileSplash(mobileSplash);
+  await loadTasks(); startNotificationPolling(); startTaskPolling(); await finishMobileSplash(mobileSplash);
 }
 window.addEventListener('storage', async (event) => {
   if (event.key !== AUTH_SYNC_KEY) return;
@@ -1055,6 +1080,7 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('click', (event) => {
   if (!event.target.closest('.desktop-profile-root')) closeDesktopProfileMenu();
 });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshMarketplaceTasks(); });
 $('#confirm-logout').addEventListener('click', async (event) => {
   const button = event.currentTarget;
   button.disabled = true;
