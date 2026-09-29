@@ -24,22 +24,37 @@ const userFor = async (req, s) => {
   return { auth: data.user, profile: await getProfile(s, data.user.id), token };
 };
 const isMod = (u) => ['admin', 'superadmin'].includes(u.role);
-const taskShape = async (s, task, viewer) => {
-  const [owner, bidResult, saves, unreadResult] = await Promise.all([
-    rows(s.from('user_profiles').select('first_name,last_name').eq('id', task.user_id).maybeSingle()),
-    s.from('bids').select('id', { count: 'exact', head: true }).eq('task_id', task.id),
-    viewer ? rows(s.from('saved_tasks').select('task_id').eq('task_id', task.id).eq('user_id', viewer.id).maybeSingle()) : null,
-    viewer ? s.from('messages').select('id', { count: 'exact', head: true }).eq('task_id', task.id).eq('recipient_id', viewer.id).is('read_at', null) : null
+const shapeTasks = async (s, tasks, viewer) => {
+  if (!tasks.length) return [];
+  const taskIds = tasks.map((t) => t.id);
+  const ownerIds = [...new Set(tasks.map((t) => t.user_id))];
+  const [owners, bids, saves, messages] = await Promise.all([
+    rows(s.from('user_profiles').select('id,first_name,last_name').in('id', ownerIds)),
+    rows(s.from('bids').select('task_id,bidder_id').in('task_id', taskIds)),
+    viewer ? rows(s.from('saved_tasks').select('task_id').eq('user_id', viewer.id).in('task_id', taskIds)) : Promise.resolve([]),
+    viewer ? rows(s.from('messages').select('task_id').eq('recipient_id', viewer.id).is('read_at', null).in('task_id', taskIds)) : Promise.resolve([])
   ]);
-  if (unreadResult?.error) throw fail(unreadResult.error.message, 500);
-  const myBid = viewer ? await rows(s.from('bids').select('id').eq('task_id', task.id).eq('bidder_id', viewer.id).maybeSingle()) : null;
-  if (bidResult.error) throw fail(bidResult.error.message, 500);
-  return { ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget), owner_name: owner ? `${owner.first_name} ${owner.last_name}`.trim() : 'TaskerPH member', has_bid: Boolean(myBid), is_saved: Boolean(saves), bid_count: bidResult.count || 0, unread_message_count: unreadResult?.count || 0 };
+  const ownerById = new Map(owners.map((p) => [Number(p.id), p]));
+  const bidsByTask = new Map();
+  for (const bid of bids) {
+    const item = bidsByTask.get(Number(bid.task_id)) || { count: 0, hasBid: false };
+    item.count += 1;
+    if (viewer && Number(bid.bidder_id) === Number(viewer.id)) item.hasBid = true;
+    bidsByTask.set(Number(bid.task_id), item);
+  }
+  const savedIds = new Set(saves.map((r) => Number(r.task_id)));
+  const unreadByTask = new Map();
+  for (const message of messages) unreadByTask.set(Number(message.task_id), (unreadByTask.get(Number(message.task_id)) || 0) + 1);
+  return tasks.map((task) => {
+    const owner = ownerById.get(Number(task.user_id));
+    const bidData = bidsByTask.get(Number(task.id));
+    return { ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget), owner_name: owner ? `${owner.first_name} ${owner.last_name}`.trim() : 'TaskerPH member', has_bid: Boolean(bidData?.hasBid), is_saved: savedIds.has(Number(task.id)), bid_count: bidData?.count || 0, unread_message_count: unreadByTask.get(Number(task.id)) || 0 };
+  });
 };
 const taskDetail = async (s, id, viewer) => {
   const task = await rows(s.from('tasks').select('*').eq('id', id).maybeSingle());
   if (!task) throw fail('Task not found.', 404);
-  return taskShape(s, task, viewer);
+  return (await shapeTasks(s, [task], viewer))[0];
 };
 const jsonBody = async (req) => {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -85,7 +100,7 @@ export default async function handler(req, res) {
       if (['Open','In Progress','Completed'].includes(query.get('status'))) q = q.eq('status', query.get('status'));
       if (query.get('category')) q = q.eq('category', query.get('category'));
       if (query.get('search')) { const term = query.get('search').replace(/[,%()]/g, ' '); q = q.or(`title.ilike.%${term}%,description.ilike.%${term}%,location.ilike.%${term}%`); }
-      const tasks = await rows(q); return res.status(200).json(ok('', { tasks: await Promise.all(tasks.map(t => taskShape(s, t, profile))) }));
+      const tasks = await rows(q); return res.status(200).json(ok('', { tasks: await shapeTasks(s, tasks, profile) }));
     }
     if (route === 'create_task') {
       ({ profile } = await userFor(req, s));
@@ -103,8 +118,10 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('',{saved,count:count||0,task_id:id}));
       }
       const savedRows = await rows(s.from('saved_tasks').select('task_id,saved_at').eq('user_id',profile.id).order('saved_at',{ascending:false}));
-      const tasks = await Promise.all(savedRows.map(async r => { const t=await rows(s.from('tasks').select('*').eq('id',r.task_id).maybeSingle()); return t?{...(await taskShape(s,t,profile)),saved_at:r.saved_at}:null; }));
-      const cleanTasks=tasks.filter(Boolean); return res.status(200).json(ok('',{tasks:cleanTasks,count:cleanTasks.length}));
+      const taskRows = savedRows.length ? await rows(s.from('tasks').select('*').in('id', savedRows.map((r) => r.task_id))) : [];
+      const shaped = await shapeTasks(s, taskRows, profile);
+      const savedAt = new Map(savedRows.map((r) => [Number(r.task_id), r.saved_at]));
+      const cleanTasks=shaped.map((t)=>({...t,saved_at:savedAt.get(Number(t.id))})); return res.status(200).json(ok('',{tasks:cleanTasks,count:cleanTasks.length}));
     }
     if (route === 'profile_actions') {
       ({ profile } = await userFor(req, s));

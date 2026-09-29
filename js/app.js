@@ -561,7 +561,7 @@ function startMobileSplash() {
   if (!splash || document.documentElement.classList.contains('mobile-splash-seen') || !window.matchMedia('(max-width: 1023px)').matches) return null;
   const status = $('#mobile-splash-status');
   const messages = ['Connecting to Tasker PH...', 'Loading latest marketplace data...', 'Almost ready...'];
-  const controller = { splash, slowTimer: 0, rotateTimer: 0, minimumDisplay: new Promise((resolve) => window.setTimeout(resolve, 1800)) };
+  const controller = { splash, slowTimer: 0, rotateTimer: 0, minimumDisplay: new Promise((resolve) => window.setTimeout(resolve, 500)) };
   controller.slowTimer = window.setTimeout(() => {
     splash.classList.add('is-waiting');
     let index = 0;
