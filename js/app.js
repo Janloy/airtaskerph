@@ -5,6 +5,10 @@ let taskListLoaded = false;
 const pendingSavedTaskIds = new Set();
 const AUTH_SYNC_KEY = 'taskerph-auth-sync';
 const AUTH_TOKEN_KEY = 'taskerph-supabase-access-token';
+const AUTH_REFRESH_TOKEN_KEY = 'taskerph-supabase-refresh-token';
+const AUTH_ACTIVITY_KEY = 'taskerph-last-active-at';
+const AUTH_INACTIVITY_LIMIT = 30 * 24 * 60 * 60 * 1000;
+let authRefreshPromise = null;
 document.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
 const $ = (selector) => document.querySelector(selector);
 function broadcastAuthChange() {
@@ -49,34 +53,83 @@ new MutationObserver((records) => {
     if (node.nodeType === Node.ELEMENT_NODE) enhancePasswordInputs(node);
   }));
 }).observe(document.body, { childList: true, subtree: true });
-const api = async (url, options = {}) => {
+function persistAuthTokens(payload) {
+  try {
+    if (payload.access_token) localStorage.setItem(AUTH_TOKEN_KEY, payload.access_token);
+    if (payload.refresh_token) localStorage.setItem(AUTH_REFRESH_TOKEN_KEY, payload.refresh_token);
+  } catch (error) { void error; }
+}
+function clearStoredAuth() {
+  try {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_REFRESH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_ACTIVITY_KEY);
+  } catch (error) { void error; }
+}
+function recordAuthActivity() {
+  if (!state.user) return;
+  const now = Date.now();
+  if (now - (Number(window.__taskerphLastActivityWrite) || 0) < 60_000) return;
+  window.__taskerphLastActivityWrite = now;
+  try { localStorage.setItem(AUTH_ACTIVITY_KEY, String(now)); } catch (error) { void error; }
+}
+async function refreshStoredAuth() {
+  if (authRefreshPromise) return authRefreshPromise;
+  authRefreshPromise = (async () => {
+    let refreshToken = null;
+    try { refreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_KEY); } catch (error) { void error; }
+    if (!refreshToken) return false;
+    try {
+      const response = await fetch('api/auth.php?action=refresh', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }), cache: 'no-store'
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success || !payload.access_token || !payload.refresh_token) return false;
+      persistAuthTokens(payload);
+      return true;
+    } catch (error) { return false; }
+  })();
+  try { return await authRefreshPromise; }
+  finally { authRefreshPromise = null; }
+}
+function handleExpiredAuth() {
+  state.user = null;
+  clearStoredAuth();
+  applySystemAppearance();
+  applyGlassOpacity(0);
+  state.myTasks = [];
+  state.savedTasks = [];
+  state.savedTaskIds.clear();
+  updateSavedTaskCount(0);
+  if (state.notificationTimer) clearInterval(state.notificationTimer);
+  renderAuth();
+  broadcastAuthChange();
+  openModal('#login-modal');
+}
+const api = async (url, options = {}, hasRetried = false) => {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   try { const token = localStorage.getItem(AUTH_TOKEN_KEY); if (token) headers.Authorization = `Bearer ${token}`; } catch (error) { void error; }
   const response = await fetch(url, { ...options, headers });
   const payload = await response.json().catch(() => ({ success: false, message: 'Invalid server response.' }));
-  if (payload.access_token) { try { localStorage.setItem(AUTH_TOKEN_KEY, payload.access_token); } catch (error) { void error; } }
+  persistAuthTokens(payload);
+  if ((!response.ok || !payload.success) && payload.auth_required && !hasRetried && await refreshStoredAuth()) return api(url, options, true);
   if (!response.ok || !payload.success) {
     if (payload.auth_required && state.user) {
-      state.user = null;
-      try { localStorage.removeItem(AUTH_TOKEN_KEY); } catch (error) { void error; }
-      applySystemAppearance();
-      applyGlassOpacity(0);
-      state.myTasks = [];
-      state.savedTasks = [];
-      state.savedTaskIds.clear();
-      updateSavedTaskCount(0);
-      if (state.notificationTimer) clearInterval(state.notificationTimer);
-      renderAuth();
-      broadcastAuthChange();
-      openModal('#login-modal');
-      payload.message = payload.expired
-        ? 'Your session expired after 30 days of inactivity. Please log in again.'
-        : 'Your session has ended. Please log in again.';
+      handleExpiredAuth();
+      payload.message = 'Your session has ended. Please log in again.';
     }
     throw new Error(payload.message || 'Request failed.');
   }
+  if (state.user) recordAuthActivity();
   return payload;
 };
+['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
+  document.addEventListener(eventName, recordAuthActivity, { passive: true });
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) recordAuthActivity();
+});
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 const money = (value) => `₱${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
 const initials = (user) => `${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase();
@@ -895,9 +948,26 @@ async function init() {
   } catch (error) { void error; }
   let sessionExpired = false;
   try {
-    const session = await api('api/auth.php?action=session');
-    state.user = session.user;
-    sessionExpired = Boolean(session.expired);
+    const accessToken = localStorage.getItem(AUTH_TOKEN_KEY);
+    const refreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_KEY);
+    let lastActivity = Number(localStorage.getItem(AUTH_ACTIVITY_KEY)) || 0;
+    if (accessToken || refreshToken) {
+      if (!lastActivity) {
+        lastActivity = Date.now();
+        localStorage.setItem(AUTH_ACTIVITY_KEY, String(lastActivity));
+      }
+      if (Date.now() - lastActivity >= AUTH_INACTIVITY_LIMIT) {
+        sessionExpired = true;
+        clearStoredAuth();
+        broadcastAuthChange();
+      }
+    }
+    if (!sessionExpired) {
+      let session = await api('api/auth.php?action=session');
+      if (!session.user && refreshToken && await refreshStoredAuth()) session = await api('api/auth.php?action=session');
+      state.user = session.user;
+      if (state.user) recordAuthActivity();
+    }
   } catch (error) { notify(error.message, 'error'); }
   const taskDetailPage = $('#task-detail-modal');
   taskDetailPage?.classList.remove('modal-backdrop', 'fixed', 'inset-0', 'z-50', 'items-center', 'justify-center', 'p-4');
@@ -915,7 +985,7 @@ async function init() {
   renderAuth();
   if (sessionExpired) {
     openModal('#login-modal');
-    notify('Your session expired after 30 days of inactivity. Please log in again.', 'error');
+    notify('You were signed out because the account was inactive for 30 days. Please log in again.', 'error');
   }
   if (state.user) applyUserAppearance(state.user);
   else applySystemAppearance();
@@ -927,7 +997,8 @@ async function init() {
 window.addEventListener('storage', async (event) => {
   if (event.key !== AUTH_SYNC_KEY) return;
   try {
-    const session = await api('api/auth.php?action=session');
+    let session = await api('api/auth.php?action=session');
+    if (!session.user && await refreshStoredAuth()) session = await api('api/auth.php?action=session');
     const wasLoggedIn = Boolean(state.user);
     const previousUserId = state.user?.id;
     state.user = session.user;
@@ -957,7 +1028,7 @@ window.addEventListener('storage', async (event) => {
 });
 async function performLogout() {
   await api('api/auth.php?action=logout', { method: 'POST' });
-  try { localStorage.removeItem(AUTH_TOKEN_KEY); } catch (error) { void error; }
+  clearStoredAuth();
   state.logoutTrigger = null;
   closeModal('logout-confirm-modal');
   state.user = null;
@@ -1130,7 +1201,7 @@ $('#refresh-tasks-button').addEventListener('click', async (event) => {
 });
 $('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); closeModal('task-modal'); setBusy(event.target, false); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#create-task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); setBusy(event.target, false); showPage('marketplace-page'); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in…'); try { const payload = await api('api/auth.php?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage('marketplace-page'); await loadTasks(); startNotificationPolling(); notify(payload.message); await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in…'); try { const payload = await api('api/auth.php?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage('marketplace-page'); await loadTasks(); startNotificationPolling(); notify(payload.message); await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth.php?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-profile-form').addEventListener('submit', (event) => {
   event.preventDefault();

@@ -79,13 +79,20 @@ export default async function handler(req, res) {
         if (error) throw fail(error.message, 409);
         if (data.user && !data.session) return res.status(200).json(ok('Account created. Check your email to confirm it, then log in.'));
         const p = data.user ? await getProfile(s, data.user.id) : null;
-        return res.status(200).json(ok('Account created. You can now log in.', { user: p && publicUser(p), access_token: data.session?.access_token }));
+        return res.status(200).json(ok('Account created. You can now log in.', { user: p && publicUser(p), access_token: data.session?.access_token, refresh_token: data.session?.refresh_token }));
       }
       if (action === 'login') {
         const { data, error } = await ac.auth.signInWithPassword({ email: clean(body.email).toLowerCase(), password: String(body.password || '') });
         if (error || !data.session) throw fail('The email or password is incorrect.', 401);
         profile = await getProfile(s, data.user.id);
-        return res.status(200).json(ok(`Welcome back, ${profile.first_name}!`, { user: publicUser(profile), access_token: data.session.access_token }));
+        return res.status(200).json(ok(`Welcome back, ${profile.first_name}!`, { user: publicUser(profile), access_token: data.session.access_token, refresh_token: data.session.refresh_token }));
+      }
+      if (action === 'refresh') {
+        const refreshToken = String(body.refresh_token || '');
+        if (!refreshToken) throw fail('Your session has ended. Please log in again.', 401);
+        const { data, error } = await ac.auth.refreshSession({ refresh_token: refreshToken });
+        if (error || !data.session) throw fail('Your session has ended. Please log in again.', 401);
+        return res.status(200).json(ok('', { access_token: data.session.access_token, refresh_token: data.session.refresh_token }));
       }
       if (action === 'session') {
         try { ({ profile } = await userFor(req, s)); return res.status(200).json(ok('', { user: publicUser(profile) })); }
