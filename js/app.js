@@ -1,4 +1,4 @@
-const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], pendingMessages: [], sendingMessage: false, notificationTimer: null, taskRefreshTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
+const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], conversationLastFullSync: 0, conversationFetchInFlight: false, pendingMessages: [], sendingMessage: false, notificationTimer: null, taskRefreshTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
 let taskFetchSequence = 0;
 let taskFetchInFlight = false;
 let taskListLoaded = false;
@@ -912,11 +912,18 @@ async function openTask(task) {
   $('#bids-section').classList.toggle('hidden', !isOwner && !['admin', 'superadmin'].includes(state.user?.role));
   if (!state.user) { $('#bids-section').classList.add('hidden'); $('#bids-list').replaceChildren(); }
   showPage('task-detail-modal');
-  if (isOwner) {
-    try { const messageCount = await api(`api/notifications.php?action=task_messages&task_id=${task.id}`); updateTaskMessageCount(messageCount.unread_count); } catch (error) { notify(error.message, 'error'); }
-  }
+  const backgroundLoads = [];
+  if (isOwner) backgroundLoads.push(api(`api/notifications.php?action=task_messages&task_id=${task.id}`).then((payload) => updateTaskMessageCount(payload.unread_count)).catch(() => {}));
   if (!state.user) return;
-  try { const payload = await api(`api/bid_actions.php?action=list&task_id=${task.id}`); const myBid = payload.bids.find((bid) => Number(bid.bidder_id) === Number(state.user?.id)); $('#bid-section').classList.toggle('hidden', Boolean(myBid) || isOwner || task.status !== 'Open'); $('#bid-submitted-state').classList.toggle('hidden', !myBid); renderBids(payload.bids, task); await updateNotificationCounts(); } catch (error) { notify(error.message, 'error'); }
+  try {
+    const bidRequest = api(`api/bid_actions.php?action=list&task_id=${task.id}`);
+    const [payload] = await Promise.all([bidRequest, ...backgroundLoads]);
+    const myBid = payload.bids.find((bid) => Number(bid.bidder_id) === Number(state.user?.id));
+    $('#bid-section').classList.toggle('hidden', Boolean(myBid) || isOwner || task.status !== 'Open');
+    $('#bid-submitted-state').classList.toggle('hidden', !myBid);
+    renderBids(payload.bids, task);
+    void updateNotificationCounts();
+  } catch (error) { notify(error.message, 'error'); }
 }
 function returnFromTaskDetails() {
   const previous = state.taskDetailReturn || { pageId: 'marketplace-page', scrollY: 0 };
@@ -935,25 +942,39 @@ function formatMessageTime(value) { const date = new Date(String(value).replace(
 async function refreshConversation() {
   const taskId = Number($('#conversation-task-id')?.value);
   const otherUserId = Number($('#conversation-user-id')?.value);
-  if (!taskId || !otherUserId || document.hidden || $('#conversation-modal')?.classList.contains('hidden')) return;
+  if (!taskId || !otherUserId || state.conversationFetchInFlight || document.hidden || $('#conversation-modal')?.classList.contains('hidden')) return;
+  state.conversationFetchInFlight = true;
   try {
-    const payload = await api(`api/messages.php?action=list&task_id=${taskId}&other_user_id=${otherUserId}`);
+    const params = new URLSearchParams({ action: 'list', task_id: String(taskId), other_user_id: String(otherUserId) });
+    const previous = state.conversationMessages.filter((message) => Number.isFinite(Number(message.id)));
+    const latest = previous.at(-1);
+    const fullSync = !latest || Date.now() - state.conversationLastFullSync >= 30_000;
+    if (!fullSync && latest?.created_at) params.set('after', latest.created_at);
+    const payload = await api(`api/messages.php?${params}`);
     // Discard a response if the user switched conversations while it was loading.
     if (taskId !== Number($('#conversation-task-id')?.value) || otherUserId !== Number($('#conversation-user-id')?.value) || document.hidden || $('#conversation-modal')?.classList.contains('hidden')) return;
-    state.conversationMessages = payload.messages;
+    if (fullSync) {
+      state.conversationMessages = payload.messages;
+      state.conversationLastFullSync = Date.now();
+    } else if (payload.messages.length) {
+      const merged = new Map(state.conversationMessages.map((message) => [String(message.id), message]));
+      payload.messages.forEach((message) => merged.set(String(message.id), message));
+      state.conversationMessages = [...merged.values()].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    }
     renderConversation(state.conversationMessages, false);
     if (state.activeTask) { state.activeTask.unread_message_count = 0; updateTaskMessageCount(0); }
     const badgeSelector = state.conversationReturnPage === 'my-bids-page'
       ? `[data-bid-message-count="${taskId}"]`
       : `[data-bid-message-count="${taskId}-${otherUserId}"]`;
     document.querySelectorAll(badgeSelector).forEach((element) => element.remove());
-    await updateNotificationCounts();
   } catch (error) { notify(error.message, 'error'); }
+  finally { state.conversationFetchInFlight = false; }
 }
 async function openConversation(taskId, otherUserId) {
   if (state.conversationTimer) clearInterval(state.conversationTimer);
   state.conversationReturnPage = document.querySelector('.app-page:not(.hidden)')?.id || 'marketplace-page';
   state.conversationMessages = [];
+  state.conversationLastFullSync = 0;
   $('#conversation-task-id').value = taskId;
   $('#conversation-user-id').value = otherUserId;
   $('#conversation-list').innerHTML = '<p class="text-sm text-[#68727c]">Loading conversation...</p>';

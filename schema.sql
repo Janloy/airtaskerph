@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS bids (
     CONSTRAINT fk_bids_bidder FOREIGN KEY (bidder_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY uq_bid_task_user (task_id, bidder_id),
     INDEX idx_bids_status (status),
-    INDEX idx_bids_status_task (status, task_id)
+    INDEX idx_bids_status_task (status, task_id),
+    INDEX idx_bids_task_created (task_id, created_at),
+    INDEX idx_bids_bidder_created (bidder_id, created_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS messages (

@@ -4,8 +4,10 @@ import { randomUUID } from 'node:crypto';
 const url = process.env.SUPABASE_URL;
 const anon = process.env.SUPABASE_ANON_KEY;
 const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const db = () => createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
-const authClient = () => createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
+let serviceClient;
+let publicAuthClient;
+const db = () => serviceClient || (serviceClient = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } }));
+const authClient = () => publicAuthClient || (publicAuthClient = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } }));
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const ok = (message = '', data = {}) => ({ success: true, message, ...data });
 const clean = (v, n = 255) => String(v ?? '').trim().slice(0, n);
@@ -30,6 +32,60 @@ const userFor = async (req, s, trackActivity = true) => {
   return { auth: data.user, profile, token };
 };
 const isMod = (u) => ['admin', 'superadmin'].includes(u.role);
+const loadMyBids = async (s, profile) => {
+  const bids = await rows(s.from('bids').select('*').eq('bidder_id', profile.id).order('created_at', { ascending: false }));
+  if (!bids.length) return [];
+  const taskIds = [...new Set(bids.map((bid) => bid.task_id))];
+  const [tasks, unreadMessages] = await Promise.all([
+    rows(s.from('tasks').select('id,user_id,title,category,location,status,owner:user_profiles!tasks_user_id_fkey(first_name,last_name)').in('id', taskIds)),
+    rows(s.from('messages').select('task_id,sender_id').in('task_id', taskIds).eq('recipient_id', profile.id).is('read_at', null))
+  ]);
+  const taskById = new Map(tasks.map((task) => [Number(task.id), task]));
+  const unreadByTask = new Map();
+  for (const message of unreadMessages) {
+    const key = `${Number(message.task_id)}:${Number(message.sender_id)}`;
+    unreadByTask.set(key, (unreadByTask.get(key) || 0) + 1);
+  }
+  return bids.map((bid) => {
+    const task = taskById.get(Number(bid.task_id));
+    const owner = task?.owner;
+    return {
+      ...bid,
+      id: Number(bid.id), task_id: Number(bid.task_id), bidder_id: Number(bid.bidder_id),
+      amount: Number(bid.amount), owner_id: Number(task?.user_id),
+      owner_name: owner ? `${owner.first_name} ${owner.last_name}`.trim() : '',
+      title: task?.title, category: task?.category, location: task?.location,
+      task_status: task?.status,
+      unread_message_count: unreadByTask.get(`${Number(bid.task_id)}:${Number(task?.user_id)}`) || 0
+    };
+  });
+};
+const loadTaskBids = async (s, task, profile) => {
+  const all = await rows(s.from('bids').select('*').eq('task_id', task.id).order('created_at', { ascending: false }));
+  const allowed = Number(task.user_id) === Number(profile.id) || isMod(profile);
+  const visible = all.filter((bid) => allowed || bid.status !== 'Pending' || Number(bid.bidder_id) === Number(profile.id));
+  if (!visible.length) return [];
+  const bidderIds = [...new Set(visible.map((bid) => bid.bidder_id))];
+  const reads = Number(task.user_id) === Number(profile.id)
+    ? all.filter((bid) => bid.status === 'Pending').map((bid) => ({ user_id: profile.id, notification_type: 'bid', reference_id: bid.id }))
+    : [];
+  const [people, unreadMessages] = await Promise.all([
+    rows(s.from('user_profiles').select('id,first_name,last_name').in('id', bidderIds)),
+    rows(s.from('messages').select('sender_id').eq('task_id', task.id).eq('recipient_id', profile.id).in('sender_id', bidderIds).is('read_at', null)),
+    reads.length ? rows(s.from('notification_reads').upsert(reads, { onConflict: 'user_id,notification_type,reference_id', ignoreDuplicates: true })) : Promise.resolve([])
+  ]);
+  const personById = new Map(people.map((person) => [Number(person.id), person]));
+  const unreadByBidder = new Map();
+  for (const message of unreadMessages) unreadByBidder.set(Number(message.sender_id), (unreadByBidder.get(Number(message.sender_id)) || 0) + 1);
+  return visible.map((bid) => {
+    const person = personById.get(Number(bid.bidder_id));
+    return {
+      ...bid, id: Number(bid.id), task_id: Number(bid.task_id), bidder_id: Number(bid.bidder_id),
+      amount: Number(bid.amount), unread_message_count: unreadByBidder.get(Number(bid.bidder_id)) || 0,
+      bidder_name: person ? `${person.first_name} ${person.last_name}`.trim() : 'TaskerPH member'
+    };
+  });
+};
 const shapeTasks = async (s, tasks, viewer) => {
   if (!tasks.length) return [];
   const taskIds = tasks.map((t) => t.id);
@@ -257,10 +313,10 @@ export default async function handler(req, res) {
       }
     }
     if (route === 'bid_actions') {
-      ({ profile } = await userFor(req,s));
-      if(action==='my_bids') { const bs=await rows(s.from('bids').select('*').eq('bidder_id',profile.id).order('created_at',{ascending:false})); const bids=await Promise.all(bs.map(async b=>{const t=await rows(s.from('tasks').select('*').eq('id',b.task_id).maybeSingle());const owner=t?await rows(s.from('user_profiles').select('first_name,last_name').eq('id',t.user_id).single()):{};const {count}=await s.from('messages').select('id',{count:'exact',head:true}).eq('task_id',b.task_id).eq('sender_id',t?.user_id).eq('recipient_id',profile.id).is('read_at',null);return {...b,id:Number(b.id),task_id:Number(b.task_id),bidder_id:Number(b.bidder_id),amount:Number(b.amount),owner_id:Number(t?.user_id),owner_name:owner?`${owner.first_name} ${owner.last_name}`:'',title:t?.title,category:t?.category,location:t?.location,task_status:t?.status,unread_message_count:count||0};}));return res.status(200).json(ok('',{bids})); }
+      ({ profile } = await userFor(req,s, action !== 'my_bids' && action !== 'list'));
+      if(action==='my_bids') { const bids=await loadMyBids(s,profile); return res.status(200).json(ok('',{bids})); }
       const taskId=Number(body.task_id||query.get('task_id')); const task=await rows(s.from('tasks').select('*').eq('id',taskId).maybeSingle()); if(!task) throw fail('Task not found.',404);
-      if(action==='list') { const all=await rows(s.from('bids').select('*').eq('task_id',taskId).order('created_at',{ascending:false})); const allowed=Number(task.user_id)===Number(profile.id)||isMod(profile); if(Number(task.user_id)===Number(profile.id)){const pending=all.filter(b=>b.status==='Pending');if(pending.length)await rows(s.from('notification_reads').upsert(pending.map(b=>({user_id:profile.id,notification_type:'bid',reference_id:b.id})),{onConflict:'user_id,notification_type,reference_id',ignoreDuplicates:true}));} const visible=all.filter(b=>allowed||b.status!=='Pending'||Number(b.bidder_id)===Number(profile.id)); const bids=await Promise.all(visible.map(async b=>{const p=await rows(s.from('user_profiles').select('first_name,last_name').eq('id',b.bidder_id).single());const {count}=await s.from('messages').select('id',{count:'exact',head:true}).eq('task_id',taskId).eq('recipient_id',profile.id).eq('sender_id',b.bidder_id).is('read_at',null);return {...b,id:Number(b.id),task_id:Number(b.task_id),bidder_id:Number(b.bidder_id),amount:Number(b.amount),unread_message_count:count||0,bidder_name:`${p.first_name} ${p.last_name}`};}));return res.status(200).json(ok('',{bids})); }
+      if(action==='list') { const bids=await loadTaskBids(s,task,profile); return res.status(200).json(ok('',{bids})); }
       if(action==='place') { if(Number(task.user_id)===Number(profile.id)) throw fail('You cannot bid on your own task.',403); if(task.status!=='Open') throw fail('This task is no longer accepting bids.',409); const accepted=await rows(s.from('bids').select('id').eq('bidder_id',profile.id).eq('status','Accepted').maybeSingle()); if(accepted) throw fail('You already have an accepted bid. Complete that task before bidding on another task.',409); const amount=Number(body.amount),message=clean(body.message,1000);if(!Number.isFinite(amount)||amount<0||!message)throw fail('Enter a valid offer and message.',422); await rows(s.from('bids').upsert({task_id:taskId,bidder_id:profile.id,amount,message,status:'Pending'},{onConflict:'task_id,bidder_id'}));  return res.status(200).json(ok('Your bid has been submitted.')); }
       const bidId=Number(body.bid_id);
       if(action==='update') {const amount=Number(body.amount),message=clean(body.message,1000);if(!Number.isFinite(amount)||amount<0||!message||task.status!=='Open')throw fail('Enter a valid offer and message.',422);const updated=await rows(s.from('bids').update({amount,message}).eq('id',bidId).eq('task_id',taskId).eq('bidder_id',profile.id).eq('status','Pending').select('id'));if(!updated.length)throw fail('Only your pending bid on an open task can be edited.',403);return res.status(200).json(ok('Your bid was updated.')); }
@@ -270,11 +326,25 @@ export default async function handler(req, res) {
     }
     if (route === 'messages') {
       ({ profile } = await userFor(req,s, action !== 'list')); const taskId=Number(body.task_id||query.get('task_id')), other=Number(body.other_user_id||query.get('other_user_id'));
-      const t=await rows(s.from('tasks').select('user_id').eq('id',taskId).maybeSingle());
-      const [myBid,otherBid]=await Promise.all([rows(s.from('bids').select('id').eq('task_id',taskId).eq('bidder_id',profile.id).maybeSingle()),rows(s.from('bids').select('id').eq('task_id',taskId).eq('bidder_id',other).maybeSingle())]);
-      const permitted=t && ((Number(t.user_id)===Number(profile.id)&&Boolean(otherBid)) || (Number(t.user_id)===other&&Boolean(myBid)) || isMod(profile));
+      const t=await rows(s.from('tasks').select('user_id,bids(bidder_id)').eq('id',taskId).maybeSingle());
+      const linkedBidders = new Set((t?.bids || []).map((bid) => Number(bid.bidder_id)));
+      const myBid = linkedBidders.has(Number(profile.id));
+      const otherBid = linkedBidders.has(other);
+      const permitted=t && ((Number(t.user_id)===Number(profile.id)&&otherBid) || (Number(t.user_id)===other&&myBid) || isMod(profile));
       if(!permitted) throw fail('You can only message users connected to this task.',403);
-      if(action==='list') { const ms=await rows(s.from('messages').select('*').eq('task_id',taskId).or(`and(sender_id.eq.${profile.id},recipient_id.eq.${other}),and(sender_id.eq.${other},recipient_id.eq.${profile.id})`).order('created_at')); await rows(s.from('messages').update({read_at:new Date().toISOString()}).eq('task_id',taskId).eq('sender_id',other).eq('recipient_id',profile.id).is('read_at',null));const messages=await Promise.all(ms.map(async m=>{const p=await rows(s.from('user_profiles').select('first_name,last_name').eq('id',m.sender_id).single());return {...m,sender_name:`${p.first_name} ${p.last_name}`};}));return res.status(200).json(ok('',{messages})); }
+      if(action==='list') {
+        const after = clean(query.get('after') || '', 50);
+        const hasCursor = Boolean(after) && Number.isFinite(Date.parse(after));
+        let messageQuery = s.from('messages').select('id,sender_id,recipient_id,body,read_at,created_at,sender:user_profiles!messages_sender_id_fkey(first_name,last_name)').eq('task_id',taskId).or(`and(sender_id.eq.${profile.id},recipient_id.eq.${other}),and(sender_id.eq.${other},recipient_id.eq.${profile.id})`).order('created_at');
+        let readQuery = s.from('messages').update({read_at:new Date().toISOString()}).eq('task_id',taskId).eq('sender_id',other).eq('recipient_id',profile.id).is('read_at',null);
+        if (hasCursor) { messageQuery = messageQuery.gt('created_at', after); readQuery = readQuery.gt('created_at', after); }
+        const [ms] = await Promise.all([
+          rows(messageQuery),
+          rows(readQuery)
+        ]);
+        const messages=ms.map((m)=>({...m,sender_name:m.sender?`${m.sender.first_name} ${m.sender.last_name}`.trim():'TaskerPH member'}));
+        return res.status(200).json(ok('',{messages}));
+      }
       if(action==='send') {const text=clean(body.body,2000);if(!text)throw fail('Message cannot be empty.',422);const [message]=await rows(s.from('messages').insert({task_id:taskId,sender_id:profile.id,recipient_id:other,body:text}).select('*'));return res.status(200).json(ok('Message sent.',{message}));}
     }
     if (route === 'notifications') {

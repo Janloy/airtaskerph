@@ -10,5 +10,9 @@ SET @ddl = IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_sc
 PREPARE taskerph_stmt FROM @ddl; EXECUTE taskerph_stmt; DEALLOCATE PREPARE taskerph_stmt;
 SET @ddl = IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'bids' AND index_name = 'idx_bids_status_task') = 0, 'ALTER TABLE bids ADD INDEX idx_bids_status_task (status, task_id)', 'SELECT 1');
 PREPARE taskerph_stmt FROM @ddl; EXECUTE taskerph_stmt; DEALLOCATE PREPARE taskerph_stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'bids' AND index_name = 'idx_bids_task_created') = 0, 'ALTER TABLE bids ADD INDEX idx_bids_task_created (task_id, created_at)', 'SELECT 1');
+PREPARE taskerph_stmt FROM @ddl; EXECUTE taskerph_stmt; DEALLOCATE PREPARE taskerph_stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'bids' AND index_name = 'idx_bids_bidder_created') = 0, 'ALTER TABLE bids ADD INDEX idx_bids_bidder_created (bidder_id, created_at)', 'SELECT 1');
+PREPARE taskerph_stmt FROM @ddl; EXECUTE taskerph_stmt; DEALLOCATE PREPARE taskerph_stmt;
 SET @ddl = IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'messages' AND index_name = 'idx_messages_task_recipient_read') = 0, 'ALTER TABLE messages ADD INDEX idx_messages_task_recipient_read (task_id, recipient_id, read_at)', 'SELECT 1');
 PREPARE taskerph_stmt FROM @ddl; EXECUTE taskerph_stmt; DEALLOCATE PREPARE taskerph_stmt;
