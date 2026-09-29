@@ -94,6 +94,30 @@ function dismissToast(element) {
   element.classList.add('app-toast-leaving');
   element.addEventListener('animationend', () => element.remove(), { once: true });
 }
+const activeActionProgress = new Map();
+function renderActionProgress() {
+  let indicator = $('#action-progress-indicator');
+  if (!activeActionProgress.size) {
+    indicator?.remove();
+    return;
+  }
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'action-progress-indicator';
+    indicator.className = 'action-progress-indicator';
+    indicator.setAttribute('role', 'status');
+    indicator.setAttribute('aria-live', 'polite');
+    indicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span></span>';
+    document.body.appendChild(indicator);
+  }
+  indicator.querySelector('span').textContent = [...activeActionProgress.values()].at(-1);
+  requestAnimationFrame(() => indicator.classList.add('is-visible'));
+}
+function setActionProgress(key, label, busy) {
+  if (busy) activeActionProgress.set(key, label);
+  else activeActionProgress.delete(key);
+  renderActionProgress();
+}
 function setNotificationCount(selector, count) {
   const element = $(selector);
   if (!element) return;
@@ -211,6 +235,7 @@ function setButtonBusy(button, busy, label = 'Saving…') {
   if (busy) {
     if (button.dataset.busy === 'true') return;
     button.dataset.busy = 'true';
+    setActionProgress(button, label, true);
     button.dataset.busyHtml = button.innerHTML;
     button.dataset.busyDisabled = String(button.disabled);
     button.disabled = true;
@@ -225,6 +250,7 @@ function setButtonBusy(button, busy, label = 'Saving…') {
   delete button.dataset.busy;
   delete button.dataset.busyHtml;
   delete button.dataset.busyDisabled;
+  setActionProgress(button, '', false);
 }
 function setBusy(form, busy, label = 'Saving…') {
   const button = form.querySelector('button[type="submit"], button:not([type])');
@@ -883,7 +909,7 @@ $('#profile-confirm-form').addEventListener('submit', async (event) => {
 });
 $('#change-email-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating email…'); try { const payload = await api('api/profile_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update_email', ...Object.fromEntries(new FormData(event.target)) }) }); state.user = payload.user; event.target.elements.current_password.value = ''; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#change-password-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating password…'); try { const payload = await api('api/profile_actions.php', { method: 'POST', body: JSON.stringify({ action: 'change_password', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#profile-picture-input').addEventListener('change', async (event) => { const input = event.target, file = input.files?.[0]; if (!file) return; const edit = input.closest('.profile-avatar-wrap')?.querySelector('.profile-avatar-edit'); const original = edit?.innerHTML; input.disabled = true; input.closest('.profile-avatar-wrap')?.setAttribute('aria-busy', 'true'); if (edit) edit.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">Uploading photo…</span>'; try { const avatar_data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const payload = await api('api/profile_actions.php?action=upload_avatar', { method: 'POST', body: JSON.stringify({ avatar_data }) }); state.user = payload.user; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { input.value = ''; input.disabled = false; input.closest('.profile-avatar-wrap')?.removeAttribute('aria-busy'); if (edit) edit.innerHTML = original; } });
+$('#profile-picture-input').addEventListener('change', async (event) => { const input = event.target, file = input.files?.[0]; if (!file) return; const edit = input.closest('.profile-avatar-wrap')?.querySelector('.profile-avatar-edit'); const original = edit?.innerHTML; setActionProgress(input, 'Uploading profile photo…', true); input.disabled = true; input.closest('.profile-avatar-wrap')?.setAttribute('aria-busy', 'true'); if (edit) edit.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">Uploading photo…</span>'; try { const avatar_data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const payload = await api('api/profile_actions.php?action=upload_avatar', { method: 'POST', body: JSON.stringify({ avatar_data }) }); state.user = payload.user; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setActionProgress(input, '', false); input.value = ''; input.disabled = false; input.closest('.profile-avatar-wrap')?.removeAttribute('aria-busy'); if (edit) edit.innerHTML = original; } });
 $('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task…'); try { const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(new FormData(event.target)) }) }); const taskId = Number(new FormData(event.target).get('task_id')); closeModal('edit-modal'); setBusy(event.target, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#bid-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!state.user) { requestBidAuthGate(Number($('#task-detail-id').value), event.submitter || event.target.querySelector('[type="submit"]')); return; } setBusy(event.target, true); try { const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'place', task_id: $('#task-detail-id').value, ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#task-detail-id').value)) || state.activeTask; if (task) openTask(task); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
