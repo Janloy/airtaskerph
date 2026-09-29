@@ -41,6 +41,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .modal-backdrop { background: rgba(15,23,42,.56); }
 .modal-backdrop.modal-active { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1rem; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); animation: backdrop-in .24s ease-out both; }
 #install-guide-modal.modal-active { z-index: 110 !important; }
+.account-activity-role { display: inline-flex; align-items: center; border-radius: 999px; padding: .2rem .55rem; color: #065f46; background: #d1fae5; font-size: .68rem; font-weight: 800; text-transform: uppercase; }
+.account-activity-list { max-height: 62vh; overflow-y: auto; padding-right: .15rem; }
+body.dark-mode .account-activity-role { color: #d1fae5; background: #065f46; }
 .modal-panel { width: min(100%, 64rem); max-height: 90vh; margin: auto; overflow-y: auto; border: 1px solid rgba(255,255,255,.72); box-shadow: 0 28px 80px rgba(15,23,42,.24); animation: modal-in .34s cubic-bezier(.2,.8,.2,1) both; }
 .modal-panel form > label, .modal-panel form > div, .modal-panel form > button { animation: form-item-in .35s ease-out both; }
 .modal-panel form > :nth-child(2) { animation-delay: 45ms; }
