@@ -503,6 +503,7 @@ function showPage(pageId) {
   closeDesktopProfileMenu();
   document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach((modal) => closeModal(`#${modal.id}`));
   resetScrollPosition();
+  if (pageId === 'marketplace-page' && state.taskRefreshTimer) refreshMarketplaceTasks();
 }
 
 function renderAuth() {
@@ -738,8 +739,9 @@ async function fetchTaskList({ silent = false } = {}) {
   const requestId = ++taskFetchSequence;
   taskFetchInFlight = true;
   const params = new URLSearchParams(Object.entries(state.filters).filter(([, value]) => value));
+  params.set('_ts', String(Date.now()));
   try {
-    const payload = await api(`api/get_tasks.php?${params}`);
+    const payload = await api(`api/get_tasks.php?${params}`, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' } });
     if (requestId !== taskFetchSequence) return;
     const changed = !taskListLoaded || JSON.stringify(payload.tasks) !== JSON.stringify(state.tasks);
     state.tasks = payload.tasks;
@@ -1082,6 +1084,7 @@ document.addEventListener('click', (event) => {
   if (!event.target.closest('.desktop-profile-root')) closeDesktopProfileMenu();
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshMarketplaceTasks(); });
+window.addEventListener('focus', refreshMarketplaceTasks);
 $('#confirm-logout').addEventListener('click', async (event) => {
   const button = event.currentTarget;
   button.disabled = true;
