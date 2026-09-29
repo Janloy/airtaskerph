@@ -12,6 +12,8 @@ The Vercel Function is pinned to Seoul (`icn1`) in `vercel.json`, matching the S
 4. Grant your account the initial superadmin role in the Supabase SQL editor: `update public.user_profiles set role = 'superadmin' where email = 'bahenajohnlouie3@gmail.com';` Then sign out and back in.
 5. For local development, copy `.env.example` to `.env.local`, fill in the same three keys, and run `npm install` followed by `npm run dev`.
 
+The optional on-site promotion/payment, completion-review, and marketplace-report features from migration `202609300003_marketplace_safety_and_revenue.sql` are currently retired. If migration 003 has already been run, apply `supabase/migrations/202609300004_remove_marketplace_safety_and_revenue.sql` once in the Supabase SQL Editor. It drops only the tables and views introduced for those features, including any rows in them; it leaves accounts, tasks, bids, messages, and saved tasks intact. Remove `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, or `APP_BASE_URL` from Vercel if you previously added them, and delete the webhook endpoint from PayMongo if you created one. Do not run migration 003 again unless you decide to restore those features.
+
 Do not put the service-role key in browser code. The deployed app uses the static HTML interface, Node serverless API, and Supabase; the PHP and MySQL implementation has been removed.
 
 Task posts can include up to three JPG, PNG, or WEBP images. The browser resizes them to JPEG before upload; the API accepts up to 450 KB per compressed image and stores them in the public `task-photos` Supabase Storage bucket. Public task images are viewable by anyone who can view the task. Task owners can open photos in a full-screen viewer and remove or replace individual photos while editing a task.
