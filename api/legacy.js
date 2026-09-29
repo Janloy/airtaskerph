@@ -106,7 +106,29 @@ export default async function handler(req, res) {
       ({ profile } = await userFor(req, s));
       const item = { user_id: profile.id, title: clean(body.title,180), category: clean(body.category,80), budget: Number(body.budget), location: clean(body.location,160), description: clean(body.description,2000) };
       if (!item.title || !item.category || !item.location || !item.description || !Number.isFinite(item.budget) || item.budget < 0) throw fail('Complete every field with valid values.',422);
-      const [created] = await rows(s.from('tasks').insert(item).select('id')); return res.status(200).json(ok('Task posted successfully.', { task_id: Number(created.id) }));
+      const photos = Array.isArray(body.photos) ? body.photos : [];
+      if (photos.length > 3) throw fail('You can upload up to 3 task photos.',422);
+      if (photos.some((photo) => typeof photo !== 'string' || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo))) throw fail('Task photos must be valid JPG images.',422);
+      const [created] = await rows(s.from('tasks').insert(item).select('id'));
+      const uploadedPaths = [];
+      try {
+        const imageUrls = [];
+        for (const photo of photos) {
+          const bytes = Buffer.from(photo.slice(photo.indexOf(',') + 1), 'base64');
+          if (!bytes.length || bytes.length > 450 * 1024) throw fail('Each task photo must be smaller than 450 KB after compression.',422);
+          const path = `${profile.id}/${created.id}/${randomUUID()}.jpg`;
+          const { error } = await s.storage.from('task-photos').upload(path, bytes, { contentType: 'image/jpeg', upsert: false });
+          if (error) throw fail('Could not upload a task photo. Confirm the task-photos bucket migration is applied.',500);
+          uploadedPaths.push(path);
+          imageUrls.push(s.storage.from('task-photos').getPublicUrl(path).data.publicUrl);
+        }
+        if (imageUrls.length) await rows(s.from('tasks').update({ image_urls: imageUrls }).eq('id', created.id));
+        return res.status(200).json(ok('Task posted successfully.', { task_id: Number(created.id) }));
+      } catch (error) {
+        if (uploadedPaths.length) await s.storage.from('task-photos').remove(uploadedPaths).catch(() => {});
+        await s.from('tasks').delete().eq('id', created.id);
+        throw error;
+      }
     }
     if (route === 'saved_tasks') {
       ({ profile } = await userFor(req, s));

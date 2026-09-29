@@ -4,10 +4,12 @@ The existing UI and CSS are retained. `index.html` is the static Vercel entry po
 
 ## Setup
 
-1. Create a Supabase project and run `supabase/migrations/202609290001_initial_schema.sql` in its SQL editor.
+1. Create a Supabase project and run `supabase/migrations/202609290001_initial_schema.sql` in its SQL editor. For task photos, also run `supabase/migrations/202609290002_task_photos.sql` after the initial migration; it adds the photo URL column and public photo bucket.
 2. Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` in Vercel project environment variables. Keep the service role key server-side only.
 3. Deploy the repository to Vercel and sign up through the site. Confirm the account email if Supabase email confirmation is enabled.
 4. Grant your account the initial superadmin role in the Supabase SQL editor: `update public.user_profiles set role = 'superadmin' where email = 'bahenajohnlouie3@gmail.com';` Then sign out and back in.
 5. For local development, copy `.env.example` to `.env.local`, fill in the same three keys, and run `npm install` followed by `npm run dev`.
 
 Existing MySQL accounts and task data are not automatically copied. Export/import them separately if you need to preserve existing records. Do not put the service-role key in browser code.
+
+Task posts can include up to three JPG, PNG, or WEBP images. The browser resizes them to JPEG before upload; the API accepts up to 450 KB per compressed image and stores them in the public `task-photos` Supabase Storage bucket. Public task images are viewable by anyone who can view the task.

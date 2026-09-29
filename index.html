@@ -19,7 +19,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { theme: { extend: { colors: { ink: '#0f172a', teal: '#059669', coral: '#f59e0b', sage: '#d1fae5', cream: '#f1f5f9', emerald: { 50: '#ecfdf5', 100: '#d1fae5', 600: '#059669', 700: '#047857', 800: '#065f46' }, slate: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 500: '#64748b', 600: '#475569', 800: '#1e293b', 900: '#0f172a' } } } } };</script>
   <script>try { if (window.matchMedia('(max-width: 1023px)').matches) { if (sessionStorage.getItem('taskerph-mobile-splash-seen')) document.documentElement.classList.add('mobile-splash-seen'); else sessionStorage.setItem('taskerph-mobile-splash-seen', '1'); } } catch (error) { /* Keep the splash usable when browser storage is unavailable. */ }</script>
-  <link rel="stylesheet" href="css/style.css?v=1"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css?v=2"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 </head>
 <body>
 <div class="mobile-splash" role="status" aria-label="Loading Tasker PH"><div class="mobile-splash-content"><div class="mobile-splash-mark"><i class="fa-solid fa-handshake" aria-hidden="true"></i></div><p class="mobile-splash-brand">Tasker<span> PH</span></p><p class="mobile-splash-tagline">Local help, made simple.</p><span class="mobile-splash-loader" aria-hidden="true"></span><p id="mobile-splash-status" class="mobile-splash-status" aria-live="polite" aria-atomic="true"></p></div></div>
@@ -122,6 +122,6 @@
 </select>
 </label><label class="block text-sm font-bold">Budget<input name="budget" id="edit-budget" type="number" min="0" step=".01" required class="form-control mt-2"></label></div><label class="block text-sm font-bold">Location<input name="location" id="edit-location" required class="form-control mt-2"></label><label class="block text-sm font-bold">Status<select name="status" id="edit-status" class="form-control mt-2"><option>Open</option><option>In Progress</option><option>Completed</option></select></label><label class="block text-sm font-bold">Description<textarea name="description" id="edit-description" rows="4" required class="form-control mt-2"></textarea></label><button class="touch-target w-full rounded-lg bg-[#006f70] font-bold text-white">Save changes</button></form></div></div>
 <div id="support-modal" class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center p-4"><div class="modal-panel w-full max-w-md rounded-xl bg-white p-6"><div class="mb-4 flex items-start justify-between"><div><p class="text-sm font-bold uppercase tracking-wider text-[#008f8c]">TaskerPH support</p><h2 class="mt-1 text-2xl font-bold">How can we help?</h2></div><button data-close="support-modal" class="touch-target px-2 text-xl" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></div><p class="text-sm leading-6 text-[#4c5962]">For help with your profile, a task, or a bid, contact the person who manages your TaskerPH system and include the email address on your account.</p><button data-close="support-modal" class="touch-target mt-5 w-full rounded-lg bg-[#006f70] font-bold text-white">Done</button></div></div>
-<script src="js/app.js?v=8"></script>
+<script src="js/app.js?v=9"></script>
 </body></html>
 

@@ -277,6 +277,95 @@ function setBusy(form, busy, label = 'Saving…') {
   form.toggleAttribute('aria-busy', busy);
   setButtonBusy(button, busy, label);
 }
+function initializeTaskPhotoInputs() {
+  ['task-form', 'create-task-form'].forEach((formId) => {
+    const form = $(`#${formId}`);
+    const description = form?.querySelector('textarea[name="description"]')?.closest('label');
+    if (!form || !description || form.querySelector('[data-task-photo-input]')) return;
+    const field = document.createElement('div');
+    field.className = 'task-photo-field';
+    field.innerHTML = `<span class="task-photo-label">Task photos <small>Optional · up to 3 images</small></span><label class="task-photo-picker"><i class="fa-regular fa-image" aria-hidden="true"></i><span>Choose photos</span><input data-task-photo-input type="file" accept="image/jpeg,image/png,image/webp" multiple><small>JPG, PNG, or WEBP</small></label><div class="task-photo-previews" aria-live="polite"></div>`;
+    description.insertAdjacentElement('afterend', field);
+    const input = field.querySelector('[data-task-photo-input]');
+    input.addEventListener('change', () => {
+      const files = [...input.files];
+      const preview = field.querySelector('.task-photo-previews');
+      preview.replaceChildren();
+      if (files.length > 3) { input.value = ''; notify('Choose no more than 3 photos.', 'error'); return; }
+      if (files.some((file) => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024)) {
+        input.value = '';
+        notify('Use JPG, PNG, or WEBP photos under 8 MB each.', 'error');
+        return;
+      }
+      files.forEach((file) => {
+        const tile = document.createElement('div');
+        tile.className = 'task-photo-preview';
+        const image = document.createElement('img');
+        image.src = URL.createObjectURL(file);
+        image.alt = file.name;
+        image.onload = () => URL.revokeObjectURL(image.src);
+        const caption = document.createElement('span');
+        caption.textContent = file.name;
+        tile.append(image, caption);
+        preview.appendChild(tile);
+      });
+    });
+  });
+}
+initializeTaskPhotoInputs();
+async function compressTaskPhoto(file) {
+  let source, sourceWidth, sourceHeight, releaseSource = () => {};
+  try {
+    source = await createImageBitmap(file);
+    sourceWidth = source.width;
+    sourceHeight = source.height;
+    releaseSource = () => source.close?.();
+  } catch {
+    const objectUrl = URL.createObjectURL(file);
+    source = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Could not read one of the selected photos.'));
+      image.src = objectUrl;
+    });
+    sourceWidth = source.naturalWidth;
+    sourceHeight = source.naturalHeight;
+    releaseSource = () => URL.revokeObjectURL(objectUrl);
+  }
+  const canvas = document.createElement('canvas');
+  let scale = Math.min(1, 1280 / Math.max(sourceWidth, sourceHeight));
+  let quality = 0.82;
+  let blob;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (blob && blob.size <= 450 * 1024) break;
+    if (quality > 0.52) quality -= 0.1;
+    else scale *= 0.78;
+  }
+  releaseSource();
+  if (!blob || blob.size > 450 * 1024) throw new Error('A photo could not be compressed. Try a smaller image.');
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read one of the selected photos.'));
+    reader.readAsDataURL(blob);
+  });
+}
+async function taskFormPayload(form) {
+  const payload = Object.fromEntries(new FormData(form));
+  delete payload.photos;
+  const files = [...(form.querySelector('[data-task-photo-input]')?.files || [])];
+  payload.photos = await Promise.all(files.map(compressTaskPhoto));
+  return payload;
+}
+function taskPhotoMarkup(task, compact = false) {
+  const photos = Array.isArray(task.image_urls) ? task.image_urls.slice(0, 3) : [];
+  if (!photos.length) return '';
+  return `<div class="task-photo-gallery${compact ? ' is-compact' : ''}" aria-label="Task photos">${photos.map((url) => `<img src="${escapeHtml(url)}" alt="Photo for ${escapeHtml(task.title)}" loading="lazy">`).join('')}</div>`;
+}
 function requestAuthGate(route, trigger = null) {
   if (state.user) return false;
   state.authReturnIntent = route;
@@ -492,7 +581,7 @@ function taskCardMarkup(task, index = 0) {
   const canManage = state.user && (state.user.role === 'admin' || state.user.role === 'superadmin' || (state.user.role === 'user' && Number(state.user.id) === Number(task.user_id)));
   const ownTask = state.user && Number(state.user.id) === Number(task.user_id);
   const saved = Boolean(state.user) && state.savedTaskIds.has(Number(task.id));
-  return `<article data-task="${task.id}" style="--card-delay: ${Math.min(index, 8) * 45}ms" class="task-card card flex cursor-pointer flex-col p-5"><div class="flex items-start justify-between gap-3"><div><span class="text-xs font-bold uppercase tracking-[.15em] text-[#008f8c]">${escapeHtml(task.category)}</span><h3 class="mt-2 text-lg font-bold leading-tight">${escapeHtml(task.title)}</h3></div><div class="flex shrink-0 items-center gap-2"><span class="badge ${task.status === 'Open' ? 'badge-open' : task.status === 'Completed' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(task.status)}</span><button type="button" data-save-task="${task.id}" class="task-save-button touch-target ${saved ? 'is-saved' : ''}" aria-label="${ownTask ? 'Your task' : saved ? 'Remove saved task' : 'Save task'}" aria-pressed="${saved}" ${ownTask ? 'disabled title="You cannot save your own task"' : ''}><i class="fa-${saved ? 'solid' : 'regular'} fa-bookmark" aria-hidden="true"></i><span class="sr-only">${ownTask ? 'Your task' : saved ? 'Remove saved task' : 'Save task'}</span></button></div></div><p class="mt-4 line-clamp-3 text-sm leading-6 text-[#68727c]">${escapeHtml(task.description)}</p><div class="mt-5 grid grid-cols-2 gap-3 border-y border-[#edf0f1] py-4 text-sm"><div><p class="text-xs text-[#68727c]">Budget</p><p class="mt-1 font-bold">${money(task.budget)}</p></div><div><p class="text-xs text-[#68727c]">Location</p><p class="mt-1 font-bold">${escapeHtml(task.location)}</p></div></div><div class="mt-4 flex items-center justify-between gap-3"><p class="text-xs text-[#68727c]">Posted by <strong class="text-[#17202a]">${escapeHtml(task.owner_name)}</strong></p>${canManage ? `<div class="flex"><button data-edit="${task.id}" class="touch-target rounded-lg px-2 text-sm font-bold text-[#006f70] hover:bg-[#e9f4f2]"><i class="fa-solid fa-pen-to-square"></i><span class="sr-only">Edit task</span></button><button data-delete="${task.id}" class="touch-target rounded-lg px-2 text-sm font-bold text-red-600 hover:bg-red-50"><i class="fa-solid fa-trash"></i><span class="sr-only">Delete task</span></button></div>` : '<span class="text-xs font-bold text-[#008f8c]">View task <i class="fa-solid fa-arrow-right ml-1"></i></span>'}</div></article>`;
+  return `<article data-task="${task.id}" style="--card-delay: ${Math.min(index, 8) * 45}ms" class="task-card card flex cursor-pointer flex-col p-5"><div class="flex items-start justify-between gap-3"><div><span class="text-xs font-bold uppercase tracking-[.15em] text-[#008f8c]">${escapeHtml(task.category)}</span><h3 class="mt-2 text-lg font-bold leading-tight">${escapeHtml(task.title)}</h3></div><div class="flex shrink-0 items-center gap-2"><span class="badge ${task.status === 'Open' ? 'badge-open' : task.status === 'Completed' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(task.status)}</span><button type="button" data-save-task="${task.id}" class="task-save-button touch-target ${saved ? 'is-saved' : ''}" aria-label="${ownTask ? 'Your task' : saved ? 'Remove saved task' : 'Save task'}" aria-pressed="${saved}" ${ownTask ? 'disabled title="You cannot save your own task"' : ''}><i class="fa-${saved ? 'solid' : 'regular'} fa-bookmark" aria-hidden="true"></i><span class="sr-only">${ownTask ? 'Your task' : saved ? 'Remove saved task' : 'Save task'}</span></button></div></div>${taskPhotoMarkup(task, true)}<p class="mt-4 line-clamp-3 text-sm leading-6 text-[#68727c]">${escapeHtml(task.description)}</p><div class="mt-5 grid grid-cols-2 gap-3 border-y border-[#edf0f1] py-4 text-sm"><div><p class="text-xs text-[#68727c]">Budget</p><p class="mt-1 font-bold">${money(task.budget)}</p></div><div><p class="text-xs text-[#68727c]">Location</p><p class="mt-1 font-bold">${escapeHtml(task.location)}</p></div></div><div class="mt-4 flex items-center justify-between gap-3"><p class="text-xs text-[#68727c]">Posted by <strong class="text-[#17202a]">${escapeHtml(task.owner_name)}</strong></p>${canManage ? `<div class="flex"><button data-edit="${task.id}" class="touch-target rounded-lg px-2 text-sm font-bold text-[#006f70] hover:bg-[#e9f4f2]"><i class="fa-solid fa-pen-to-square"></i><span class="sr-only">Edit task</span></button><button data-delete="${task.id}" class="touch-target rounded-lg px-2 text-sm font-bold text-red-600 hover:bg-red-50"><i class="fa-solid fa-trash"></i><span class="sr-only">Delete task</span></button></div>` : '<span class="text-xs font-bold text-[#008f8c]">View task <i class="fa-solid fa-arrow-right ml-1"></i></span>'}</div></article>`;
 }
 function renderSavedTasks() {
   const list = $('#saved-tasks-list');
@@ -572,7 +661,7 @@ async function openTask(task) {
   state.activeTask = task;
   const isOwner = state.user && Number(state.user.id) === Number(task.user_id);
   updateTaskMessageCount(isOwner ? task.unread_message_count : 0);
-  $('#task-detail-content').innerHTML = `<p class="text-sm font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h2 class="mt-1 text-2xl font-bold">${escapeHtml(task.title)}</h2><div class="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-[#f5f7f8] p-4 text-sm"><div><p class="text-xs text-[#68727c]">Budget</p><p class="mt-1 font-bold">${money(task.budget)}</p></div><div><p class="text-xs text-[#68727c]">Location</p><p class="mt-1 font-bold">${escapeHtml(task.location)}</p></div></div><p class="mt-5 whitespace-pre-wrap text-sm leading-6 text-[#4c5962]">${escapeHtml(task.description)}</p><p class="mt-4 text-xs text-[#68727c]">Posted by <strong class="text-[#17202a]">${escapeHtml(task.owner_name)}</strong></p>${!state.user && task.status === 'Open' ? `<div class="mt-5 flex flex-wrap gap-3"><button type="button" data-guest-bid="${Number(task.id)}" class="touch-target rounded-lg bg-[#006f70] px-5 font-bold text-white">Submit bid</button><button type="button" data-contact-tasker="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Contact Tasker</button></div>` : ''}`;
+  $('#task-detail-content').innerHTML = `<p class="text-sm font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h2 class="mt-1 text-2xl font-bold">${escapeHtml(task.title)}</h2>${taskPhotoMarkup(task)}<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-[#f5f7f8] p-4 text-sm"><div><p class="text-xs text-[#68727c]">Budget</p><p class="mt-1 font-bold">${money(task.budget)}</p></div><div><p class="text-xs text-[#68727c]">Location</p><p class="mt-1 font-bold">${escapeHtml(task.location)}</p></div></div><p class="mt-5 whitespace-pre-wrap text-sm leading-6 text-[#4c5962]">${escapeHtml(task.description)}</p><p class="mt-4 text-xs text-[#68727c]">Posted by <strong class="text-[#17202a]">${escapeHtml(task.owner_name)}</strong></p>${!state.user && task.status === 'Open' ? `<div class="mt-5 flex flex-wrap gap-3"><button type="button" data-guest-bid="${Number(task.id)}" class="touch-target rounded-lg bg-[#006f70] px-5 font-bold text-white">Submit bid</button><button type="button" data-contact-tasker="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Contact Tasker</button></div>` : ''}`;
   const canManage = state.user && (state.user.role === 'admin' || state.user.role === 'superadmin' || (state.user.role === 'user' && Number(state.user.id) === Number(task.user_id)));
   if (canManage) $('#task-detail-content').insertAdjacentHTML('beforeend', `<div class="mt-6 flex flex-wrap gap-3 border-t border-[#edf0f1] pt-5"><button data-edit="${task.id}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]"><i class="fa-solid fa-pen-to-square mr-2"></i>Edit task</button><button data-delete="${task.id}" class="touch-target rounded-lg border border-red-200 px-4 text-sm font-bold text-red-600"><i class="fa-solid fa-trash mr-2"></i>Delete task</button></div>`);
   $('#task-detail-id').value = task.id;
@@ -897,8 +986,8 @@ document.addEventListener('input', (event) => {
 });
 $('#status-filter').addEventListener('change', (event) => { state.filters.status = event.target.value; loadTasks(); });
 $('#category-filter').addEventListener('change', (event) => { state.filters.category = event.target.value; loadTasks(); });
-$('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); closeModal('task-modal'); setBusy(event.target, false); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#create-task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); setBusy(event.target, false); showPage('marketplace-page'); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); closeModal('task-modal'); setBusy(event.target, false); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#create-task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); setBusy(event.target, false); showPage('marketplace-page'); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth.php?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage('marketplace-page'); await loadTasks(); startNotificationPolling(); notify(payload.message); await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth.php?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-profile-form').addEventListener('submit', (event) => {
