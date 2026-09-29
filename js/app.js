@@ -570,7 +570,7 @@ function applyAppearance(dark) {
   document.body.classList.toggle('dark-mode', dark);
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f172a' : '#f8fafc');
-  document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.setAttribute('content', dark ? 'black-translucent' : 'default');
+  document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.setAttribute('content', dark ? 'black' : 'default');
   const appearanceState = $('#appearance-state');
   if (appearanceState) appearanceState.textContent = dark ? 'Dark' : 'Light';
   const desktopAppearanceState = $('#desktop-appearance-state');
