@@ -1094,6 +1094,12 @@ window.addEventListener('beforeinstallprompt', (event) => {
   $('#install-guide-native')?.classList.add('inline-flex');
 });
 window.addEventListener('appinstalled', markTaskerInstalled);
+$('#install-guide-done')?.addEventListener('click', markTaskerInstalled);
+const installDisplayMode = window.matchMedia('(display-mode: standalone)');
+const handleInstallDisplayModeChange = () => { if (isStandaloneApp()) markTaskerInstalled(); };
+if (installDisplayMode.addEventListener) installDisplayMode.addEventListener('change', handleInstallDisplayModeChange);
+else installDisplayMode.addListener?.(handleInstallDisplayModeChange);
+window.addEventListener('pageshow', handleInstallDisplayModeChange);
 $('#install-guide-native')?.addEventListener('click', async () => {
   if (!deferredInstallPrompt) return;
   const promptEvent = deferredInstallPrompt;
