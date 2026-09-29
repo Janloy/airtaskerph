@@ -253,6 +253,25 @@ function setButtonBusy(button, busy, label = 'Saving…') {
   delete button.dataset.busyDisabled;
   setActionProgress(button, '', false);
 }
+function setSavedButtonBusy(button, busy, label = '') {
+  if (busy) {
+    if (button.dataset.savedBusy === 'true') return;
+    button.dataset.savedBusy = 'true';
+    button.dataset.savedBusyDisabled = String(button.disabled);
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.classList.add('is-saving');
+    setActionProgress(button, label, true);
+    return;
+  }
+  if (button.dataset.savedBusy !== 'true') return;
+  button.disabled = button.dataset.savedBusyDisabled === 'true';
+  button.removeAttribute('aria-busy');
+  button.classList.remove('is-saving');
+  delete button.dataset.savedBusy;
+  delete button.dataset.savedBusyDisabled;
+  setActionProgress(button, '', false);
+}
 function setBusy(form, busy, label = 'Saving…') {
   const button = form.querySelector('button[type="submit"], button:not([type])');
   form.toggleAttribute('aria-busy', busy);
@@ -513,7 +532,7 @@ async function toggleSavedTask(task) {
   pendingSavedTaskIds.add(taskId);
   const saved = !state.savedTaskIds.has(Number(task.id));
   const buttons = [...document.querySelectorAll(`[data-save-task="${taskId}"]`)];
-  buttons.forEach((button) => setButtonBusy(button, true, saved ? 'Saving…' : 'Removing…'));
+  buttons.forEach((button) => setSavedButtonBusy(button, true, saved ? 'Saving task…' : 'Removing saved task…'));
   try {
     const payload = await api('api/saved_tasks.php', { method: 'POST', body: JSON.stringify({ action: 'toggle', task_id: task.id, saved }) });
     if (payload.saved) {
@@ -530,7 +549,8 @@ async function toggleSavedTask(task) {
       button.setAttribute('aria-pressed', String(payload.saved));
       button.setAttribute('aria-label', payload.saved ? 'Remove saved task' : 'Save task');
       button.querySelector('i').className = `fa-${payload.saved ? 'solid' : 'regular'} fa-bookmark`;
-      button.querySelector('.sr-only').textContent = payload.saved ? 'Remove saved task' : 'Save task';
+      const accessibleLabel = button.querySelector('.sr-only');
+      if (accessibleLabel) accessibleLabel.textContent = payload.saved ? 'Remove saved task' : 'Save task';
     });
     renderSavedTasks();
     broadcastAuthChange();
@@ -538,7 +558,7 @@ async function toggleSavedTask(task) {
   } catch (error) { notify(error.message, 'error'); }
   finally {
     pendingSavedTaskIds.delete(taskId);
-    buttons.forEach((button) => setButtonBusy(button, false));
+    buttons.forEach((button) => setSavedButtonBusy(button, false));
   }
 }
 function markSubmittedBids() { state.tasks.filter((task) => task.has_bid).forEach((task) => { const card = document.querySelector(`[data-task="${task.id}"]`); if (card && !card.querySelector('.submitted-bid-mark')) card.insertAdjacentHTML('afterbegin', '<span class="submitted-bid-mark"><i class="fa-solid fa-check"></i> Bid submitted</span>'); }); }
