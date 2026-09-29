@@ -84,7 +84,7 @@ async function refreshStoredAuth() {
     try { refreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_KEY); } catch (error) { void error; }
     if (!refreshToken) return false;
     try {
-      const response = await fetch('api/auth.php?action=refresh', {
+      const response = await fetch('api/auth?action=refresh', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }), cache: 'no-store'
       });
@@ -191,7 +191,7 @@ async function updateNotificationCounts() {
     return;
   }
   try {
-    const payload = await api('api/notifications.php?action=counts');
+    const payload = await api('api/notifications?action=counts');
     setNotificationCount('#desktop-bid-count', payload.pending_bids);
     setNotificationCount('#mobile-bid-count', payload.pending_bids);
     setNotificationCount('#desktop-message-count', payload.bidder_unread_messages);
@@ -638,7 +638,7 @@ async function loadAccountActivity() {
   if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can view account activity.', 'error'); return; }
   $('#account-activity-users').innerHTML = '<p class="text-sm text-[#68727c]">Loading account list…</p>';
   try {
-    const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'activity_dashboard' }) });
+    const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'activity_dashboard' }) });
     renderAccountActivity(payload);
   } catch (error) {
     const message = escapeHtml(error.message);
@@ -683,7 +683,7 @@ async function openProfile(formId = null) {
     form?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
   try {
-    state.user = (await api('api/profile_actions.php?action=get')).user;
+    state.user = (await api('api/profile_actions?action=get')).user;
     renderAuth(); renderProfile();
     if (formId) $(`#${formId}`)?.querySelector('input')?.focus({ preventScroll: true });
   }
@@ -807,7 +807,7 @@ async function refreshSavedTaskData() {
     renderSavedTasks();
     return;
   }
-  const payload = await api('api/saved_tasks.php?action=list');
+  const payload = await api('api/saved_tasks?action=list');
   state.savedTasks = payload.tasks;
   state.savedTaskIds = new Set(payload.tasks.map((task) => Number(task.id)));
   updateSavedTaskCount(payload.count);
@@ -831,29 +831,33 @@ async function toggleSavedTask(task) {
   const saved = !state.savedTaskIds.has(Number(task.id));
   const buttons = [...document.querySelectorAll(`[data-save-task="${taskId}"]`)];
   buttons.forEach((button) => setSavedButtonBusy(button, true, saved ? 'Saving task…' : 'Removing saved task…'));
-  try {
-    const payload = await api('api/saved_tasks.php', { method: 'POST', body: JSON.stringify({ action: 'toggle', task_id: task.id, saved }) });
-    if (payload.saved) {
-      state.savedTaskIds.add(Number(task.id));
-      state.savedTasks = [{ ...task, is_saved: true }, ...state.savedTasks.filter((item) => Number(item.id) !== Number(task.id))];
+  const applySavedState = (isSaved) => {
+    if (isSaved) {
+      state.savedTaskIds.add(taskId);
+      state.savedTasks = [{ ...task, is_saved: true }, ...state.savedTasks.filter((item) => Number(item.id) !== taskId)];
     } else {
-      state.savedTaskIds.delete(Number(task.id));
-      state.savedTasks = state.savedTasks.filter((item) => Number(item.id) !== Number(task.id));
+      state.savedTaskIds.delete(taskId);
+      state.savedTasks = state.savedTasks.filter((item) => Number(item.id) !== taskId);
     }
-    state.tasks = state.tasks.map((item) => Number(item.id) === Number(task.id) ? { ...item, is_saved: payload.saved } : item);
-    updateSavedTaskCount(payload.count);
-    document.querySelectorAll(`[data-save-task="${task.id}"]`).forEach((button) => {
-      button.classList.toggle('is-saved', payload.saved);
-      button.setAttribute('aria-pressed', String(payload.saved));
-      button.setAttribute('aria-label', payload.saved ? 'Remove saved task' : 'Save task');
-      button.querySelector('i').className = `fa-${payload.saved ? 'solid' : 'regular'} fa-bookmark`;
+    state.tasks = state.tasks.map((item) => Number(item.id) === taskId ? { ...item, is_saved: isSaved } : item);
+    updateSavedTaskCount(state.savedTaskIds.size);
+    document.querySelectorAll(`[data-save-task="${taskId}"]`).forEach((button) => {
+      button.classList.toggle('is-saved', isSaved);
+      button.setAttribute('aria-pressed', String(isSaved));
+      button.setAttribute('aria-label', isSaved ? 'Remove saved task' : 'Save task');
+      button.querySelector('i').className = `fa-${isSaved ? 'solid' : 'regular'} fa-bookmark`;
       const accessibleLabel = button.querySelector('.sr-only');
-      if (accessibleLabel) accessibleLabel.textContent = payload.saved ? 'Remove saved task' : 'Save task';
+      if (accessibleLabel) accessibleLabel.textContent = isSaved ? 'Remove saved task' : 'Save task';
     });
     renderSavedTasks();
+  };
+  applySavedState(saved);
+  try {
+    const payload = await api('api/saved_tasks', { method: 'POST', body: JSON.stringify({ action: 'toggle', task_id: task.id, saved }) });
+    if (payload.saved !== saved) applySavedState(payload.saved);
     broadcastAuthChange();
     notify(payload.saved ? 'Task saved to your bookmarks!' : 'Task removed from saved items');
-  } catch (error) { notify(error.message, 'error'); }
+  } catch (error) { applySavedState(!saved); notify(error.message, 'error'); }
   finally {
     pendingSavedTaskIds.delete(taskId);
     buttons.forEach((button) => setSavedButtonBusy(button, false));
@@ -866,7 +870,7 @@ async function fetchTaskList({ silent = false } = {}) {
   const params = new URLSearchParams(Object.entries(state.filters).filter(([, value]) => value));
   params.set('_ts', String(Date.now()));
   try {
-    const payload = await api(`api/get_tasks.php?${params}`, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' } });
+    const payload = await api(`api/get_tasks?${params}`, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' } });
     if (requestId !== taskFetchSequence) return;
     const changed = !taskListLoaded || JSON.stringify(payload.tasks) !== JSON.stringify(state.tasks);
     state.tasks = payload.tasks;
@@ -913,10 +917,10 @@ async function openTask(task) {
   if (!state.user) { $('#bids-section').classList.add('hidden'); $('#bids-list').replaceChildren(); }
   showPage('task-detail-modal');
   const backgroundLoads = [];
-  if (isOwner) backgroundLoads.push(api(`api/notifications.php?action=task_messages&task_id=${task.id}`).then((payload) => updateTaskMessageCount(payload.unread_count)).catch(() => {}));
+  if (isOwner) backgroundLoads.push(api(`api/notifications?action=task_messages&task_id=${task.id}`).then((payload) => updateTaskMessageCount(payload.unread_count)).catch(() => {}));
   if (!state.user) return;
   try {
-    const bidRequest = api(`api/bid_actions.php?action=list&task_id=${task.id}`);
+    const bidRequest = api(`api/bid_actions?action=list&task_id=${task.id}`);
     const [payload] = await Promise.all([bidRequest, ...backgroundLoads]);
     const myBid = payload.bids.find((bid) => Number(bid.bidder_id) === Number(state.user?.id));
     $('#bid-section').classList.toggle('hidden', Boolean(myBid) || isOwner || task.status !== 'Open');
@@ -932,9 +936,9 @@ function returnFromTaskDetails() {
   requestAnimationFrame(() => window.scrollTo({ top: previous.scrollY, left: 0, behavior: 'instant' }));
 }
 function renderBids(bids, task) { const isOwner = state.user && Number(state.user.id) === Number(task.user_id); const isModerator = ['admin', 'superadmin'].includes(state.user?.role); $('#bids-section h3').textContent = `Bids (${bids.length})`; $('#bids-list').innerHTML = bids.length ? bids.map((bid) => `<div class="bid-row rounded-lg border border-[#dbe3e7] p-3"><div class="bid-row-heading"><div class="bid-person"><p class="bidder-name font-bold">${escapeHtml(bid.bidder_name)}</p>${bid.unread_message_count ? `<span data-bid-message-count="${task.id}-${bid.bidder_id}" class="task-message-count"><i class="fa-solid fa-message"></i> ${bid.unread_message_count} new</span>` : ''}<p class="text-xs text-[#68727c]">Offer: ${money(bid.amount)} &middot; ${escapeHtml(bid.status)}</p></div></div><p class="mt-2 text-sm text-[#4c5962]">${escapeHtml(bid.message)}</p>${bid.removal_reason ? `<p class="bid-removal-reason"><strong>Removal reason:</strong> ${escapeHtml(bid.removal_reason)}</p>` : ''}<div class="bid-row-actions">${isOwner || isModerator ? `<button data-message-task="${task.id}" data-message-user="${bid.bidder_id}" class="touch-target rounded-lg border border-[#c9d4d9] px-3 text-xs font-bold text-[#006f70]">Message</button>` : ''}${(isOwner || isModerator) && ['Pending', 'Accepted'].includes(bid.status) ? `${bid.status === 'Pending' ? `<button data-accept-bid="${bid.id}" data-accept-task="${task.id}" class="touch-target rounded-lg bg-[#006f70] px-3 text-xs font-bold text-white">Accept</button>` : ''}<button data-remove-bid="${bid.id}" data-remove-bid-task="${task.id}" class="touch-target rounded-lg border border-red-200 px-3 text-xs font-bold text-red-600">Remove</button>` : ''}</div></div>`).join('') : '<p class="text-sm text-[#68727c]">No bids yet.</p>'; }
-async function loadMyBids() { if (!state.user) { requestAuthGate('bids'); return; } showPage('my-bids-page'); $('#my-bids-page-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your bids...</p>'; try { const payload = await api('api/bid_actions.php?action=my_bids'); renderEditableMyBids(payload.bids); } catch (error) { notify(error.message, 'error'); } }
+async function loadMyBids() { if (!state.user) { requestAuthGate('bids'); return; } showPage('my-bids-page'); $('#my-bids-page-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your bids...</p>'; try { const payload = await api('api/bid_actions?action=my_bids'); renderEditableMyBids(payload.bids); } catch (error) { notify(error.message, 'error'); } }
 function renderMyBids(bids) { $('#my-bids-list').innerHTML = bids.length ? bids.map((bid) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(bid.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(bid.title)}</h3><p class="mt-1 text-xs text-[#68727c]">Task owner: ${escapeHtml(bid.owner_name)} &middot; ${escapeHtml(bid.location)}</p></div><span class="badge ${bid.status === 'Accepted' ? 'badge-open' : bid.status === 'Rejected' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(bid.status)}</span></div><div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#edf0f1] pt-3 text-sm"><span>Your offer: <strong>${money(bid.amount)}</strong></span><span class="text-[#68727c]">Task: ${escapeHtml(bid.task_status)}</span><button data-message-task="${bid.task_id}" data-message-user="${bid.owner_id}" class="touch-target rounded-lg border border-[#008f8c] px-3 text-xs font-bold text-[#006f70]">Message owner</button></div><p class="mt-2 text-sm text-[#4c5962]">${escapeHtml(bid.message)}</p></article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><i class="fa-solid fa-gavel mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not placed any bids yet.</p><p class="mt-1 text-sm text-[#68727c]">Open a task from the marketplace to make your first offer.</p></div>'; }
-async function loadMyTasks() { if (!state.user) { requestAuthGate('tasks'); return; } showPage('my-tasks-modal'); $('#my-tasks-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your tasks...</p>'; try { const payload = await api('api/get_tasks.php?mine=1'); state.myTasks = payload.tasks; renderMyTasks(state.myTasks); } catch (error) { notify(error.message, 'error'); } }
+async function loadMyTasks() { if (!state.user) { requestAuthGate('tasks'); return; } showPage('my-tasks-modal'); $('#my-tasks-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your tasks...</p>'; try { const payload = await api('api/get_tasks?mine=1'); state.myTasks = payload.tasks; renderMyTasks(state.myTasks); } catch (error) { notify(error.message, 'error'); } }
 function renderEditableMyBids(bids) { const html = bids.length ? bids.map((bid) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(bid.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(bid.title)}</h3><p class="mt-1 text-xs text-[#68727c]">Task owner: ${escapeHtml(bid.owner_name)} &middot; ${escapeHtml(bid.location)}</p></div><div class="flex items-center gap-2"><span class="badge ${bid.status === 'Accepted' ? 'badge-open' : bid.status === 'Rejected' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(bid.status)}</span>${bid.unread_message_count ? `<span data-bid-message-count="${bid.task_id}" class="task-message-count"><i class="fa-solid fa-message"></i> ${bid.unread_message_count} new</span>` : ''}</div></div>${bid.removal_reason ? `<p class="bid-removal-reason"><strong>Removed by owner:</strong> ${escapeHtml(bid.removal_reason)}</p>` : ''}<div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#edf0f1] pt-3 text-sm"><span>Your offer: <strong>${money(bid.amount)}</strong></span><span class="text-[#68727c]">Task: ${escapeHtml(bid.task_status)}</span><div class="flex gap-2">${bid.status === 'Pending' && bid.task_status === 'Open' ? `<button data-edit-bid="${bid.id}" class="touch-target rounded-lg border border-[#c9d4d9] px-3 text-xs font-bold text-[#006f70]">Edit bid</button><button data-delete-bid="${bid.id}" data-delete-bid-task="${bid.task_id}" class="touch-target rounded-lg border border-red-200 px-3 text-xs font-bold text-red-600">Delete bid</button>` : ''}<button data-message-task="${bid.task_id}" data-message-user="${bid.owner_id}" class="touch-target rounded-lg border border-[#008f8c] px-3 text-xs font-bold text-[#006f70]">Message owner</button></div></div><form data-bid-edit-form="${bid.id}" class="bid-edit-form hidden mt-4 grid gap-3 rounded-lg bg-[#f5f7f8] p-3"><label class="block text-sm font-bold">Offer amount<input name="amount" type="number" min="0" step="0.01" value="${bid.amount}" required class="form-control mt-2"></label><label class="block text-sm font-bold">Offer message<textarea name="message" rows="4" required maxlength="1000" class="form-control min-h-[100px] w-full resize-y overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-600">${escapeHtml(bid.message)}</textarea></label><div class="mt-3 flex justify-end gap-2"><button type="submit" data-save-bid="${bid.id}" class="touch-target rounded-lg bg-[#006f70] px-3 text-xs font-bold text-white">Save</button><button type="button" data-cancel-bid="${bid.id}" class="touch-target rounded-lg border border-[#c9d4d9] px-3 text-xs font-bold">Cancel</button></div></form><p class="mt-2 text-sm text-[#4c5962]">${escapeHtml(bid.message)}</p></article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><i class="fa-solid fa-gavel mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not placed any bids yet.</p><p class="mt-1 text-sm text-[#68727c]">Open a task from the marketplace to make your first offer.</p></div>'; $('#my-bids-page-list').innerHTML = html; }
 function renderMyBids(bids) { const html = bids.length ? bids.map((bid) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(bid.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(bid.title)}</h3><p class="mt-1 text-xs text-[#68727c]">Task owner: ${escapeHtml(bid.owner_name)} &middot; ${escapeHtml(bid.location)}</p></div><span class="badge ${bid.status === 'Accepted' ? 'badge-open' : bid.status === 'Rejected' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(bid.status)}</span></div><div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#edf0f1] pt-3 text-sm"><span>Your offer: <strong>${money(bid.amount)}</strong></span><span class="text-[#68727c]">Task: ${escapeHtml(bid.task_status)}</span><button data-message-task="${bid.task_id}" data-message-user="${bid.owner_id}" class="touch-target rounded-lg border border-[#008f8c] px-3 text-xs font-bold text-[#006f70]">Message owner</button></div><p class="mt-2 text-sm text-[#4c5962]">${escapeHtml(bid.message)}</p></article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><i class="fa-solid fa-gavel mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not placed any bids yet.</p><p class="mt-1 text-sm text-[#68727c]">Open a task from the marketplace to make your first offer.</p></div>'; $('#my-bids-page-list').innerHTML = html; }
 function renderMyTasks(tasks) { $('#my-tasks-list').innerHTML = tasks.length ? tasks.map((task) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(task.title)}</h3><p class="mt-1 text-xs text-[#68727c]">${escapeHtml(task.location)} &middot; ${money(task.budget)}</p></div><span class="badge ${task.status === 'Open' ? 'badge-open' : task.status === 'Completed' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(task.status)}</span></div><div class="mt-3 flex items-center justify-between gap-3 border-t border-[#edf0f1] pt-3"><span class="text-sm text-[#68727c]">${escapeHtml(task.description.slice(0, 90))}${task.description.length > 90 ? '...' : ''}</span><div class="flex flex-wrap items-center justify-end gap-3"><span class="task-bid-count"><i class="fa-solid fa-gavel"></i> ${task.bid_count} ${task.bid_count === 1 ? 'bid' : 'bids'}</span><button data-open-my-task="${task.id}" class="touch-target rounded-lg px-3 text-xs font-bold text-[#006f70]">Open</button></div></div></article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><i class="fa-solid fa-clipboard-list mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not posted a task yet.</p><p class="mt-1 text-sm text-[#68727c]">Post a task and it will appear here.</p></div>'; }
@@ -950,7 +954,7 @@ async function refreshConversation() {
     const latest = previous.at(-1);
     const fullSync = !latest || Date.now() - state.conversationLastFullSync >= 30_000;
     if (!fullSync && latest?.created_at) params.set('after', latest.created_at);
-    const payload = await api(`api/messages.php?${params}`);
+    const payload = await api(`api/messages?${params}`);
     // Discard a response if the user switched conversations while it was loading.
     if (taskId !== Number($('#conversation-task-id')?.value) || otherUserId !== Number($('#conversation-user-id')?.value) || document.hidden || $('#conversation-modal')?.classList.contains('hidden')) return;
     if (fullSync) {
@@ -1055,8 +1059,8 @@ async function init() {
       }
     }
     if (!sessionExpired) {
-      let session = await api('api/auth.php?action=session');
-      if (!session.user && refreshToken && await refreshStoredAuth()) session = await api('api/auth.php?action=session');
+      let session = await api('api/auth?action=session');
+      if (!session.user && refreshToken && await refreshStoredAuth()) session = await api('api/auth?action=session');
       state.user = session.user;
       if (state.user) recordAuthActivity();
     }
@@ -1092,8 +1096,8 @@ async function init() {
 window.addEventListener('storage', async (event) => {
   if (event.key !== AUTH_SYNC_KEY) return;
   try {
-    let session = await api('api/auth.php?action=session');
-    if (!session.user && await refreshStoredAuth()) session = await api('api/auth.php?action=session');
+    let session = await api('api/auth?action=session');
+    if (!session.user && await refreshStoredAuth()) session = await api('api/auth?action=session');
     const wasLoggedIn = Boolean(state.user);
     const previousUserId = state.user?.id;
     state.user = session.user;
@@ -1122,7 +1126,7 @@ window.addEventListener('storage', async (event) => {
   } catch (error) { notify(error.message, 'error'); }
 });
 async function performLogout() {
-  await api('api/auth.php?action=logout', { method: 'POST' });
+  await api('api/auth?action=logout', { method: 'POST' });
   clearStoredAuth();
   state.logoutTrigger = null;
   closeModal('logout-confirm-modal');
@@ -1283,7 +1287,7 @@ document.addEventListener('click', async (event) => {
   const logout = event.target.closest('[data-action="logout"]'); if (logout) { state.logoutTrigger = logout; closeDesktopProfileMenu(); openModal('#logout-confirm-modal'); requestAnimationFrame(() => $('#cancel-logout')?.focus({ preventScroll: true })); return; }
   const deleteButton = event.target.closest('[data-delete]'); if (deleteButton) { $('#delete-task-id').value = deleteButton.dataset.delete; openModal('#delete-task-modal'); }
   const editButton = event.target.closest('[data-edit]'); if (editButton) { const task = state.tasks.find((item) => Number(item.id) === Number(editButton.dataset.edit)); if (task) fillEditForm(task); }
-  const acceptButton = event.target.closest('[data-accept-bid]'); if (acceptButton) { try { const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'accept', task_id: acceptButton.dataset.acceptTask, bid_id: acceptButton.dataset.acceptBid }) }); notify(payload.message); showPage('marketplace-page'); loadTasks(); } catch (error) { notify(error.message, 'error'); } }
+  const acceptButton = event.target.closest('[data-accept-bid]'); if (acceptButton) { try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'accept', task_id: acceptButton.dataset.acceptTask, bid_id: acceptButton.dataset.acceptBid }) }); notify(payload.message); showPage('marketplace-page'); loadTasks(); } catch (error) { notify(error.message, 'error'); } }
   const removeBidButton = event.target.closest('[data-remove-bid]'); if (removeBidButton) { $('#remove-bid-id').value = removeBidButton.dataset.removeBid; $('#remove-bid-task-id').value = removeBidButton.dataset.removeBidTask; $('#remove-bid-reason').value = ''; openModal('#remove-bid-modal'); }
   const messageButton = event.target.closest('[data-message-task]'); if (messageButton) openConversation(messageButton.dataset.messageTask, messageButton.dataset.messageUser);
   const editBidButton = event.target.closest('[data-edit-bid]'); if (editBidButton) { const form = document.querySelector(`[data-bid-edit-form="${editBidButton.dataset.editBid}"]`); form?.classList.toggle('hidden'); }
@@ -1365,10 +1369,10 @@ $('#refresh-tasks-button').addEventListener('click', async (event) => {
     label.textContent = 'Refresh tasks';
   }
 });
-$('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); closeModal('task-modal'); setBusy(event.target, false); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#create-task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); setBusy(event.target, false); showPage('marketplace-page'); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in…'); try { const payload = await api('api/auth.php?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage('marketplace-page'); await loadTasks(); startNotificationPolling(); notify(payload.message); await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth.php?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); closeModal('task-modal'); setBusy(event.target, false); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#create-task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); setBusy(event.target, false); showPage('marketplace-page'); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in…'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage('marketplace-page'); await loadTasks(); startNotificationPolling(); notify(payload.message); await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-profile-form').addEventListener('submit', (event) => {
   event.preventDefault();
   if (!event.currentTarget.reportValidity()) return;
@@ -1387,7 +1391,7 @@ $('#profile-confirm-form').addEventListener('submit', async (event) => {
   errorMessage.classList.add('hidden');
   setBusy(form, true, 'Updating profile…');
   try {
-    const payload = await api('api/profile_actions.php', {
+    const payload = await api('api/profile_actions', {
       method: 'POST',
       body: JSON.stringify({ action: 'update_profile', ...Object.fromEntries(new FormData($('#edit-profile-form'))), current_password: password })
     });
@@ -1405,15 +1409,15 @@ $('#profile-confirm-form').addEventListener('submit', async (event) => {
     setBusy(form, false);
   }
 });
-$('#change-email-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating email…'); try { const payload = await api('api/profile_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update_email', ...Object.fromEntries(new FormData(event.target)) }) }); state.user = payload.user; event.target.elements.current_password.value = ''; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#change-password-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating password…'); try { const payload = await api('api/profile_actions.php', { method: 'POST', body: JSON.stringify({ action: 'change_password', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#profile-picture-input').addEventListener('change', async (event) => { const input = event.target, file = input.files?.[0]; if (!file) return; const edit = input.closest('.profile-avatar-wrap')?.querySelector('.profile-avatar-edit'); const original = edit?.innerHTML; setActionProgress(input, 'Uploading profile photo…', true); input.disabled = true; input.closest('.profile-avatar-wrap')?.setAttribute('aria-busy', 'true'); if (edit) edit.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">Uploading photo…</span>'; try { const avatar_data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const payload = await api('api/profile_actions.php?action=upload_avatar', { method: 'POST', body: JSON.stringify({ avatar_data }) }); state.user = payload.user; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setActionProgress(input, '', false); input.value = ''; input.disabled = false; input.closest('.profile-avatar-wrap')?.removeAttribute('aria-busy'); if (edit) edit.innerHTML = original; } });
-$('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#change-email-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating email…'); try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'update_email', ...Object.fromEntries(new FormData(event.target)) }) }); state.user = payload.user; event.target.elements.current_password.value = ''; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#change-password-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating password…'); try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'change_password', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#profile-picture-input').addEventListener('change', async (event) => { const input = event.target, file = input.files?.[0]; if (!file) return; const edit = input.closest('.profile-avatar-wrap')?.querySelector('.profile-avatar-edit'); const original = edit?.innerHTML; setActionProgress(input, 'Uploading profile photo…', true); input.disabled = true; input.closest('.profile-avatar-wrap')?.setAttribute('aria-busy', 'true'); if (edit) edit.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">Uploading photo…</span>'; try { const avatar_data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const payload = await api('api/profile_actions?action=upload_avatar', { method: 'POST', body: JSON.stringify({ avatar_data }) }); state.user = payload.user; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setActionProgress(input, '', false); input.value = ''; input.disabled = false; input.closest('.profile-avatar-wrap')?.removeAttribute('aria-busy'); if (edit) edit.innerHTML = original; } });
+$('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#account-activity-filter')?.addEventListener('change', renderAccountActivityUsers);
 $('#account-activity-search')?.addEventListener('input', renderAccountActivityUsers);
 $('#refresh-account-activity')?.addEventListener('click', async (event) => { const button = event.currentTarget; button.disabled = true; try { await loadAccountActivity(); } finally { button.disabled = false; } });
-$('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task…'); try { const form = event.target; const formData = new FormData(form); const photoPayload = await taskFormPayload(form); const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(formData), photos: photoPayload.photos, keep_image_urls: photoPayload.keep_image_urls }) }); const taskId = Number(formData.get('task_id')); closeModal('edit-modal'); setBusy(form, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#bid-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!state.user) { requestBidAuthGate(Number($('#task-detail-id').value), event.submitter || event.target.querySelector('[type="submit"]')); return; } setBusy(event.target, true); try { const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'place', task_id: $('#task-detail-id').value, ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#task-detail-id').value)) || state.activeTask; if (task) openTask(task); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task…'); try { const form = event.target; const formData = new FormData(form); const photoPayload = await taskFormPayload(form); const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(formData), photos: photoPayload.photos, keep_image_urls: photoPayload.keep_image_urls }) }); const taskId = Number(formData.get('task_id')); closeModal('edit-modal'); setBusy(form, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#bid-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!state.user) { requestBidAuthGate(Number($('#task-detail-id').value), event.submitter || event.target.querySelector('[type="submit"]')); return; } setBusy(event.target, true); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'place', task_id: $('#task-detail-id').value, ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#task-detail-id').value)) || state.activeTask; if (task) openTask(task); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#conversation-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   if (state.sendingMessage) return;
@@ -1430,7 +1434,7 @@ $('#conversation-form').addEventListener('submit', async (event) => {
   form.setAttribute('aria-busy', 'true');
   renderConversation(state.conversationMessages);
   try {
-    const payload = await api('api/messages.php', { method: 'POST', body: JSON.stringify({ action: 'send', task_id: taskId, other_user_id: otherUserId, body }) });
+    const payload = await api('api/messages', { method: 'POST', body: JSON.stringify({ action: 'send', task_id: taskId, other_user_id: otherUserId, body }) });
     if (payload.message) state.conversationMessages = [...state.conversationMessages, { ...payload.message, sender_name: optimistic.sender_name }];
     else optimistic.delivery_status = 'Sent';
     optimistic.server_id = payload.message?.id || null;
@@ -1450,9 +1454,9 @@ $('#conversation-form').addEventListener('submit', async (event) => {
     input.focus();
   }
 });
-document.addEventListener('submit', async (event) => { const form = event.target.closest('[data-bid-edit-form]'); if (!form) return; event.preventDefault(); setBusy(form, true); try { const taskId = form.closest('article')?.querySelector('[data-message-task]')?.dataset.messageTask; const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'update', bid_id: form.dataset.bidEditForm, task_id: taskId, ...Object.fromEntries(new FormData(form)) }) }); notify(payload.message); form.classList.add('hidden'); loadMyBids(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); } });
+document.addEventListener('submit', async (event) => { const form = event.target.closest('[data-bid-edit-form]'); if (!form) return; event.preventDefault(); setBusy(form, true); try { const taskId = form.closest('article')?.querySelector('[data-message-task]')?.dataset.messageTask; const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'update', bid_id: form.dataset.bidEditForm, task_id: taskId, ...Object.fromEntries(new FormData(form)) }) }); notify(payload.message); form.classList.add('hidden'); loadMyBids(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); } });
 $('#conversation-body').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#conversation-form').requestSubmit(); } });
-$('#confirm-delete-bid').addEventListener('click', async () => { const button = $('#confirm-delete-bid'); setButtonBusy(button, true, 'Deleting bid…'); try { const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'delete', bid_id: $('#delete-bid-id').value, task_id: $('#delete-bid-task-id').value }) }); closeModal('delete-bid-modal'); notify(payload.message); await loadMyBids(); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
-$('#confirm-remove-bid').addEventListener('click', async () => { const button = $('#confirm-remove-bid'); const reason = $('#remove-bid-reason').value.trim(); if (!reason) { notify('Please provide a reason for removing the bidder.', 'error'); return; } setButtonBusy(button, true, 'Removing bidder…'); try { const payload = await api('api/bid_actions.php', { method: 'POST', body: JSON.stringify({ action: 'remove_bid', bid_id: $('#remove-bid-id').value, task_id: $('#remove-bid-task-id').value, reason }) }); closeModal('remove-bid-modal'); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#remove-bid-task-id').value)) || state.activeTask; if (task) await openTask(task); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
-$('#confirm-delete-task').addEventListener('click', async () => { const button = $('#confirm-delete-task'); const taskId = $('#delete-task-id').value; setButtonBusy(button, true, 'Deleting task…'); try { const payload = await api('api/admin_actions.php', { method: 'POST', body: JSON.stringify({ action: 'delete_task', task_id: taskId }) }); closeModal('delete-task-modal'); notify(payload.message); await loadTasks(); showPage('marketplace-page'); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
+$('#confirm-delete-bid').addEventListener('click', async () => { const button = $('#confirm-delete-bid'); setButtonBusy(button, true, 'Deleting bid…'); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'delete', bid_id: $('#delete-bid-id').value, task_id: $('#delete-bid-task-id').value }) }); closeModal('delete-bid-modal'); notify(payload.message); await loadMyBids(); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
+$('#confirm-remove-bid').addEventListener('click', async () => { const button = $('#confirm-remove-bid'); const reason = $('#remove-bid-reason').value.trim(); if (!reason) { notify('Please provide a reason for removing the bidder.', 'error'); return; } setButtonBusy(button, true, 'Removing bidder…'); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'remove_bid', bid_id: $('#remove-bid-id').value, task_id: $('#remove-bid-task-id').value, reason }) }); closeModal('remove-bid-modal'); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#remove-bid-task-id').value)) || state.activeTask; if (task) await openTask(task); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
+$('#confirm-delete-task').addEventListener('click', async () => { const button = $('#confirm-delete-task'); const taskId = $('#delete-task-id').value; setButtonBusy(button, true, 'Deleting task…'); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_task', task_id: taskId }) }); closeModal('delete-task-modal'); notify(payload.message); await loadTasks(); showPage('marketplace-page'); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
 init();

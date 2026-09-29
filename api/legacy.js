@@ -22,7 +22,7 @@ const touchPresence = async (s, userId, isLogin = false) => {
   if (error) console.error('Account presence update failed:', error.message);
 };
 const rows = async (q) => { const { data, error } = await q; if (error) throw fail(error.message, error.code === '23505' ? 409 : 400); return data; };
-const userFor = async (req, s, trackActivity = true) => {
+const userFor = async (req, s, trackActivity = false) => {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token) throw fail('Please log in to continue.', 401);
   const { data, error } = await s.auth.getUser(token);
@@ -86,9 +86,19 @@ const loadTaskBids = async (s, task, profile) => {
     };
   });
 };
-const shapeTasks = async (s, tasks, viewer) => {
+const shapeTasks = async (s, tasks, viewer, { mine = false } = {}) => {
   if (!tasks.length) return [];
   const taskIds = tasks.map((t) => t.id);
+  if (mine) {
+    const bids = await rows(s.from('bids').select('task_id,bidder_id').in('task_id', taskIds));
+    const bidCounts = new Map();
+    for (const bid of bids) bidCounts.set(Number(bid.task_id), (bidCounts.get(Number(bid.task_id)) || 0) + 1);
+    return tasks.map((task) => ({
+      ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget),
+      owner_name: `${viewer.first_name} ${viewer.last_name}`.trim(), has_bid: false,
+      is_saved: false, bid_count: bidCounts.get(Number(task.id)) || 0, unread_message_count: 0
+    }));
+  }
   const ownerIds = [...new Set(tasks.map((t) => t.user_id))];
   const [owners, bids, saves, messages] = await Promise.all([
     rows(s.from('user_profiles').select('id,first_name,last_name').in('id', ownerIds)),
@@ -128,7 +138,7 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   if (!url || !anon || !service) return res.status(500).json({ success: false, message: 'Set SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY in Vercel.' });
   const s = db(); const ac = authClient(); const query = new URL(req.url, 'https://local').searchParams;
-  const route = (query.get('path') || '').replace(/^\/+|\/+$/g, '').replace(/\.php$/, '');
+  const route = (query.get('path') || '').replace(/^\/+|\/+$/g, '');
   const body = await jsonBody(req);
   const action = query.get('action') || body.action || '';
   let viewer = null; let profile = null;
@@ -158,7 +168,7 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('', { access_token: data.session.access_token, refresh_token: data.session.refresh_token }));
       }
       if (action === 'session') {
-        try { ({ profile } = await userFor(req, s)); return res.status(200).json(ok('', { user: publicUser(profile) })); }
+        try { ({ profile } = await userFor(req, s, true)); return res.status(200).json(ok('', { user: publicUser(profile) })); }
         catch { return res.status(200).json(ok('', { user: null, expired: false })); }
       }
       if (action === 'logout') { const token=(req.headers.authorization||'').replace(/^Bearer\s+/i,''); if(token) await s.auth.admin.signOut(token).catch(()=>{}); return res.status(200).json(ok('You have been logged out.')); }
@@ -173,10 +183,10 @@ export default async function handler(req, res) {
       if (['Open','In Progress','Completed'].includes(query.get('status'))) q = q.eq('status', query.get('status'));
       if (query.get('category')) q = q.eq('category', query.get('category'));
       if (query.get('search')) { const term = query.get('search').replace(/[,%()]/g, ' '); q = q.or(`title.ilike.%${term}%,description.ilike.%${term}%,location.ilike.%${term}%`); }
-      const tasks = await rows(q); return res.status(200).json(ok('', { tasks: await shapeTasks(s, tasks, profile) }));
+      const tasks = await rows(q); return res.status(200).json(ok('', { tasks: await shapeTasks(s, tasks, profile, { mine: query.get('mine') === '1' }) }));
     }
     if (route === 'create_task') {
-      ({ profile } = await userFor(req, s));
+      ({ profile } = await userFor(req, s, true));
       const item = { user_id: profile.id, title: clean(body.title,180), category: clean(body.category,80), budget: Number(body.budget), location: clean(body.location,160), description: clean(body.description,2000) };
       if (!item.title || !item.category || !item.location || !item.description || !Number.isFinite(item.budget) || item.budget < 0) throw fail('Complete every field with valid values.',422);
       const photos = Array.isArray(body.photos) ? body.photos : [];
@@ -205,13 +215,12 @@ export default async function handler(req, res) {
       }
     }
     if (route === 'saved_tasks') {
-      ({ profile } = await userFor(req, s));
+      ({ profile } = await userFor(req, s, false));
       if (action === 'toggle') {
         const id = Number(body.task_id), saved = Boolean(body.saved), t = await rows(s.from('tasks').select('user_id').eq('id',id).maybeSingle());
         if (!t) throw fail('Task not found.',404); if (Number(t.user_id) === Number(profile.id)) throw fail('You cannot save your own task.',403);
         if (saved) await rows(s.from('saved_tasks').upsert({ user_id: profile.id, task_id: id }, { onConflict: 'user_id,task_id' })); else await rows(s.from('saved_tasks').delete().eq('user_id',profile.id).eq('task_id',id));
-        const { count } = await s.from('saved_tasks').select('task_id',{count:'exact',head:true}).eq('user_id',profile.id);
-        return res.status(200).json(ok('',{saved,count:count||0,task_id:id}));
+        return res.status(200).json(ok('',{saved,task_id:id}));
       }
       const savedRows = await rows(s.from('saved_tasks').select('task_id,saved_at').eq('user_id',profile.id).order('saved_at',{ascending:false}));
       const taskRows = savedRows.length ? await rows(s.from('tasks').select('*').in('id', savedRows.map((r) => r.task_id))) : [];
@@ -220,7 +229,7 @@ export default async function handler(req, res) {
       const cleanTasks=shaped.map((t)=>({...t,saved_at:savedAt.get(Number(t.id))})); return res.status(200).json(ok('',{tasks:cleanTasks,count:cleanTasks.length}));
     }
     if (route === 'profile_actions') {
-      ({ profile } = await userFor(req, s));
+      ({ profile } = await userFor(req, s, action !== 'get'));
       if (action === 'get') return res.status(200).json(ok('',{user:publicUser(profile)}));
       if (action === 'update_profile') {
         const {error}=await ac.auth.signInWithPassword({email:profile.email,password:String(body.current_password||'')}); if(error) throw fail('Incorrect password. Please try again.',401);
@@ -249,7 +258,7 @@ export default async function handler(req, res) {
       }
     }
     if (route === 'admin_actions') {
-      ({ profile } = await userFor(req,s));
+      ({ profile } = await userFor(req,s, action !== 'activity_dashboard'));
       if (action === 'activity_dashboard') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view account activity.',403);
         const accounts = await rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at').order('role').order('first_name'));
