@@ -1,4 +1,5 @@
 const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], pendingMessages: [], sendingMessage: false, notificationTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
+const pendingSavedTaskIds = new Set();
 const AUTH_SYNC_KEY = 'taskerph-auth-sync';
 const AUTH_TOKEN_KEY = 'taskerph-supabase-access-token';
 document.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
@@ -507,7 +508,12 @@ async function loadSavedTasks() {
 async function toggleSavedTask(task) {
   if (!state.user) { requestAuthGate('saved'); return; }
   if (Number(state.user.id) === Number(task.user_id)) { notify('You cannot save your own task.', 'error'); return; }
+  const taskId = Number(task.id);
+  if (pendingSavedTaskIds.has(taskId)) return;
+  pendingSavedTaskIds.add(taskId);
   const saved = !state.savedTaskIds.has(Number(task.id));
+  const buttons = [...document.querySelectorAll(`[data-save-task="${taskId}"]`)];
+  buttons.forEach((button) => setButtonBusy(button, true, saved ? 'Saving…' : 'Removing…'));
   try {
     const payload = await api('api/saved_tasks.php', { method: 'POST', body: JSON.stringify({ action: 'toggle', task_id: task.id, saved }) });
     if (payload.saved) {
@@ -530,6 +536,10 @@ async function toggleSavedTask(task) {
     broadcastAuthChange();
     notify(payload.saved ? 'Task saved to your bookmarks!' : 'Task removed from saved items');
   } catch (error) { notify(error.message, 'error'); }
+  finally {
+    pendingSavedTaskIds.delete(taskId);
+    buttons.forEach((button) => setButtonBusy(button, false));
+  }
 }
 function markSubmittedBids() { state.tasks.filter((task) => task.has_bid).forEach((task) => { const card = document.querySelector(`[data-task="${task.id}"]`); if (card && !card.querySelector('.submitted-bid-mark')) card.insertAdjacentHTML('afterbegin', '<span class="submitted-bid-mark"><i class="fa-solid fa-check"></i> Bid submitted</span>'); }); }
 async function loadTasks() { const params = new URLSearchParams(Object.entries(state.filters).filter(([, value]) => value)); try { const payload = await api(`api/get_tasks.php?${params}`); state.tasks = payload.tasks; renderTasks(); markSubmittedBids(); } catch (error) { notify(error.message, 'error'); } }
