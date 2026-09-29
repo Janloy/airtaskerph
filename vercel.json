@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    { "source": "/api/auth.php", "destination": "/api/legacy?path=auth" },
+    { "source": "/api/admin_actions.php", "destination": "/api/legacy?path=admin_actions" },
+    { "source": "/api/bid_actions.php", "destination": "/api/legacy?path=bid_actions" },
+    { "source": "/api/create_task.php", "destination": "/api/legacy?path=create_task" },
+    { "source": "/api/get_tasks.php", "destination": "/api/legacy?path=get_tasks" },
+    { "source": "/api/messages.php", "destination": "/api/legacy?path=messages" },
+    { "source": "/api/notifications.php", "destination": "/api/legacy?path=notifications" },
+    { "source": "/api/profile_actions.php", "destination": "/api/legacy?path=profile_actions" },
+    { "source": "/api/saved_tasks.php", "destination": "/api/legacy?path=saved_tasks" }
+  ]
+}
