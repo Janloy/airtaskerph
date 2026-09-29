@@ -1111,6 +1111,23 @@ document.addEventListener('input', (event) => {
 });
 $('#status-filter').addEventListener('change', (event) => { state.filters.status = event.target.value; loadTasks(); });
 $('#category-filter').addEventListener('change', (event) => { state.filters.category = event.target.value; loadTasks(); });
+$('#refresh-tasks-button').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  if (button.disabled) return;
+  const icon = button.querySelector('i');
+  const label = button.querySelector('span');
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  icon.classList.add('fa-spin');
+  label.textContent = 'Refreshing…';
+  try { await loadTasks(); }
+  finally {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    icon.classList.remove('fa-spin');
+    label.textContent = 'Refresh tasks';
+  }
+});
 $('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); closeModal('task-modal'); setBusy(event.target, false); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#create-task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task.php', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); setBusy(event.target, false); showPage('marketplace-page'); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth.php?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage('marketplace-page'); await loadTasks(); startNotificationPolling(); notify(payload.message); await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
