@@ -361,8 +361,19 @@ export default async function handler(req, res) {
           s.from('task_reviews').select('rating,comment,created_at,reviewer:user_profiles!task_reviews_reviewer_id_fkey(first_name,last_name)').eq('reviewee_id',publicId).order('created_at',{ascending:false}).limit(20)
         ]);
         if (listingResult.error || totalResult.error || completedResult.error || reviewsResult.error) throw fail((listingResult.error || totalResult.error || completedResult.error || reviewsResult.error).message, 500);
+        const acceptedBidRows=await rows(s.from('bids').select('task_id').eq('bidder_id',publicId).eq('status','Accepted'));
+        const acceptedTaskIds=[...new Set(acceptedBidRows.map((bid)=>Number(bid.task_id)))];
+        const taskerCompletedRows=acceptedTaskIds.length?await rows(s.from('tasks').select('id').in('id',acceptedTaskIds).eq('status','Completed')):[];
+        const ratingRows=[];
+        for(let offset=0;;offset+=1000) {
+          const batch=await rows(s.from('task_reviews').select('rating').eq('reviewee_id',publicId).order('id').range(offset,offset+999));
+          ratingRows.push(...batch);
+          if(batch.length<1000) break;
+        }
+        const ratingCount=ratingRows.length;
+        const averageRating=ratingCount?ratingRows.reduce((sum,review)=>sum+Number(review.rating||0),0)/ratingCount:0;
         const reviews=(reviewsResult.data||[]).map((review)=>({...review,reviewer_name:review.reviewer?`${review.reviewer.first_name} ${review.reviewer.last_name}`.trim():'TaskerPH member'}));
-        return res.status(200).json(ok('', { profile: { id: Number(publicProfile.id), first_name: publicProfile.first_name, middle_initial: publicProfile.middle_initial || '', last_name: publicProfile.last_name, avatar_path: publicAvatarUrl(s, publicProfile.avatar_path), created_at: publicProfile.created_at }, tasks: (listingResult.data || []).map((task) => ({ ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget) })), reviews, total_tasks: totalResult.count || 0, completed_tasks: completedResult.count || 0 }));
+        return res.status(200).json(ok('', { profile: { id: Number(publicProfile.id), first_name: publicProfile.first_name, middle_initial: publicProfile.middle_initial || '', last_name: publicProfile.last_name, avatar_path: publicAvatarUrl(s, publicProfile.avatar_path), created_at: publicProfile.created_at }, tasks: (listingResult.data || []).map((task) => ({ ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget) })), reviews, total_tasks: totalResult.count || 0, completed_tasks: (completedResult.count || 0) + taskerCompletedRows.length, average_rating: averageRating, rating_count: ratingCount }));
       }
       ({ profile } = await userFor(req, s, action !== 'get'));
       if (action === 'get') return res.status(200).json(ok('',{user:publicUser(profile)}));
