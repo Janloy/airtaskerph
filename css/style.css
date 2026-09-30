@@ -205,6 +205,116 @@ body.dark-mode .superadmin-stat-value, body.dark-mode .superadmin-panel-heading 
 body.dark-mode .superadmin-topbar { border-color: #374151; }
 body.dark-mode .superadmin-search, body.dark-mode .superadmin-topbar-icon, body.dark-mode .superadmin-shortcuts button { border-color: #374151; background: #0f172a; }
 @media (max-width: 760px) { .superadmin-topbar { padding: .75rem 1rem; } .superadmin-topbar-right small, .superadmin-topbar-icon { display: none; } .superadmin-stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .superadmin-dashboard-grid { grid-template-columns: minmax(0,1fr); } .superadmin-wide-panel { grid-column: auto; } .superadmin-shortcuts { grid-template-columns: minmax(0,1fr); } }
+
+/* Superadmin workspace refresh */
+body.superadmin-mode { background: #f4f7fb; }
+body.superadmin-mode .main-header { min-height: 66px; border-bottom: 1px solid #e6ebf2; background: rgba(255,255,255,.94); box-shadow: 0 1px 4px rgba(15,23,42,.03); }
+body.superadmin-mode .main-header > div { max-width: 100%; padding-left: clamp(1rem, 3vw, 2.5rem); }
+body.superadmin-mode .page-shell { min-height: calc(100vh - 66px); padding-top: 1.5rem; background: linear-gradient(140deg,#f4f7fb 0%,#f7f9fc 48%,#edf6f5 100%); }
+body.superadmin-mode .page-shell:has(.superadmin-sidebar) > .mx-auto { max-width: 1600px; padding-right: clamp(1rem, 3vw, 2.5rem); padding-left: clamp(1rem, 3vw, 2.5rem); }
+body.superadmin-mode .page-shell:has(.superadmin-sidebar) .card { min-height: calc(100vh - 98px); margin-left: 280px; border: 1px solid #e8edf4; border-radius: 20px; background: rgba(255,255,255,.9); box-shadow: 0 16px 48px rgba(30,41,59,.07); }
+body.superadmin-mode #account-activity-modal .card { overflow: visible; }
+body.superadmin-mode .superadmin-sidebar { top: 84px; bottom: 20px; left: max(20px, calc((100vw - 1600px) / 2 + 40px)); width: 236px; gap: 5px; border: 1px solid #e9edf3; border-radius: 18px; background: rgba(255,255,255,.96); padding: 14px 12px; box-shadow: 0 14px 40px rgba(30,41,59,.08); }
+body.superadmin-mode .superadmin-sidebar::before { content: "TASKERPH  /  ADMIN"; display: block; margin: 5px 10px 15px; padding: 3px 0 15px; border-bottom: 1px solid #edf0f4; color: #94a3b8; font-size: .65rem; font-weight: 800; letter-spacing: .14em; }
+body.superadmin-mode .superadmin-sidebar button { display: flex; min-height: 44px; align-items: center; gap: 12px; border: 1px solid transparent; border-radius: 10px; padding: 0 12px; color: #65738a; font-size: .84rem; font-weight: 650; transition: background .18s ease, color .18s ease, transform .18s ease; }
+body.superadmin-mode .superadmin-sidebar button::before { width: 18px; color: #94a3b8; font-family: "Font Awesome 6 Free"; font-size: .9rem; font-weight: 900; text-align: center; }
+body.superadmin-mode .superadmin-sidebar button[data-page="account-activity-modal"]::before { content: "\f015"; }
+body.superadmin-mode .superadmin-sidebar button[data-admin-page="user-management-page"]::before { content: "\f0c0"; }
+body.superadmin-mode .superadmin-sidebar button[data-admin-page="task-management-page"]::before { content: "\f0ae"; }
+body.superadmin-mode .superadmin-sidebar button[data-admin-page="report-management-page"]::before { content: "\f071"; }
+body.superadmin-mode .superadmin-sidebar button[data-admin-page="audit-log-page"]::before { content: "\f1da"; }
+body.superadmin-mode .superadmin-sidebar button:hover { transform: translateX(2px); border-color: #e5efef; background: #f5f9fa; color: #087e78; }
+body.superadmin-mode .superadmin-sidebar button.is-active { border-color: #d7eeeb; background: linear-gradient(100deg,#e8f6f4,#f2f9f8); color: #087e78; box-shadow: inset 3px 0 #07877f; }
+body.superadmin-mode .superadmin-sidebar button.is-active::before { color: #07877f; }
+body.superadmin-mode #account-activity-modal .superadmin-topbar { min-height: 76px; padding: 1rem clamp(1.2rem,3vw,2.5rem); }
+body.superadmin-mode .superadmin-search { min-height: 42px; border-color: #e8edf3; border-radius: 12px; background: #f8fafc; }
+body.superadmin-mode .superadmin-search:focus-within { border-color: #8dcac3; box-shadow: 0 0 0 3px rgba(8,126,120,.1); }
+body.superadmin-mode .superadmin-user-menu { position: relative; }
+body.superadmin-mode .superadmin-profile-trigger { display: flex; min-height: 46px; align-items: center; gap: .7rem; border: 1px solid transparent; border-radius: 12px; padding: .25rem .45rem; color: #334155; text-align: left; transition: background .16s ease, border-color .16s ease; }
+body.superadmin-mode .superadmin-profile-trigger:hover, body.superadmin-mode .superadmin-profile-trigger[aria-expanded="true"] { border-color: #e6edf1; background: #f8fafc; }
+body.superadmin-mode .superadmin-profile-copy { display: block; min-width: 115px; }
+body.superadmin-mode .superadmin-profile-chevron { margin-left: .1rem; color: #94a3b8; font-size: .68rem; transition: transform .16s ease; }
+body.superadmin-mode .superadmin-profile-trigger[aria-expanded="true"] .superadmin-profile-chevron { transform: rotate(180deg); }
+body.superadmin-mode .superadmin-profile-dropdown { position: absolute; top: calc(100% + 10px); right: 0; z-index: 70; width: min(310px, calc(100vw - 2rem)); border: 1px solid #e7ecf2; border-radius: 16px; background: #fff; padding: .55rem; box-shadow: 0 18px 48px rgba(15,23,42,.17); animation: form-item-in .16s ease-out both; }
+body.superadmin-mode .superadmin-menu-heading { display: grid; gap: .15rem; padding: .7rem .75rem .8rem; }
+body.superadmin-mode .superadmin-menu-heading strong { color: #1e293b; font-size: .83rem; }
+body.superadmin-mode .superadmin-menu-heading small, body.superadmin-mode .superadmin-menu-appearance small, body.superadmin-mode .superadmin-menu-glass small { color: #94a3b8; font-size: .7rem; }
+body.superadmin-mode .superadmin-menu-appearance { display: flex; width: 100%; min-height: 58px; align-items: center; gap: .65rem; border-radius: 10px; padding: .55rem .7rem; text-align: left; }
+body.superadmin-mode .superadmin-menu-appearance:hover, body.superadmin-mode .superadmin-menu-signout:hover { background: #f5f8fa; }
+body.superadmin-mode .superadmin-menu-icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 10px; background: #edf7f5; color: #087e78; }
+body.superadmin-mode .superadmin-menu-appearance > span:nth-child(2) { display: grid; flex: 1; gap: .12rem; }
+body.superadmin-mode .superadmin-menu-appearance strong, body.superadmin-mode .superadmin-menu-glass strong { color: #334155; font-size: .77rem; }
+body.superadmin-mode .superadmin-menu-appearance > b { border-radius: 99px; background: #f1f5f9; padding: .25rem .5rem; color: #64748b; font-size: .67rem; }
+body.superadmin-mode .superadmin-menu-glass { display: grid; gap: .6rem; padding: .75rem .8rem .65rem; }
+body.superadmin-mode .superadmin-menu-glass > span { display: flex; align-items: center; gap: .3rem .5rem; flex-wrap: wrap; }
+body.superadmin-mode .superadmin-menu-glass > span strong { flex: 1; }
+body.superadmin-mode .superadmin-menu-glass > span b { color: #087e78; font-size: .7rem; }
+body.superadmin-mode .superadmin-menu-glass input { width: 100%; accent-color: #087e78; cursor: pointer; }
+body.superadmin-mode .superadmin-menu-divider { height: 1px; margin: .3rem .5rem; background: #edf0f4; }
+body.superadmin-mode .superadmin-menu-signout { display: flex; width: 100%; min-height: 40px; align-items: center; gap: .6rem; border-radius: 9px; padding: 0 .8rem; color: #c2413a; font-size: .76rem; font-weight: 700; }
+body.dark-mode.superadmin-mode .superadmin-profile-trigger { color: #e2e8f0; }
+body.dark-mode.superadmin-mode .superadmin-profile-trigger:hover, body.dark-mode.superadmin-mode .superadmin-profile-trigger[aria-expanded="true"] { border-color: #293647; background: #111b27; }
+body.dark-mode.superadmin-mode .superadmin-profile-dropdown { border-color: #344255; background: #182330; }
+body.dark-mode.superadmin-mode .superadmin-menu-heading strong, body.dark-mode.superadmin-mode .superadmin-menu-appearance strong, body.dark-mode.superadmin-mode .superadmin-menu-glass strong { color: #e2e8f0; }
+body.dark-mode.superadmin-mode .superadmin-menu-appearance:hover, body.dark-mode.superadmin-mode .superadmin-menu-signout:hover { background: #202e3e; }
+body.dark-mode.superadmin-mode .superadmin-menu-appearance > b { background: #263547; color: #cbd5e1; }
+body.dark-mode.superadmin-mode .superadmin-menu-divider { background: #344255; }
+body.superadmin-mode #account-activity-modal .card > .flex.items-start { border-color: #edf0f4; padding: 1.5rem clamp(1.2rem,3vw,2.5rem); }
+body.superadmin-mode #account-activity-title { color: #172033; font-size: clamp(1.65rem,2vw,2.1rem); letter-spacing: -.035em; }
+body.superadmin-mode #account-activity-modal .space-y-5.overflow-y-auto { padding: 1.35rem clamp(1.2rem,3vw,2.5rem) 2rem; }
+body.superadmin-mode .superadmin-stats-grid { grid-template-columns: repeat(auto-fit,minmax(165px,1fr)); gap: .9rem; }
+body.superadmin-mode .superadmin-stat { min-height: 100px; grid-template-columns: 46px 1fr; gap: .15rem .8rem; border-color: #e9edf3; border-radius: 15px; padding: 1rem; box-shadow: 0 4px 14px rgba(30,41,59,.025); transition: transform .2s ease, box-shadow .2s ease; }
+body.superadmin-mode .superadmin-stat:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(30,41,59,.07); }
+body.superadmin-mode .superadmin-stat-icon { width: 44px; height: 44px; border-radius: 13px; background: #f0f7f6; font-size: 1rem; }
+body.superadmin-mode .superadmin-stat-label { color: #7b8798; font-size: .72rem; font-weight: 650; }
+body.superadmin-mode .superadmin-stat-value { color: #182235; font-size: 1.7rem; font-weight: 750; letter-spacing: -.04em; }
+body.superadmin-mode .superadmin-dashboard-grid { gap: 1rem; margin-top: 1.1rem; }
+body.superadmin-mode .superadmin-panel { border-color: #e9edf3; border-radius: 16px; box-shadow: 0 5px 18px rgba(30,41,59,.035); }
+body.superadmin-mode .superadmin-panel-heading { min-height: 80px; align-items: center; border-color: #edf0f4; padding: 1rem 1.2rem; }
+body.superadmin-mode .superadmin-panel-heading h3 { color: #1e293b; font-size: .95rem; letter-spacing: -.01em; }
+body.superadmin-mode .superadmin-panel-heading p { color: #8995a6; font-size: .75rem; }
+body.superadmin-mode .superadmin-text-link { border-radius: 8px; padding: .5rem .65rem; transition: background .18s ease; }
+body.superadmin-mode .superadmin-text-link:hover { background: #edf7f5; }
+body.superadmin-mode .superadmin-feed-row, body.superadmin-mode .superadmin-report-row, body.superadmin-mode .superadmin-task-row { min-height: 62px; border-color: #f0f2f5; padding: .85rem 1.2rem; }
+body.superadmin-mode .superadmin-feed-icon { width: 36px; height: 36px; flex-basis: 36px; background: #edf7f5; }
+body.superadmin-mode .superadmin-shortcuts { gap: .85rem; padding: 1.1rem 1.2rem 1.25rem; }
+body.superadmin-mode .superadmin-shortcuts button { min-height: 82px; border-color: #e8edf3; border-radius: 13px; padding: 1rem; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+body.superadmin-mode .superadmin-shortcuts button:hover { transform: translateY(-2px); border-color: #b8ded9; box-shadow: 0 9px 20px rgba(30,41,59,.06); }
+body.superadmin-mode #user-management-page .card, body.superadmin-mode #task-management-page .card, body.superadmin-mode #report-management-page .card, body.superadmin-mode #audit-log-page .card { padding: clamp(1.1rem,2vw,2rem); }
+body.superadmin-mode #user-management-page h1, body.superadmin-mode #task-management-page h1, body.superadmin-mode #report-management-page h1, body.superadmin-mode #audit-log-page h1 { color: #172033; font-size: clamp(1.6rem,2vw,2rem); letter-spacing: -.035em; }
+body.superadmin-mode #user-management-page table { border-spacing: 0; }
+body.superadmin-mode #user-management-page thead { position: sticky; top: 0; background: #f7f9fb; }
+body.superadmin-mode #user-management-page th { padding-top: .9rem; padding-bottom: .9rem; color: #7b8798; letter-spacing: .06em; }
+body.superadmin-mode #user-management-page tbody tr { transition: background .15s ease; }
+body.superadmin-mode #user-management-page tbody tr:hover { background: #f7fbfa; }
+body.dark-mode.superadmin-mode { background: #101720; }
+body.dark-mode.superadmin-mode .page-shell { background: linear-gradient(140deg,#111923,#131e29 55%,#102522); }
+body.dark-mode.superadmin-mode .page-shell:has(.superadmin-sidebar) .card, body.dark-mode.superadmin-mode .superadmin-sidebar { border-color: #293647; background: #182330; }
+body.dark-mode.superadmin-mode .superadmin-sidebar::before { border-color: #2c3847; color: #8794a6; }
+body.dark-mode.superadmin-mode .superadmin-sidebar button { color: #aab6c5; }
+body.dark-mode.superadmin-mode .superadmin-sidebar button:hover, body.dark-mode.superadmin-mode .superadmin-sidebar button.is-active { border-color: #285652; background: #173b3b; color: #8ce0d2; }
+body.dark-mode.superadmin-mode .superadmin-panel, body.dark-mode.superadmin-mode .superadmin-stat { border-color: #293647; background: #182330; }
+body.dark-mode.superadmin-mode .superadmin-panel-heading, body.dark-mode.superadmin-mode .superadmin-feed-row, body.dark-mode.superadmin-mode .superadmin-report-row, body.dark-mode.superadmin-mode .superadmin-task-row { border-color: #293647; }
+body.dark-mode.superadmin-mode #account-activity-title, body.dark-mode.superadmin-mode #user-management-page h1, body.dark-mode.superadmin-mode #task-management-page h1, body.dark-mode.superadmin-mode #report-management-page h1, body.dark-mode.superadmin-mode #audit-log-page h1 { color: #f1f5f9; }
+@media (max-width: 1023px) {
+  body.superadmin-mode .page-shell:has(.superadmin-sidebar) .card { min-height: auto; margin-left: 0; }
+  body.superadmin-mode .superadmin-sidebar { top: auto; bottom: auto; left: auto; flex-wrap: nowrap; gap: .25rem; margin: 0 0 1rem; padding: .45rem; }
+  body.superadmin-mode .superadmin-sidebar::before { display: none; }
+  body.superadmin-mode .superadmin-sidebar button { min-height: 42px; padding: 0 .75rem; }
+  body.superadmin-mode .superadmin-sidebar button::before { width: 16px; }
+}
+@media (max-width: 640px) {
+  body.superadmin-mode .page-shell { padding-top: .6rem; }
+  body.superadmin-mode .superadmin-topbar { min-height: 60px; }
+  body.superadmin-mode .superadmin-search { width: 100%; }
+  body.superadmin-mode .superadmin-topbar-right { gap: .45rem; }
+  body.superadmin-mode .superadmin-avatar { width: 34px; height: 34px; }
+  body.superadmin-mode .superadmin-stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .55rem; }
+  body.superadmin-mode .superadmin-stat { min-height: 84px; grid-template-columns: 36px 1fr; padding: .7rem; }
+  body.superadmin-mode .superadmin-stat-icon { width: 34px; height: 34px; }
+  body.superadmin-mode .superadmin-stat-value { font-size: 1.4rem; }
+  body.superadmin-mode .superadmin-sidebar button { min-width: max-content; font-size: .76rem; }
+}
 .task-detail-page:not(.hidden) { display: block; position: static; min-height: calc(100vh - 74px); background: transparent; animation: page-in .52s cubic-bezier(.2,.8,.2,1) both; }
 .task-detail-page > .task-detail-shell, .my-tasks-page > .modal-panel { width: 100%; max-width: 64rem; max-height: none; margin: 0 auto; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; }
 .conversation-page:not(.hidden) { display: block; position: static; min-height: calc(100vh - 74px); background: transparent; animation: page-in .52s cubic-bezier(.2,.8,.2,1) both; }

@@ -275,6 +275,8 @@ function closeDrawer() {
 function closeDesktopProfileMenu() {
   $('#desktop-profile-dropdown')?.classList.add('hidden');
   $('#desktop-profile-trigger')?.setAttribute('aria-expanded', 'false');
+  $('#superadmin-profile-dropdown')?.classList.add('hidden');
+  $('#superadmin-profile-trigger')?.setAttribute('aria-expanded', 'false');
 }
 function updateSavedTaskCount(count) {
   const total = Number(count) || 0;
@@ -730,6 +732,8 @@ function applyAppearance(dark) {
   if (appearanceState) appearanceState.textContent = dark ? 'Dark' : 'Light';
   const desktopAppearanceState = $('#desktop-appearance-state');
   if (desktopAppearanceState) desktopAppearanceState.textContent = dark ? 'Dark' : 'Light';
+  const superadminAppearanceState = $('#superadmin-appearance-state');
+  if (superadminAppearanceState) superadminAppearanceState.textContent = dark ? 'Dark' : 'Light';
 }
 function systemPrefersDark() {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
@@ -792,10 +796,17 @@ function applyGlassOpacity(value, { persist = false } = {}) {
   }
   const desktopSlider = $('#desktop-glass-opacity');
   if (desktopSlider) desktopSlider.value = String(transparency);
+  const superadminSlider = $('#superadmin-glass-opacity');
+  if (superadminSlider) {
+    superadminSlider.value = String(transparency);
+    superadminSlider.setAttribute('aria-valuetext', transparency === 0 ? '0% transparency, solid' : `${transparency}% transparency`);
+  }
   const label = $('#glass-opacity-label');
   if (label) label.textContent = `${transparency}% Transparency`;
   const desktopLabel = $('#desktop-glass-label');
   if (desktopLabel) desktopLabel.textContent = `${transparency}%`;
+  const superadminLabel = $('#superadmin-glass-label');
+  if (superadminLabel) superadminLabel.textContent = `${transparency}%`;
   if (persist && state.user?.id) {
     try { localStorage.setItem(userGlassKey(state.user), String(transparency)); } catch (error) { void error; }
   }
@@ -1353,6 +1364,14 @@ document.addEventListener('click', async (event) => {
     profileTrigger.setAttribute('aria-expanded', String(Boolean(opening)));
     return;
   }
+  const superadminProfileTrigger = event.target.closest('#superadmin-profile-trigger');
+  if (superadminProfileTrigger) {
+    const dropdown = $('#superadmin-profile-dropdown');
+    const opening = dropdown?.classList.contains('hidden');
+    dropdown?.classList.toggle('hidden', !opening);
+    superadminProfileTrigger.setAttribute('aria-expanded', String(Boolean(opening)));
+    return;
+  }
   const desktopProfileForm = event.target.closest('[data-desktop-profile-form]');
   if (desktopProfileForm) { closeDesktopProfileMenu(); await openProfile(desktopProfileForm.dataset.desktopProfileForm); return; }
   const pageButton = event.target.closest('[data-page]'); if (pageButton) { showPage(pageButton.dataset.page); return; }
@@ -1403,6 +1422,11 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if (event.key === 'Escape') {
+    if (!$('#superadmin-profile-dropdown')?.classList.contains('hidden')) {
+      closeDesktopProfileMenu();
+      $('#superadmin-profile-trigger')?.focus();
+      return;
+    }
     if (!$('#desktop-profile-dropdown')?.classList.contains('hidden')) {
       closeDesktopProfileMenu();
       $('#desktop-profile-trigger')?.focus();
@@ -1414,7 +1438,7 @@ document.addEventListener('keydown', (event) => {
   }
 });
 document.addEventListener('click', (event) => {
-  if (!event.target.closest('.desktop-profile-root')) closeDesktopProfileMenu();
+  if (!event.target.closest('.desktop-profile-root, .superadmin-user-menu')) closeDesktopProfileMenu();
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshMarketplaceTasks(); });
 window.addEventListener('focus', refreshMarketplaceTasks);
@@ -1441,6 +1465,7 @@ $('#search-form').addEventListener('submit', (event) => { event.preventDefault()
 $('#glass-opacity').addEventListener('input', (event) => applyGlassOpacity(event.target.value, { persist: true }));
 document.addEventListener('input', (event) => {
   if (event.target.id === 'desktop-glass-opacity') applyGlassOpacity(event.target.value, { persist: true });
+  if (event.target.id === 'superadmin-glass-opacity') applyGlassOpacity(event.target.value, { persist: true });
 });
 $('#status-filter').addEventListener('change', (event) => { state.filters.status = event.target.value; loadTasks(); });
 $('#category-filter').addEventListener('change', (event) => { state.filters.category = event.target.value; loadTasks(); });
