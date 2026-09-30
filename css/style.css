@@ -956,3 +956,44 @@ body.dark-mode.superadmin-mode .superadmin-report-button-view { border-color:#28
 body.dark-mode.superadmin-mode .superadmin-report-button-review { border-color:#285847; color:#a7efd4; background:#17372f; }
 body.dark-mode.superadmin-mode .superadmin-report-button-dismiss { border-color:#663c42; color:#ffbab3; background:#3b242b; }
 @media(max-width:700px){.superadmin-report-row{grid-template-columns:1fr;padding:1rem}.superadmin-report-actions{grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));min-width:0}.superadmin-report-heading{align-items:flex-start}}
+/* Readability and spacing pass across every superadmin workspace. */
+body.superadmin-mode .page-shell { font-size:1rem; line-height:1.55; }
+body.superadmin-mode .page-shell .text-xs { font-size:.8rem !important; line-height:1.45; }
+body.superadmin-mode .page-shell .text-sm { font-size:.925rem !important; line-height:1.5; }
+body.superadmin-mode .page-shell h1 { font-size:clamp(1.8rem,2.3vw,2.25rem); line-height:1.2; }
+body.superadmin-mode .superadmin-sidebar button { min-height:48px; font-size:.94rem; }
+body.superadmin-mode .superadmin-stat { min-height:92px; padding:1rem; }
+body.superadmin-mode .superadmin-stat-label { font-size:.82rem; }
+body.superadmin-mode .superadmin-stat-value { font-size:1.65rem; }
+body.superadmin-mode .superadmin-panel-heading { min-height:74px; padding:1rem 1.15rem; }
+body.superadmin-mode .superadmin-panel-heading h3 { font-size:1rem; }
+body.superadmin-mode .superadmin-panel-heading p { font-size:.82rem; }
+body.superadmin-mode .superadmin-feed-row,body.superadmin-mode .superadmin-compact-row { min-height:62px; padding:.75rem 1rem; }
+body.superadmin-mode .superadmin-feed-row strong,body.superadmin-mode .superadmin-compact-copy strong { font-size:.86rem; }
+body.superadmin-mode .superadmin-feed-row small,body.superadmin-mode .superadmin-compact-copy small { font-size:.76rem; }
+body.superadmin-mode .superadmin-status-pill { padding:.3rem .55rem; font-size:.7rem; }
+body.superadmin-mode .superadmin-live-pill { font-size:.72rem; }
+body.superadmin-mode .superadmin-pulse-summary span,body.superadmin-mode .superadmin-pulse-legend span,body.superadmin-mode .superadmin-pulse-foot { font-size:.78rem; }
+body.superadmin-mode .superadmin-pulse-legend b { font-size:.8rem; }
+body.superadmin-mode .superadmin-empty-state { font-size:.85rem; }
+body.superadmin-mode .admin-action-button { min-height:2.5rem; padding:.5rem .75rem; font-size:.82rem; }
+body.superadmin-mode #user-management-page table { font-size:.92rem; }
+body.superadmin-mode #user-management-page th { padding:.9rem .85rem; font-size:.76rem; letter-spacing:.06em; }
+body.superadmin-mode #user-management-page td { padding:.9rem .85rem; }
+body.superadmin-mode .superadmin-task-count,body.superadmin-mode .superadmin-task-search input,body.superadmin-mode .superadmin-task-status select,body.superadmin-mode .superadmin-task-view-toggle button,body.superadmin-mode .superadmin-pagination { font-size:.9rem; }
+body.superadmin-mode .superadmin-task-card-description { font-size:.9rem; line-height:1.6; }
+body.superadmin-mode .superadmin-task-card-meta { font-size:.85rem; }
+body.superadmin-mode .superadmin-task-card-owner,body.superadmin-mode .superadmin-task-card-owner small { font-size:.8rem; }
+body.superadmin-mode .superadmin-review-label,body.superadmin-mode .superadmin-review-field span { font-size:.78rem; }
+body.superadmin-mode .superadmin-account-heading p:last-child,body.superadmin-mode .superadmin-account-panel > div p { font-size:.92rem; line-height:1.55; }
+body.superadmin-mode .superadmin-account-panel { gap:1rem; padding:1.4rem; }
+body.superadmin-mode .superadmin-account-panel label { font-size:.88rem; }
+body.superadmin-mode .superadmin-account-save { min-height:2.8rem; font-size:.9rem; }
+body.superadmin-mode .superadmin-report-row { padding:1.35rem; }
+body.superadmin-mode .superadmin-report-kicker,body.superadmin-mode .superadmin-report-person-label,body.superadmin-mode .superadmin-report-reason > span,body.superadmin-mode .superadmin-report-details > span { font-size:.72rem; }
+body.superadmin-mode .superadmin-report-details p { font-size:.92rem; }
+body.superadmin-mode .superadmin-report-people small,body.superadmin-mode .superadmin-report-date { font-size:.78rem; }
+body.dark-mode.superadmin-mode .page-shell h1 { color:#f1f5f9; }
+body.dark-mode.superadmin-mode .superadmin-sidebar button { color:#c2ccda; }
+body.dark-mode.superadmin-mode #user-management-page th { color:#b7c3d2; }
+@media(max-width:760px){body.superadmin-mode .superadmin-account-grid{grid-template-columns:1fr}body.superadmin-mode .superadmin-sidebar button{min-height:44px;padding:0 .8rem}body.superadmin-mode .superadmin-stat{min-height:82px}}
