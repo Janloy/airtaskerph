@@ -283,7 +283,7 @@ export default async function handler(req, res) {
           rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at').order('role').order('first_name')),
           rows(s.from('account_activity').select('id,event_type,summary,reference_type,reference_id,created_at,user:user_profiles!account_activity_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(40)),
           rows(s.from('task_reports').select('id,task_id,reason,details,status,created_at,task:tasks!task_reports_task_id_fkey(title),reporter:user_profiles!task_reports_reporter_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(30)),
-          rows(s.from('tasks').select('id,title,category,status,budget,location,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(50)),
+          rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(50)),
           s.from('tasks').select('id',{count:'exact',head:true}),
           s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Completed'),
           s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Open')
@@ -297,7 +297,8 @@ export default async function handler(req, res) {
           last_name: account.last_name, email: account.email, role: account.role, created_at: account.created_at,
           ...(presenceByUser.get(Number(account.id)) || { last_login_at: null, last_seen_at: null })
         }));
-        return res.status(200).json(ok('',{users,events,reports,tasks,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0,open_tasks:openTasks.count||0}}));
+        const taskItems = tasks.map((task) => ({ ...task, id:Number(task.id), user_id:Number(task.user_id), budget:Number(task.budget)||0, owner_name:task.owner ? `${task.owner.first_name} ${task.owner.last_name}`.trim() : 'TaskerPH member' }));
+        return res.status(200).json(ok('',{users,events,reports,tasks:taskItems,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0,open_tasks:openTasks.count||0}}));
       }
       if (action === 'submit_report') {
         const taskId=Number(body.task_id), reason=clean(body.reason,80), details=clean(body.details,1000);

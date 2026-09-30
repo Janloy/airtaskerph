@@ -662,7 +662,7 @@ function renderAccountActivity(payload) {
   const taskShare = (count) => totalTasks ? `${Math.max(0, Math.min(100, count / totalTasks * 100))}%` : '0%';
   const pulse = $('#dashboard-task-pulse');
   if (pulse) pulse.innerHTML = `<div class="superadmin-pulse-summary"><strong>${totalTasks.toLocaleString('en-PH')}</strong><span>Total tasks tracked</span></div><div class="superadmin-pulse-track" role="img" aria-label="${openTasks} open, ${inProgressTasks} in progress, and ${completedTasks} completed tasks"><span class="pulse-open" style="width:${taskShare(openTasks)}"></span><span class="pulse-progress" style="width:${taskShare(inProgressTasks)}"></span><span class="pulse-complete" style="width:${taskShare(completedTasks)}"></span></div><div class="superadmin-pulse-legend"><span><i class="pulse-open"></i>Open <b>${openTasks.toLocaleString('en-PH')}</b></span><span><i class="pulse-progress"></i>In progress <b>${inProgressTasks.toLocaleString('en-PH')}</b></span><span><i class="pulse-complete"></i>Completed <b>${completedTasks.toLocaleString('en-PH')}</b></span></div><div class="superadmin-pulse-foot"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Counts update with dashboard activity.</div>`;
-  const tasksHtml = accountActivityData.tasks.map((task) => `<article class="superadmin-task-row"><div class="min-w-0"><strong>${escapeHtml(task.title)}</strong><p>${escapeHtml(task.category)} · ${escapeHtml(task.status)} · PHP ${escapeHtml(Number(task.budget).toLocaleString('en-PH'))}</p><small>${escapeHtml(task.owner ? `${task.owner.first_name} ${task.owner.last_name} · ${task.owner.email}` : '')}</small></div><button data-delete="${Number(task.id)}" class="admin-action-button text-rose-600">Remove</button></article>`).join('') || '<p class="p-4 text-sm text-slate-500">No tasks posted yet.</p>';
+  const tasksHtml = accountActivityData.tasks.map((task) => `<article class="superadmin-task-row"><div class="min-w-0"><strong>${escapeHtml(task.title)}</strong><p>${escapeHtml(task.category)} · ${escapeHtml(task.status)} · PHP ${escapeHtml(Number(task.budget).toLocaleString('en-PH'))}</p><small>${escapeHtml(task.owner ? `${task.owner.first_name} ${task.owner.last_name} · ${task.owner.email}` : '')}</small></div><div class="flex shrink-0 gap-2"><button type="button" data-superadmin-view-task="${Number(task.id)}" class="admin-action-button text-[#006f70]">View</button><button data-delete="${Number(task.id)}" class="admin-action-button text-rose-600">Remove</button></div></article>`).join('') || '<p class="p-4 text-sm text-slate-500">No tasks posted yet.</p>';
   $('#account-activity-tasks').innerHTML = tasksHtml;
   const recentTasksHtml = accountActivityData.tasks.slice(0, 5).map((task) => `<article class="superadmin-compact-row"><span class="superadmin-compact-icon"><i class="fa-solid fa-briefcase" aria-hidden="true"></i></span><span class="superadmin-compact-copy"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.category)} · ${escapeHtml(formatActivityTimestamp(task.created_at))}</small></span><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span></article>`).join('') || '<p class="superadmin-empty-state">No tasks posted yet.</p>';
   $('#dashboard-recent-tasks')?.replaceChildren();
@@ -1339,6 +1339,13 @@ async function resumeAuthIntent(intent) {
 document.addEventListener('click', async (event) => {
   const adminPageButton = event.target.closest('[data-admin-page]');
   if (adminPageButton) { event.preventDefault(); event.stopImmediatePropagation(); const targetPage = document.getElementById(adminPageButton.dataset.adminPage); if (!targetPage) { notify('This Superadmin page could not be found. Refresh the page and try again.', 'error'); return; } showPage(targetPage.id); return; }
+  const viewAdminTaskButton = event.target.closest('[data-superadmin-view-task]');
+  if (viewAdminTaskButton) {
+    const task = accountActivityData.tasks.find((item) => Number(item.id) === Number(viewAdminTaskButton.dataset.superadminViewTask));
+    if (!task) { notify('Task details are unavailable. Refresh the dashboard and try again.', 'error'); return; }
+    await openTask(task);
+    return;
+  }
   const deleteUserButton = event.target.closest('[data-delete-user]');
   const editUserButton = event.target.closest('[data-edit-user]');
   if (editUserButton) {
