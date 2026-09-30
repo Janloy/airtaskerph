@@ -142,6 +142,13 @@ body.dark-mode .task-existing-photo-heading small { color: #cbd5e1; }
 .bid-row-heading { display: block; min-width: 0; }
 .bid-person { min-width: 0; }
 .bidder-name { overflow-wrap: anywhere; line-height: 1.35; }
+.bidder-profile-link { display: inline-flex; max-width: 100%; align-items: center; gap: .7rem; border-radius: .9rem; padding: .25rem .5rem .25rem .25rem; color: #006f70; text-align: left; transition: background .16s ease, transform .16s ease; }
+.bidder-profile-link:hover { transform: translateY(-1px); background: #effaf7; }
+.bidder-profile-link:focus-visible { outline: 3px solid rgba(0,143,140,.35); outline-offset: 2px; }
+.bidder-profile-avatar { display: grid; width: 2.7rem; height: 2.7rem; flex: none; place-items: center; border-radius: .85rem; color: #087f78; background: #e6f7f3; }
+.bidder-profile-copy { display: grid; min-width: 0; gap: .15rem; }
+.bidder-profile-copy strong { overflow: hidden; font-size: .95rem; text-overflow: ellipsis; white-space: nowrap; }
+.bidder-profile-copy small { color: #64748b; font-size: .7rem; font-weight: 700; }
 .bid-row-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .85rem; padding-top: .75rem; border-top: 1px solid rgba(148,163,184,.35); }
 .bid-row-actions button { flex: 0 1 auto; }
 .bid-removal-reason { margin-top: .75rem; border-left: 3px solid #f59e0b; padding: .65rem .8rem; color: #78350f; background: rgba(245,158,11,.12); font-size: .82rem; line-height: 1.45; }
