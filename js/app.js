@@ -271,6 +271,32 @@ function closeModal(id) {
     state.preserveAuthIntent = false;
   }
 }
+function decisionModal({ title, message, confirmLabel = 'Confirm', danger = false, withReason = false }) {
+  let modal = $('#action-confirm-modal');
+  if (!modal) {
+    document.body.insertAdjacentHTML('beforeend', '<div id="action-confirm-modal" class="modal-backdrop fixed inset-0 z-[115] hidden items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="action-confirm-title"><form class="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl sm:p-7"><div class="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-teal-700"><i class="fa-solid fa-circle-question" aria-hidden="true"></i></div><h2 id="action-confirm-title" class="text-2xl font-bold"></h2><p data-confirm-message class="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600"></p><label data-confirm-reason-wrap class="mt-5 hidden text-sm font-bold">Cancellation reason <span class="font-normal text-slate-500">(optional)</span><textarea name="reason" rows="3" maxlength="500" class="form-control mt-2" placeholder="Let the other participant know why"></textarea></label><div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" data-confirm-cancel class="touch-target rounded-lg border border-slate-300 px-5 font-bold">Go back</button><button type="submit" data-confirm-submit class="touch-target rounded-lg bg-[#006f70] px-5 font-bold text-white"></button></div></form></div>');
+    modal = $('#action-confirm-modal');
+  }
+  const form = modal.querySelector('form');
+  modal.querySelector('#action-confirm-title').textContent = title;
+  modal.querySelector('[data-confirm-message]').textContent = message;
+  modal.querySelector('[data-confirm-submit]').textContent = confirmLabel;
+  modal.querySelector('[data-confirm-submit]').classList.toggle('bg-rose-600', danger);
+  modal.querySelector('[data-confirm-submit]').classList.toggle('hover:bg-rose-700', danger);
+  modal.querySelector('[data-confirm-submit]').classList.toggle('bg-[#006f70]', !danger);
+  const reasonWrap = modal.querySelector('[data-confirm-reason-wrap]');
+  reasonWrap.classList.toggle('hidden', !withReason);
+  form.elements.reason.value = '';
+  openModal('#action-confirm-modal');
+  return new Promise((resolve) => {
+    const finish = (value) => { closeModal('action-confirm-modal'); form.removeEventListener('submit', submit); modal.querySelector('[data-confirm-cancel]').removeEventListener('click', cancel); resolve(value); };
+    const submit = (event) => { event.preventDefault(); finish(withReason ? { reason: form.elements.reason.value.trim() } : true); };
+    const cancel = () => finish(null);
+    form.addEventListener('submit', submit);
+    modal.querySelector('[data-confirm-cancel]').addEventListener('click', cancel);
+    requestAnimationFrame(() => (withReason ? form.elements.reason : modal.querySelector('[data-confirm-cancel]')).focus({ preventScroll: true }));
+  });
+}
 function closeDrawer() {
   $('#mobile-drawer')?.classList.add('-translate-x-full');
   $('#drawer-overlay')?.classList.add('hidden');
@@ -1895,7 +1921,8 @@ document.addEventListener('click', async (event) => {
     const bidderName=bidRow?.querySelector('.bidder-profile-copy strong')?.textContent||'selected tasker';
     const offer=bidRow?.querySelector('.bid-person > p')?.textContent||'their offer';
     const taskTitle=state.activeTask?.title||'this task';
-    if(!window.confirm(`Accept ${bidderName} for “${taskTitle}” at ${offer}? This assigns the tasker, closes other bids, and starts the task.`)) return;
+    const accepted = await decisionModal({ title: 'Accept this tasker?', message: `${bidderName}\n\nTask: “${taskTitle}”\n${offer}\n\nThis assigns the tasker, closes other bids, and starts the task.`, confirmLabel: 'Accept tasker' });
+    if (!accepted) return;
     try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'accept', task_id: acceptButton.dataset.acceptTask, bid_id: acceptButton.dataset.acceptBid }) }); notify(payload.message); showPage('marketplace-page'); void loadTasks(); void updateNotificationCounts(); }
     catch (error) { notify(error.message, 'error'); }
   }
@@ -1903,10 +1930,14 @@ document.addEventListener('click', async (event) => {
   if (lifecycleButton) {
     const lifecycleAction=lifecycleButton.dataset.taskLifecycle, taskId=Number(lifecycleButton.dataset.taskId);
     if(lifecycleAction==='report_problem') { taskProblemModal(taskId); return; }
-    if(lifecycleAction==='cancel_assignment'&&!window.confirm('Cancel this task assignment? The other participant will be notified.')) return;
+    let cancelDetails = null;
+    if(lifecycleAction==='cancel_assignment') {
+      cancelDetails = await decisionModal({ title: 'Cancel this assignment?', message: 'This will stop the active task and notify the other participant.', confirmLabel: 'Cancel assignment', danger: true, withReason: true });
+      if (!cancelDetails) return;
+    }
     if(lifecycleAction==='confirm_completion'&&!window.confirm('Confirm that the task is complete? This will close the task and allow both of you to leave reviews.')) return;
     lifecycleButton.disabled=true;
-    try { const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:lifecycleAction,task_id:taskId})}); notify(payload.message); if(document.querySelector('.app-page:not(.hidden)')?.id==='my-bids-page') await loadMyBids(); else await loadMyTasks(); void updateNotificationCounts(); }
+    try { const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:lifecycleAction,task_id:taskId,...(cancelDetails?{reason:cancelDetails.reason}:{})})}); notify(payload.message); if(document.querySelector('.app-page:not(.hidden)')?.id==='my-bids-page') await loadMyBids(); else await loadMyTasks(); void updateNotificationCounts(); }
     catch(error){notify(error.message,'error');lifecycleButton.disabled=false;}
     return;
   }
