@@ -657,3 +657,100 @@ html.liquid-glass-active body.superadmin-mode .superadmin-profile-dropdown { bac
 html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-account-panel,
 html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-panel,
 html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-stat { border-color: rgba(203,213,225,.2); }
+
+/* Screenshot-inspired operations overview: calm canvas, compact metrics, clear panels. */
+body.superadmin-mode { background: #f3f5f8; }
+body.superadmin-mode .page-shell { background: #f3f5f8; }
+body.superadmin-mode #account-activity-modal > .mx-auto { padding-top: 1rem; }
+body.superadmin-mode #account-activity-modal .card { border-color: #e6eaf0; border-radius: 18px; background: #fff; box-shadow: 0 16px 42px rgba(28,39,56,.07); }
+body.superadmin-mode #account-activity-modal .superadmin-topbar { min-height: 66px; border-color: #edf0f4; padding: .65rem clamp(1rem,2vw,1.7rem); }
+body.superadmin-mode #account-activity-modal .superadmin-search { min-height: 40px; border-color: #edf0f4; background: #f8fafc; }
+body.superadmin-mode #account-activity-modal .card > .flex.items-start { align-items: center; border-color: #edf0f4; padding: 1.15rem clamp(1rem,2vw,1.7rem); }
+body.superadmin-mode #account-activity-title { font-size: 1.55rem; font-weight: 760; letter-spacing: -.04em; }
+body.superadmin-mode #account-activity-modal .space-y-5.overflow-y-auto { padding: 1rem clamp(1rem,2vw,1.7rem) 1.5rem; }
+body.superadmin-mode .superadmin-stats-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: .65rem; }
+body.superadmin-mode .superadmin-stat { min-height: 82px; grid-template-columns: 38px 1fr; column-gap: .6rem; border-color: #ebeff4; border-radius: 12px; background: #fff; padding: .75rem .8rem; box-shadow: 0 2px 8px rgba(30,41,59,.025); }
+body.superadmin-mode .superadmin-stat-icon { width: 36px; height: 36px; border-radius: 10px; background: #eff5ff; }
+body.superadmin-mode .superadmin-stat-label { font-size: .68rem; }
+body.superadmin-mode .superadmin-stat-value { font-size: 1.42rem; }
+body.superadmin-mode .superadmin-dashboard-grid { grid-template-columns: repeat(12,minmax(0,1fr)); gap: .75rem; margin-top: .8rem; }
+body.superadmin-mode .superadmin-dashboard-grid > .superadmin-panel { min-width: 0; border-color: #e9edf2; border-radius: 12px; background: #fff; box-shadow: 0 2px 9px rgba(30,41,59,.025); }
+body.superadmin-mode .superadmin-pulse-panel { grid-column: span 7; }
+body.superadmin-mode .superadmin-reports-panel { grid-column: span 5; }
+body.superadmin-mode .superadmin-events-panel { grid-column: span 5; }
+body.superadmin-mode .superadmin-tasks-panel { grid-column: span 7; }
+body.superadmin-mode .superadmin-members-panel { grid-column: span 7; }
+body.superadmin-mode .superadmin-management-panel { grid-column: span 5; }
+body.superadmin-mode .superadmin-panel-heading { min-height: 65px; align-items: center; padding: .8rem 1rem; }
+body.superadmin-mode .superadmin-panel-heading h3 { font-size: .86rem; }
+body.superadmin-mode .superadmin-panel-heading p { font-size: .68rem; }
+body.superadmin-mode .superadmin-feed-row, body.superadmin-mode .superadmin-report-row, body.superadmin-mode .superadmin-task-row { min-height: 55px; padding: .68rem .9rem; }
+body.superadmin-mode .superadmin-feed-row strong, body.superadmin-mode .superadmin-report-row strong, body.superadmin-mode .superadmin-task-row strong { font-size: .73rem; }
+body.superadmin-mode .superadmin-feed-row small, body.superadmin-mode .superadmin-report-row small, body.superadmin-mode .superadmin-task-row small { font-size: .64rem; }
+body.superadmin-mode .superadmin-report-row p, body.superadmin-mode .superadmin-task-row p { font-size: .67rem; }
+body.superadmin-mode .superadmin-pulse-content { padding: .95rem 1rem 1rem; }
+body.superadmin-mode .superadmin-pulse-summary { display: flex; align-items: baseline; gap: .55rem; }
+body.superadmin-mode .superadmin-pulse-summary strong { color: #172033; font-size: 1.5rem; letter-spacing: -.04em; }
+body.superadmin-mode .superadmin-pulse-summary span { color: #7b8798; font-size: .7rem; }
+body.superadmin-mode .superadmin-live-pill { display: inline-flex; align-items: center; gap: .35rem; border-radius: 999px; background: #eef7f4; padding: .28rem .5rem; color: #087e78; font-size: .63rem; font-weight: 750; }
+body.superadmin-mode .superadmin-live-pill i { width: 6px; height: 6px; border-radius: 50%; background: #10a37f; box-shadow: 0 0 0 3px rgba(16,163,127,.12); }
+body.superadmin-mode .superadmin-pulse-track { display: flex; height: 13px; overflow: hidden; gap: 3px; margin: 1.05rem 0 .9rem; border-radius: 99px; background: #edf1f5; }
+body.superadmin-mode .superadmin-pulse-track span { display: block; min-width: 0; border-radius: 99px; transition: width .3s ease; }
+body.superadmin-mode .pulse-open { background: #2876df; }
+body.superadmin-mode .pulse-progress { background: #81b2f3; }
+body.superadmin-mode .pulse-complete { background: #22a884; }
+body.superadmin-mode .superadmin-pulse-legend { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .5rem; }
+body.superadmin-mode .superadmin-pulse-legend span { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; color: #738096; font-size: .64rem; }
+body.superadmin-mode .superadmin-pulse-legend i { width: 7px; height: 7px; border-radius: 50%; }
+body.superadmin-mode .superadmin-pulse-legend b { color: #263348; font-size: .67rem; }
+body.superadmin-mode .superadmin-pulse-foot { margin-top: .85rem; border-top: 1px solid #eef1f5; padding-top: .65rem; color: #8995a6; font-size: .63rem; }
+body.superadmin-mode .superadmin-pulse-foot i { margin-right: .3rem; color: #7e9cc8; }
+body.superadmin-mode .superadmin-compact-row { display: flex; min-height: 51px; align-items: center; gap: .6rem; border-bottom: 1px solid #f0f2f5; padding: .55rem .9rem; }
+body.superadmin-mode .superadmin-compact-row:last-child { border-bottom: 0; }
+body.superadmin-mode .superadmin-compact-icon, body.superadmin-mode .superadmin-member-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border-radius: 9px; background: #eff5ff; color: #477fc3; font-size: .72rem; font-weight: 800; }
+body.superadmin-mode .superadmin-compact-copy { display: grid; min-width: 0; flex: 1; gap: .12rem; }
+body.superadmin-mode .superadmin-compact-copy strong { overflow: hidden; color: #334155; font-size: .7rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+body.superadmin-mode .superadmin-compact-copy small { overflow: hidden; color: #8b96a6; font-size: .62rem; text-overflow: ellipsis; white-space: nowrap; }
+body.superadmin-mode .superadmin-status-pill { flex: 0 0 auto; border-radius: 99px; background: #f1f5f9; padding: .22rem .45rem; color: #64748b; font-size: .58rem; font-weight: 750; }
+body.superadmin-mode .superadmin-status-pill[data-status="Open"] { background: #edf4ff; color: #2766b2; }
+body.superadmin-mode .superadmin-status-pill[data-status="In Progress"] { background: #fff5df; color: #a56a00; }
+body.superadmin-mode .superadmin-status-pill[data-status="Completed"] { background: #e8f7f1; color: #087e61; }
+body.superadmin-mode .superadmin-status-pill.member-role { text-transform: capitalize; }
+body.superadmin-mode .superadmin-empty-state { padding: 1rem; color: #8793a4; font-size: .72rem; text-align: center; }
+body.superadmin-mode .superadmin-shortcuts { grid-template-columns: 1fr; gap: .45rem; padding: .55rem .8rem .8rem; }
+body.superadmin-mode .superadmin-shortcuts button { min-height: 59px; border-radius: 10px; padding: .65rem .75rem; }
+body.dark-mode.superadmin-mode #account-activity-modal .card { border-color: #293647; background: #17212e; }
+body.dark-mode.superadmin-mode #account-activity-modal .superadmin-topbar,
+body.dark-mode.superadmin-mode #account-activity-modal .card > .flex.items-start { border-color: #2b3849; }
+body.dark-mode.superadmin-mode #account-activity-modal .superadmin-search { border-color: #344255; background: #111b27; }
+body.dark-mode.superadmin-mode .superadmin-stat,
+body.dark-mode.superadmin-mode .superadmin-dashboard-grid > .superadmin-panel { border-color: #2b3849; background: #1a2634; }
+body.dark-mode.superadmin-mode .superadmin-stat-label,
+body.dark-mode.superadmin-mode .superadmin-panel-heading p,
+body.dark-mode.superadmin-mode .superadmin-pulse-summary span,
+body.dark-mode.superadmin-mode .superadmin-pulse-legend span,
+body.dark-mode.superadmin-mode .superadmin-pulse-foot,
+body.dark-mode.superadmin-mode .superadmin-compact-copy small { color: #aab8c8; }
+body.dark-mode.superadmin-mode .superadmin-stat-value,
+body.dark-mode.superadmin-mode .superadmin-panel-heading h3,
+body.dark-mode.superadmin-mode .superadmin-pulse-summary strong,
+body.dark-mode.superadmin-mode .superadmin-pulse-legend b,
+body.dark-mode.superadmin-mode .superadmin-compact-copy strong { color: #f1f5f9; }
+body.dark-mode.superadmin-mode .superadmin-pulse-track { background: #2b3849; }
+body.dark-mode.superadmin-mode .superadmin-pulse-foot,
+body.dark-mode.superadmin-mode .superadmin-compact-row { border-color: #2b3849; }
+body.dark-mode.superadmin-mode .superadmin-compact-icon,
+body.dark-mode.superadmin-mode .superadmin-member-avatar { background: #243a57; color: #a8caff; }
+body.dark-mode.superadmin-mode .superadmin-status-pill { background: #2b3849; color: #d4dde8; }
+body.dark-mode.superadmin-mode .superadmin-status-pill[data-status="Open"] { background: #203b60; color: #b7d4ff; }
+body.dark-mode.superadmin-mode .superadmin-status-pill[data-status="In Progress"] { background: #51401d; color: #ffdfa0; }
+body.dark-mode.superadmin-mode .superadmin-status-pill[data-status="Completed"] { background: #17483d; color: #a3ead5; }
+body.dark-mode.superadmin-mode .superadmin-live-pill { background: #173b37; color: #8ce0d2; }
+body.dark-mode.superadmin-mode .superadmin-pulse-foot i { color: #9ab9e2; }
+@media (max-width: 1100px) { body.superadmin-mode .superadmin-stats-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } body.superadmin-mode .superadmin-events-panel, body.superadmin-mode .superadmin-tasks-panel, body.superadmin-mode .superadmin-members-panel, body.superadmin-mode .superadmin-management-panel { grid-column: span 6; } }
+@media (max-width: 760px) { body.superadmin-mode .superadmin-stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } body.superadmin-mode .superadmin-dashboard-grid { grid-template-columns: 1fr; } body.superadmin-mode .superadmin-dashboard-grid > .superadmin-panel { grid-column: 1; } body.superadmin-mode .superadmin-pulse-legend { grid-template-columns: 1fr; gap: .35rem; } }
+
+html.liquid-glass-active body.superadmin-mode .superadmin-dashboard-grid > .superadmin-panel,
+html.liquid-glass-active body.superadmin-mode .superadmin-stat { background-color: rgba(255,255,255,var(--admin-glass-opacity)); }
+html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-dashboard-grid > .superadmin-panel,
+html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-stat { background-color: rgba(26,38,52,var(--admin-glass-opacity)) !important; }
