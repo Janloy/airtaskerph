@@ -430,7 +430,8 @@ body.dark-mode .logout-confirm-icon { border-color: #7f1d1d; background: #451a1a
 .app-toast { display: flex; align-items: center; gap: .75rem; min-width: min( calc(100vw - 2rem), 22rem); color: #0f172a; border: 1px solid rgba(5,150,105,.3); animation: toast-in .35s cubic-bezier(.2,.8,.2,1) both; }
 .app-toast-success { background: #fff; }
 .app-toast-error { color: #fff; background: #0f172a; border-color: rgba(5,150,105,.55); }
-.app-toast-received { color: #172554; border-color: #93c5fd; background: #eff6ff; }
+.app-toast-received { color: #172554; border-color: #93c5fd; background: #eff6ff; cursor: pointer; }
+.app-toast-received:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
 .app-toast-received .app-toast-icon { background: #2563eb; }
 .app-toast-action { flex: none; border: 0; border-radius: .5rem; padding: .4rem .55rem; color: #1d4ed8; background: #dbeafe; font-size: .75rem; font-weight: 800; }
 .app-toast-action:hover { background: #bfdbfe; }

@@ -156,13 +156,18 @@ function notify(message, type = 'success') {
 function notifyReceived(title, message) {
   const element = document.createElement('div');
   element.className = 'app-toast app-toast-received fixed right-4 top-20 z-[70] max-w-sm rounded-lg px-4 py-3 shadow-xl';
-  element.setAttribute('role', 'status');
+  element.setAttribute('role', 'button');
+  element.setAttribute('tabindex', '0');
+  element.setAttribute('aria-label', `${title || 'New notification'}. Open your notifications.`);
   element.setAttribute('aria-live', 'polite');
   element.innerHTML = '<span class="app-toast-icon"><i class="fa-solid fa-bell" aria-hidden="true"></i></span><span class="app-toast-copy"><strong></strong><span></span></span><button class="app-toast-action" type="button">View</button><button class="app-toast-close" type="button" aria-label="Dismiss notification"><i class="fa-solid fa-xmark"></i></button>';
   element.querySelector('.app-toast-copy strong').textContent = title || 'New notification';
   element.querySelector('.app-toast-copy span').textContent = message || 'You have a new update.';
   element.querySelector('.app-toast-close').addEventListener('click', () => dismissToast(element));
-  element.querySelector('.app-toast-action').addEventListener('click', async () => { dismissToast(element); await loadNotificationCenter(); });
+  const openNotifications = async () => { dismissToast(element); await loadNotificationCenter(); };
+  element.querySelector('.app-toast-action').addEventListener('click', openNotifications);
+  element.addEventListener('click', (event) => { if (!event.target.closest('button')) void openNotifications(); });
+  element.addEventListener('keydown', (event) => { if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('button')) { event.preventDefault(); void openNotifications(); } });
   document.body.appendChild(element);
   setTimeout(() => dismissToast(element), 7000);
 }
