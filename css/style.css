@@ -917,3 +917,42 @@ body.dark-mode.superadmin-mode .superadmin-task-card h3 { color:#f1f5f9; }
 body.dark-mode.superadmin-mode .superadmin-task-card-description,body.dark-mode.superadmin-mode .superadmin-task-card-meta { color:#cbd5e1; }
 body.dark-mode.superadmin-mode .superadmin-task-card-owner,body.dark-mode.superadmin-mode .superadmin-task-card-actions { border-color:#334155; color:#a8b5c7; }
 @media(max-width:560px){.superadmin-task-toolbar{align-items:flex-start;flex-direction:column}.superadmin-task-view-toggle{width:100%}.superadmin-task-view-toggle button{flex:1;justify-content:center}.superadmin-task-filters{grid-template-columns:1fr}.superadmin-task-list .superadmin-task-row{align-items:flex-start;flex-direction:column}.superadmin-task-list .superadmin-task-card-actions{width:100%;justify-content:flex-end}}
+.superadmin-report-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:1.25rem; margin:.8rem 0; border:1px solid #e2e8f0; border-radius:1rem; padding:1.2rem; background:linear-gradient(145deg,#fff 0%,#fbfdfd 100%); box-shadow:0 5px 18px rgba(15,23,42,.035); }
+.superadmin-report-main { min-width:0; }
+.superadmin-report-heading { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.superadmin-report-kicker,.superadmin-report-person-label,.superadmin-report-reason > span,.superadmin-report-details > span { display:block; color:#84919d; font-size:.65rem; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
+.superadmin-report-heading strong { margin-top:.22rem; color:#17202a; font-size:1rem; white-space:normal; }
+.superadmin-report-status { display:inline-flex; flex:none; align-items:center; gap:.4rem; border:1px solid #f5d4a0; border-radius:999px; padding:.36rem .65rem; color:#925b08; background:#fff8e9; font-size:.69rem; font-weight:800; }
+.superadmin-report-status[data-status="Reviewed"] { border-color:#bce5d7; color:#08745f; background:#edfaf5; }
+.superadmin-report-status[data-status="Dismissed"] { border-color:#e2e8f0; color:#68727c; background:#f5f7f9; }
+.superadmin-report-reason { display:flex; flex-wrap:wrap; align-items:baseline; gap:.35rem .7rem; margin-top:1rem; }
+.superadmin-report-reason strong { color:#be4438; font-size:.87rem; }
+.superadmin-report-details { margin-top:.75rem; border-left:3px solid #e4eeed; padding:.15rem 0 .15rem .75rem; }
+.superadmin-report-details p { margin:.22rem 0 0; color:#52616c; font-size:.82rem; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
+.superadmin-report-people { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:.7rem; margin-top:1rem; }
+.superadmin-report-people > div { display:grid; justify-items:start; gap:.15rem; border:1px solid #edf1f4; border-radius:.75rem; padding:.7rem .8rem; background:#fff; }
+.superadmin-report-person-label { display:flex; align-items:center; gap:.35rem; }
+.superadmin-report-profile-link { display:inline-flex; align-items:center; gap:.4rem; color:#076c64; font-size:.82rem; font-weight:800; text-align:left; }
+.superadmin-report-profile-link:hover { text-decoration:underline; }
+.superadmin-report-profile-link i { font-size:.62rem; }
+.superadmin-report-people small,.superadmin-report-date { color:#8b98a4; font-size:.68rem; overflow-wrap:anywhere; }
+.superadmin-report-date { margin-top:.75rem; }
+.superadmin-report-actions { display:grid; min-width:9.5rem; gap:.5rem; }
+.superadmin-report-button { display:inline-flex; min-height:2.55rem; align-items:center; justify-content:center; gap:.5rem; border:1px solid transparent; border-radius:.7rem; padding:.55rem .8rem; font-size:.75rem; font-weight:800; transition:background .15s ease,border-color .15s ease,transform .15s ease; }
+.superadmin-report-button:hover { transform:translateY(-1px); }
+.superadmin-report-button-view { border-color:#b8ded8; color:#076c64; background:#eff9f7; }
+.superadmin-report-button-view:hover { background:#e1f3ef; }
+.superadmin-report-button-review { border-color:#bce5d7; color:#08745f; background:#edfaf5; }
+.superadmin-report-button-review:hover { background:#dcf5eb; }
+.superadmin-report-button-dismiss { border-color:#f0cfcc; color:#b53b35; background:#fff5f4; }
+.superadmin-report-button-dismiss:hover { background:#fee9e7; }
+.superadmin-report-removed { padding:.5rem; color:#8b98a4; font-size:.72rem; text-align:center; }
+body.dark-mode.superadmin-mode .superadmin-report-row { border-color:#334155; background:linear-gradient(145deg,#172334 0%,#14202e 100%); }
+body.dark-mode.superadmin-mode .superadmin-report-heading strong { color:#f1f5f9; }
+body.dark-mode.superadmin-mode .superadmin-report-details p { color:#cbd5e1; }
+body.dark-mode.superadmin-mode .superadmin-report-people > div { border-color:#334155; background:#172334; }
+body.dark-mode.superadmin-mode .superadmin-report-profile-link { color:#8ce0d2; }
+body.dark-mode.superadmin-mode .superadmin-report-button-view { border-color:#285652; color:#bdf4e8; background:#173b3b; }
+body.dark-mode.superadmin-mode .superadmin-report-button-review { border-color:#285847; color:#a7efd4; background:#17372f; }
+body.dark-mode.superadmin-mode .superadmin-report-button-dismiss { border-color:#663c42; color:#ffbab3; background:#3b242b; }
+@media(max-width:700px){.superadmin-report-row{grid-template-columns:1fr;padding:1rem}.superadmin-report-actions{grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));min-width:0}.superadmin-report-heading{align-items:flex-start}}
