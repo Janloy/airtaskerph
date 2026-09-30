@@ -850,6 +850,10 @@ body.dark-mode .superadmin-bid-message p,body.dark-mode .superadmin-profile-bid 
 @media(max-width:700px){.superadmin-profile-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.superadmin-profile-hero{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task,.superadmin-profile-bid{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task .admin-action-button,.superadmin-profile-bid .admin-action-button{margin-left:auto}.superadmin-bid-count-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.superadmin-bid-row{grid-template-columns:1fr auto}.superadmin-bid-offer{grid-column:1}.superadmin-bid-message{grid-column:1/-1}}
 .superadmin-task-toolbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin:1rem 0; }
 .superadmin-task-count { margin-top:.25rem; color:#64748b; font-size:.82rem; }
+.superadmin-task-search { display:flex; min-height:2.9rem; align-items:center; gap:.7rem; margin:0 0 1rem; border:1px solid #dbe3e7; border-radius:.85rem; padding:0 .9rem; color:#94a3b8; background:#fff; }
+.superadmin-task-search:focus-within { border-color:#7cc9bc; box-shadow:0 0 0 3px rgba(8,126,120,.1); }
+.superadmin-task-search input { width:100%; border:0; outline:0; color:#1e293b; background:transparent; font-size:.86rem; }
+.superadmin-task-search input::placeholder { color:#94a3b8; }
 .superadmin-task-view-toggle { display:inline-flex; gap:.25rem; border:1px solid #dbe3e7; border-radius:.8rem; padding:.25rem; background:#f8fafc; }
 .superadmin-task-view-toggle button { display:inline-flex; min-height:2.35rem; align-items:center; gap:.45rem; border:1px solid transparent; border-radius:.6rem; padding:0 .8rem; color:#64748b; font-size:.8rem; font-weight:750; }
 .superadmin-task-view-toggle button.is-active { border-color:#c9e8e2; color:#075e59; background:#e4f4f1; box-shadow:0 1px 3px rgba(15,23,42,.07); }
@@ -877,6 +881,8 @@ body.dark-mode.superadmin-mode .superadmin-task-view-toggle { border-color:#3341
 body.dark-mode.superadmin-mode .superadmin-task-view-toggle button { color:#a8b5c7; }
 body.dark-mode.superadmin-mode .superadmin-task-view-toggle button.is-active { border-color:#285652; color:#c3fff2; background:#173b3b; }
 body.dark-mode.superadmin-mode .superadmin-task-count { color:#a8b5c7; }
+body.dark-mode.superadmin-mode .superadmin-task-search { border-color:#334155; color:#94a3b8; background:#172334; }
+body.dark-mode.superadmin-mode .superadmin-task-search input { color:#e2e8f0; }
 body.dark-mode.superadmin-mode .superadmin-task-list .superadmin-task-row,body.dark-mode.superadmin-mode .superadmin-task-card { border-color:#334155; background:#172334; }
 body.dark-mode.superadmin-mode .superadmin-task-card h3 { color:#f1f5f9; }
 body.dark-mode.superadmin-mode .superadmin-task-card-description,body.dark-mode.superadmin-mode .superadmin-task-card-meta { color:#cbd5e1; }
