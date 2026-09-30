@@ -67,6 +67,7 @@ const loadMyBids = async (s, profile) => {
     const owner = task?.owner;
     return {
       ...bid,
+      status: bid.status === 'Accepted' && task?.status === 'Open' ? 'Cancelled' : bid.status,
       id: Number(bid.id), task_id: Number(bid.task_id), bidder_id: Number(bid.bidder_id),
       amount: Number(bid.amount), owner_id: Number(task?.user_id),
       owner_name: owner ? `${owner.first_name} ${owner.last_name}`.trim() : '',
@@ -98,7 +99,8 @@ const loadTaskBids = async (s, task, profile) => {
   return visible.map((bid) => {
     const person = personById.get(Number(bid.bidder_id));
     return {
-      ...bid, id: Number(bid.id), task_id: Number(bid.task_id), bidder_id: Number(bid.bidder_id),
+      ...bid, status: bid.status === 'Accepted' && task.status === 'Open' ? 'Cancelled' : bid.status,
+      id: Number(bid.id), task_id: Number(bid.task_id), bidder_id: Number(bid.bidder_id),
       amount: Number(bid.amount), unread_message_count: unreadByBidder.get(Number(bid.bidder_id)) || 0,
       bidder_name: person ? `${person.first_name} ${person.last_name}`.trim() : 'TaskerPH member',
       bidder_avatar_path: publicAvatarUrl(s, person?.avatar_path), has_reviewed: reviews.some((review)=>Number(review.task_id)===Number(task.id))
@@ -115,7 +117,8 @@ const shapeTasks = async (s, tasks, viewer, { mine = false } = {}) => {
     ]);
     const bidCounts = new Map();
     for (const bid of bids) bidCounts.set(Number(bid.task_id), (bidCounts.get(Number(bid.task_id)) || 0) + 1);
-    const accepted = bids.filter((bid) => bid.status === 'Accepted');
+    const activeTaskStatuses = new Set(tasks.filter((task) => ['In Progress','Awaiting Confirmation','Under Review'].includes(task.status)).map((task) => Number(task.id)));
+    const accepted = bids.filter((bid) => bid.status === 'Accepted' && activeTaskStatuses.has(Number(bid.task_id)));
     const taskerIds = [...new Set(accepted.map((bid) => Number(bid.bidder_id)))];
     const taskers = taskerIds.length ? await rows(s.from('user_profiles').select('id,first_name,last_name').in('id', taskerIds)) : [];
     const taskerById = new Map(taskers.map((person) => [Number(person.id), person]));
