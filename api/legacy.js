@@ -192,6 +192,7 @@ export default async function handler(req, res) {
       let q = s.from('tasks').select('*').order('created_at', { ascending: false });
       if (query.get('mine') === '1') { if (!profile) throw fail('Please log in to continue.', 401); q = q.eq('user_id', profile.id); }
       if (['Open','In Progress','Completed'].includes(query.get('status'))) q = q.eq('status', query.get('status'));
+      else if (query.get('mine') !== '1') q = q.neq('status', 'Completed');
       if (query.get('category')) q = q.eq('category', query.get('category'));
       if (query.get('search')) { const term = query.get('search').replace(/[,%()]/g, ' '); q = q.or(`title.ilike.%${term}%,description.ilike.%${term}%,location.ilike.%${term}%`); }
       const tasks = await rows(q); return res.status(200).json(ok('', { tasks: await shapeTasks(s, tasks, profile, { mine: query.get('mine') === '1' }) }));
