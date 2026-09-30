@@ -804,7 +804,17 @@ body.dark-mode .superadmin-review-label,body.dark-mode .superadmin-review-field 
 .superadmin-profile-stats strong { color:#17202a; font-size:.95rem; }
 .superadmin-profile-task { display:flex; align-items:center; gap:1rem; justify-content:space-between; border:1px solid var(--review-border); border-radius:.9rem; padding:1rem; background:#fff; }
 .superadmin-profile-empty { border:1px dashed var(--review-border); border-radius:1rem; padding:2.5rem 1rem; color:var(--review-muted); text-align:center; }
+.superadmin-profile-activity { display:flex; align-items:flex-start; gap:.8rem; border-bottom:1px solid var(--review-border); padding:.8rem .2rem; }
+.superadmin-profile-activity:last-child { border-bottom:0; }
+.superadmin-profile-activity > span { display:grid; width:2.25rem; height:2.25rem; flex:none; place-items:center; border-radius:.75rem; color:#087f78; background:#e6f7f3; }
+.superadmin-profile-activity strong,.superadmin-profile-activity small { display:block; }
+.superadmin-profile-activity strong { color:#334155; font-size:.88rem; }
+.superadmin-profile-activity small { margin-top:.22rem; color:#64748b; font-size:.72rem; text-transform:capitalize; }
 body.dark-mode .superadmin-profile-hero,body.dark-mode .superadmin-profile-stats article,body.dark-mode .superadmin-profile-task { border-color:#334155; background:#172334; }
 body.dark-mode .superadmin-profile-hero h2,body.dark-mode .superadmin-profile-stats strong { color:#f1f5f9; }
 body.dark-mode .superadmin-profile-hero p:not(.superadmin-review-label),body.dark-mode .superadmin-profile-stats span,body.dark-mode .superadmin-profile-empty { color:#a8b5c7; }
+body.dark-mode .superadmin-profile-activity { border-color:#334155; }
+body.dark-mode .superadmin-profile-activity > span { color:#8ce0d2; background:#173b3b; }
+body.dark-mode .superadmin-profile-activity strong { color:#e2e8f0; }
+body.dark-mode .superadmin-profile-activity small { color:#a8b5c7; }
 @media(max-width:700px){.superadmin-profile-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.superadmin-profile-hero{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task .admin-action-button{margin-left:auto}}

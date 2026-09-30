@@ -304,18 +304,19 @@ export default async function handler(req, res) {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view member profiles.',403);
         const userId = Number(body.user_id);
         if (!Number.isSafeInteger(userId) || userId < 1) throw fail('Choose a valid account.',422);
-        const [account, tasks, totalTasks, completedTasks, presence] = await Promise.all([
+        const [account, tasks, totalTasks, completedTasks, presence, recentActivity] = await Promise.all([
           rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,avatar_path,created_at').eq('id',userId).maybeSingle()),
           rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(25)),
           s.from('tasks').select('id',{count:'exact',head:true}).eq('user_id',userId),
           s.from('tasks').select('id',{count:'exact',head:true}).eq('user_id',userId).eq('status','Completed'),
-          rows(s.from('account_presence').select('last_login_at,last_seen_at').eq('user_id',userId).maybeSingle())
+          rows(s.from('account_presence').select('last_login_at,last_seen_at').eq('user_id',userId).maybeSingle()),
+          rows(s.from('account_activity').select('id,event_type,summary,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(10))
         ]);
         if (!account) throw fail('Account not found.',404);
         for (const result of [totalTasks,completedTasks]) if (result.error) throw fail(result.error.message);
         const profileData = {...account,id:Number(account.id),...(presence||{last_login_at:null,last_seen_at:null})};
         const taskItems = tasks.map((task)=>({...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:`${account.first_name} ${account.last_name}`.trim(),owner:{first_name:account.first_name,last_name:account.last_name,email:account.email}}));
-        return res.status(200).json(ok('',{profile:profileData,tasks:taskItems,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0}}));
+        return res.status(200).json(ok('',{profile:profileData,tasks:taskItems,recent_activity:recentActivity,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0}}));
       }
       if (action === 'submit_report') {
         const taskId=Number(body.task_id), reason=clean(body.reason,80), details=clean(body.details,1000);
