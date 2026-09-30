@@ -773,3 +773,22 @@ body.superadmin-mode #user-management-page .superadmin-user-edit { border-color:
 body.superadmin-mode #user-management-page .superadmin-user-edit:hover { border-color: #9ecfc8; background: #eff8f6; color: #075e59; }
 body.dark-mode.superadmin-mode #user-management-page .superadmin-user-edit { border-color: #43536a; background: #1a2634; color: #e2e8f0; }
 body.dark-mode.superadmin-mode #user-management-page .superadmin-user-edit:hover { border-color: #39897e; background: #173b3b; color: #c3fff2; }
+.superadmin-task-detail { --review-border: #e2e8f0; --review-muted: #64748b; }
+.superadmin-task-detail-header { display:flex; align-items:center; justify-content:space-between; gap:1.5rem; padding:1.75rem 2rem; color:#fff; background:linear-gradient(115deg,#075f60,#087f78 58%,#159b83); }
+.superadmin-task-detail-header p { color:rgba(255,255,255,.78); }
+.superadmin-review-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; padding:1rem 1.25rem; border:1px solid var(--review-border); border-radius:1rem; background:#f8fafc; }
+.superadmin-review-summary > div { display:flex; flex-direction:column; align-items:flex-start; gap:.35rem; }
+.superadmin-review-label,.superadmin-review-field span { color:var(--review-muted); font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.superadmin-review-card { min-width:0; padding:1.4rem; border:1px solid var(--review-border); border-radius:1rem; background:#fff; }
+.superadmin-review-field { display:flex; flex-direction:column; gap:.4rem; padding:1rem; border:1px solid var(--review-border); border-radius:.8rem; background:#f8fafc; }
+.superadmin-review-field strong { color:#17202a; }
+.superadmin-review-description { margin-top:1.5rem; border-top:1px solid var(--review-border); padding-top:1.25rem; }
+.superadmin-review-description h3 { font-size:1rem; font-weight:800; }
+.superadmin-review-description p { margin-top:.65rem; color:#475569; font-size:.92rem; line-height:1.75; white-space:pre-wrap; overflow-wrap:anywhere; }
+.superadmin-review-owner-icon { display:grid; width:3rem; height:3rem; place-items:center; margin-bottom:1rem; border-radius:1rem; color:#087f78; background:#d8f4ed; }
+body.dark-mode .superadmin-review-summary,body.dark-mode .superadmin-review-card,body.dark-mode .superadmin-review-field { border-color:#334155; background:#172334; }
+body.dark-mode .superadmin-task-detail { color:#e2e8f0; }
+body.dark-mode .superadmin-review-field strong,body.dark-mode .superadmin-review-description h3 { color:#f1f5f9; }
+body.dark-mode .superadmin-review-description p { color:#cbd5e1; }
+body.dark-mode .superadmin-review-label,body.dark-mode .superadmin-review-field span { color:#a8b5c7; }
+@media(max-width:640px){.superadmin-task-detail-header{align-items:flex-start;flex-direction:column;padding:1.35rem}.superadmin-review-summary{grid-template-columns:1fr}.superadmin-review-summary>div{flex-direction:row;align-items:center;justify-content:space-between;width:100%}}

@@ -548,7 +548,7 @@ function protectedRouteForElement(target) {
 function showPage(pageId) {
   const protectedIntent = { 'create-task-page': 'post', 'my-tasks-modal': 'tasks', 'my-bids-page': 'bids', 'profile-page': 'profile', 'saved-tasks-page': 'saved', 'conversation-modal': 'messages' }[pageId];
   if (protectedIntent && requestAuthGate(protectedIntent)) return false;
-  if (['account-activity-modal','user-management-page','task-management-page','report-management-page','audit-log-page','superadmin-account-page'].includes(pageId) && state.user?.role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
+  if (['account-activity-modal','user-management-page','task-management-page','superadmin-task-detail-page','report-management-page','audit-log-page','superadmin-account-page'].includes(pageId) && state.user?.role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
   if (pageId === 'superadmin-account-page') renderSuperadminAccountSettings();
   document.querySelectorAll('.superadmin-sidebar [data-admin-page], .superadmin-sidebar [data-page]').forEach((button) => {
@@ -1005,6 +1005,15 @@ function returnFromTaskDetails() {
   showPage(previous.pageId);
   requestAnimationFrame(() => window.scrollTo({ top: previous.scrollY, left: 0, behavior: 'instant' }));
 }
+function openSuperadminTask(task) {
+  if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can review marketplace tasks.', 'error'); return; }
+  state.superadminTaskReturn = document.querySelector('.app-page:not(.hidden)')?.id || 'task-management-page';
+  const owner = task.owner || {};
+  const fullName = task.owner_name || `${owner.first_name || ''} ${owner.last_name || ''}`.trim() || 'TaskerPH member';
+  const photos = taskPhotoMarkup(task);
+  $('#superadmin-task-detail-content').innerHTML = `<div class="superadmin-review-summary"><div><span class="superadmin-review-label">Listing status</span><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span></div><div><span class="superadmin-review-label">Task ID</span><strong>#${Number(task.id)}</strong></div><div><span class="superadmin-review-label">Posted</span><strong>${escapeHtml(formatActivityTimestamp(task.created_at))}</strong></div></div><div class="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,.8fr)]"><article class="superadmin-review-card"><p class="text-xs font-bold uppercase tracking-[.15em] text-[#008f8c]">${escapeHtml(task.category || 'Uncategorized')}</p><h2 class="mt-2 text-2xl font-extrabold">${escapeHtml(task.title)}</h2>${photos}<div class="mt-5 grid gap-3 sm:grid-cols-2"><div class="superadmin-review-field"><span>Budget</span><strong>${money(task.budget)}</strong></div><div class="superadmin-review-field"><span>Location</span><strong>${escapeHtml(task.location || 'Not provided')}</strong></div></div><div class="superadmin-review-description"><h3>Task description</h3><p>${escapeHtml(task.description || 'No description provided.')}</p></div></article><aside class="superadmin-review-card h-fit"><div class="superadmin-review-owner-icon"><i class="fa-solid fa-user" aria-hidden="true"></i></div><p class="superadmin-review-label">Posted by</p><h3 class="mt-1 text-xl font-bold">${escapeHtml(fullName)}</h3><p class="mt-1 break-all text-sm text-slate-500">${escapeHtml(owner.email || '')}</p><div class="mt-5 border-t border-slate-200 pt-4"><p class="superadmin-review-label">Moderation</p><p class="mt-2 text-sm leading-6 text-slate-600">Remove this listing if it violates marketplace rules or contains unsafe content.</p><button type="button" data-delete="${Number(task.id)}" class="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 px-4 font-bold text-rose-600 hover:bg-rose-50"><i class="fa-solid fa-trash" aria-hidden="true"></i>Remove listing</button></div></aside></div>`;
+  showPage('superadmin-task-detail-page');
+}
 async function openPublicProfile(userId, taskId = null) {
   const currentPage = document.querySelector('.app-page:not(.hidden)')?.id || 'marketplace-page';
   state.publicProfileReturn = { pageId: currentPage, scrollY: window.scrollY, taskId: Number(taskId) || null };
@@ -1343,9 +1352,11 @@ document.addEventListener('click', async (event) => {
   if (viewAdminTaskButton) {
     const task = accountActivityData.tasks.find((item) => Number(item.id) === Number(viewAdminTaskButton.dataset.superadminViewTask));
     if (!task) { notify('Task details are unavailable. Refresh the dashboard and try again.', 'error'); return; }
-    await openTask(task);
+    openSuperadminTask(task);
     return;
   }
+  const backFromAdminTask = event.target.closest('[data-superadmin-task-back]');
+  if (backFromAdminTask) { showPage(state.superadminTaskReturn || 'task-management-page'); return; }
   const deleteUserButton = event.target.closest('[data-delete-user]');
   const editUserButton = event.target.closest('[data-edit-user]');
   if (editUserButton) {
