@@ -1973,6 +1973,7 @@ document.addEventListener('click', async (event) => {
   const userPageButton = event.target.closest('[data-superadmin-user-page]');
   if (userPageButton) { superadminUserPage = Number(userPageButton.dataset.superadminUserPage) || 1; renderSuperadminUsers(); return; }
   if (event.target.closest('#superadmin-task-load-more')) { await loadMoreSuperadminTasks(); return; }
+  if (event.target.closest('[data-open-disputes]')) { showPage('task-management-page'); $('#superadmin-task-status-filter').value = 'Under Review'; $('#superadmin-task-search').value = ''; await searchSuperadminTasks(); return; }
   if (event.target.closest('[data-filter-disputes]')) { $('#superadmin-task-status-filter').value = 'Under Review'; $('#superadmin-task-search').value = ''; await searchSuperadminTasks(); return; }
   const taskViewButton = event.target.closest('[data-admin-task-view]');
   if (taskViewButton) {
