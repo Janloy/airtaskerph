@@ -640,7 +640,7 @@ function renderAccountActivity(payload) {
   accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [], tasks: Array.isArray(payload.tasks) ? payload.tasks : [], stats: payload.stats || {} };
   const users = accountActivityData.users;
   const active = users.filter((user) => user.last_seen_at && Date.now() - new Date(user.last_seen_at).getTime() <= 5 * 60 * 1000).length;
-  const admins = users.filter((user) => user.role === 'admin' || user.role === 'superadmin').length;
+  const admins = users.filter((user) => user.role === 'admin').length;
   const members = users.filter((user) => user.role === 'user').length;
   const summary = [
     ['Members', members, 'fa-users', 'text-sky-600'], ['Admins', admins, 'fa-user-shield', 'text-violet-600'],
@@ -667,7 +667,7 @@ function renderAccountActivity(payload) {
   const recentTasksHtml = accountActivityData.tasks.slice(0, 5).map((task) => `<article class="superadmin-compact-row"><span class="superadmin-compact-icon"><i class="fa-solid fa-briefcase" aria-hidden="true"></i></span><span class="superadmin-compact-copy"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.category)} · ${escapeHtml(formatActivityTimestamp(task.created_at))}</small></span><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span></article>`).join('') || '<p class="superadmin-empty-state">No tasks posted yet.</p>';
   $('#dashboard-recent-tasks')?.replaceChildren();
   if ($('#dashboard-recent-tasks')) $('#dashboard-recent-tasks').innerHTML = recentTasksHtml;
-  const recentUsersHtml = [...users].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 5).map((user) => `<article class="superadmin-compact-row"><span class="superadmin-member-avatar">${escapeHtml(initials(user))}</span><span class="superadmin-compact-copy"><strong>${escapeHtml(`${user.first_name} ${user.last_name}`)}</strong><small>${escapeHtml(user.email)}</small></span><span class="superadmin-status-pill member-role">${escapeHtml(user.role)}</span></article>`).join('') || '<p class="superadmin-empty-state">No members yet.</p>';
+  const recentUsersHtml = users.filter((user) => user.role === 'user').sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 5).map((user) => `<article class="superadmin-compact-row"><span class="superadmin-member-avatar">${escapeHtml(initials(user))}</span><span class="superadmin-compact-copy"><strong>${escapeHtml(`${user.first_name} ${user.last_name}`)}</strong><small>${escapeHtml(user.email)}</small></span><span class="superadmin-status-pill member-role">Member</span></article>`).join('') || '<p class="superadmin-empty-state">No members yet.</p>';
   if ($('#dashboard-members')) $('#dashboard-members').innerHTML = recentUsersHtml;
   if ($('#admin-topbar-name')) $('#admin-topbar-name').textContent = `${state.user?.first_name || ''} ${state.user?.last_name || ''}`.trim();
   renderSuperadminUsers();
@@ -675,8 +675,8 @@ function renderAccountActivity(payload) {
   const body = $('#superadmin-users-table'); if (!body) return;
   const term = ($('#superadmin-user-search')?.value || '').trim().toLocaleLowerCase();
   const role = $('#superadmin-user-filter')?.value || 'all';
-  const users = accountActivityData.users.filter((user) => (role === 'all' || user.role === role) && `${user.first_name} ${user.middle_initial || ''} ${user.last_name} ${user.email}`.toLocaleLowerCase().includes(term));
-  body.innerHTML = users.length ? users.map((user) => `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`)}</td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3">${user.role === 'superadmin' ? '<span class="text-xs text-[#68727c]">Protected</span>' : `<button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button>`}</td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
+  const users = accountActivityData.users.filter((user) => user.role !== 'superadmin' && (role === 'all' || user.role === role) && `${user.first_name} ${user.middle_initial || ''} ${user.last_name} ${user.email}`.toLocaleLowerCase().includes(term));
+  body.innerHTML = users.length ? users.map((user) => `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`)}</td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3"><button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button></td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
 }
 async function loadAccountActivity() {
   if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can view account activity.', 'error'); return; }
