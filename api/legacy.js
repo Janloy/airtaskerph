@@ -574,6 +574,9 @@ export default async function handler(req, res) {
       }
       if(action==='reopen_task') {
         if(t.status!=='Cancelled') throw fail('Only a cancelled task can be reopened.',409);
+        // Retire the former assignment before making the listing available again.
+        // This also repairs older cancelled tasks whose accepted bid was left active.
+        await rows(s.from('bids').update({status:'Cancelled'}).eq('task_id',id).eq('status','Accepted'));
         const reopened=await rows(s.from('tasks').update({status:'Open',completion_requested_at:null,completion_confirmed_at:null}).eq('id',id).eq('status','Cancelled').select('id'));
         if(!reopened.length) throw fail('The task status changed. Refresh and try again.',409);
         await logActivity(s,profile.id,'task_reopened',`Reopened cancelled task #${id}`,'task',id);
