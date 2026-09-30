@@ -135,7 +135,7 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) recordAuthActivity();
 });
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-const money = (value) => `â‚±${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+const money = (value) => `\u20B1${Number(value).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
 const initials = (user) => `${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase();
 
 function notify(message, type = 'success') {
