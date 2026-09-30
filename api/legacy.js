@@ -315,6 +315,18 @@ export default async function handler(req, res) {
         await logActivity(s,profile.id,'report_reviewed',`Report #${id} marked ${status.toLowerCase()}`,'report',id);
         return res.status(200).json(ok('Report updated.'));
       }
+      if (action === 'delete_user') {
+        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can delete accounts.',403);
+        const targetId=Number(body.user_id);
+        if (!Number.isSafeInteger(targetId) || targetId === Number(profile.id)) throw fail('You cannot delete your own account.',422);
+        const target=await rows(s.from('user_profiles').select('id,auth_user_id,first_name,last_name,role').eq('id',targetId).maybeSingle());
+        if (!target) throw fail('Account not found.',404);
+        if (target.role === 'superadmin') throw fail('Superadmin accounts are protected from deletion.',403);
+        const {error}=await s.auth.admin.deleteUser(target.auth_user_id);
+        if(error) throw fail(error.message,400);
+        await logActivity(s,profile.id,'user_deleted',`Deleted account: ${target.first_name} ${target.last_name} (${target.role})`,'user',target.id);
+        return res.status(200).json(ok('User account deleted.'));
+      }
       if (action==='create_admin') {
         if(profile.role!=='superadmin') throw fail('Only the Superadmin can create Admin accounts.',403);
         const {data,error}=await s.auth.admin.createUser({email:clean(body.email,190).toLowerCase(),password:String(body.password||''),email_confirm:true,user_metadata:{first_name:clean(body.first_name,80),middle_initial:clean(body.middle_initial,1),last_name:clean(body.last_name,80)}});

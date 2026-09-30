@@ -18,7 +18,7 @@ Do not put the service-role key in browser code. The deployed app uses the stati
 
 Task posts can include up to three JPG, PNG, or WEBP images. The browser resizes them to JPEG before upload; the API accepts up to 450 KB per compressed image and stores them in the public `task-photos` Supabase Storage bucket. Public task images are viewable by anyone who can view the task. Task owners can open photos in a full-screen viewer and remove or replace individual photos while editing a task.
 
-The superadmin-only dashboard lists admins and users, recent registrations and task completions, and submitted task reports. Superadmins can mark reports reviewed or dismiss them. Members can report a task from its detail view. Activity history is recorded going forward; older events cannot be reconstructed.
+The superadmin-only area has separate Dashboard, Users, Tasks, Reports, and Audit log pages. User management supports name/email search, role filters, and permanent account deletion; Superadmin accounts cannot be deleted from the page. Deleting another account also removes its profile-owned task and report data through database cascades. Superadmins can mark reports reviewed or dismiss them, and members can report tasks from their detail view. Activity history is recorded going forward; older events cannot be reconstructed.
 
 ## Deploy code changes through GitHub
 

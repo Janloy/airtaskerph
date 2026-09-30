@@ -546,7 +546,7 @@ function protectedRouteForElement(target) {
 function showPage(pageId) {
   const protectedIntent = { 'create-task-page': 'post', 'my-tasks-modal': 'tasks', 'my-bids-page': 'bids', 'profile-page': 'profile', 'saved-tasks-page': 'saved', 'conversation-modal': 'messages' }[pageId];
   if (protectedIntent && requestAuthGate(protectedIntent)) return false;
-  if (pageId === 'account-activity-modal' && state.user?.role !== 'superadmin') { notify('Only the Superadmin can open this dashboard.', 'error'); return false; }
+  if (['account-activity-modal','user-management-page','task-management-page','report-management-page','audit-log-page'].includes(pageId) && state.user?.role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
   $('main')?.classList.toggle('hidden', pageId && pageId !== 'marketplace-page');
   const mobileNav = document.querySelector('.mobile-bottom-nav');
@@ -580,7 +580,7 @@ function renderAuth() {
     ['#desktop-avatar-fallback', '#desktop-menu-avatar-fallback'].forEach((selector) => $(selector)?.classList.add('hidden'));
   }
   $('#mobile-auth').innerHTML = loggedIn ? `<div class="mb-5 rounded-lg bg-[#e9f4f2] p-4"><p class="font-bold">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.last_name)}</p><p class="text-xs uppercase tracking-wider text-[#68727c]">${escapeHtml(state.user.role)}</p></div><button data-action="logout" class="touch-target w-full rounded-lg border border-[#c9d4d9] px-4 text-left text-sm font-bold">Log out</button>` : `<button data-modal="login-modal" class="touch-target w-full rounded-lg border border-[#c9d4d9] px-4 text-left text-sm font-bold">Log in</button><button data-modal="register-modal" class="touch-target mt-2 w-full rounded-lg bg-[#006f70] px-4 text-left text-sm font-bold text-white">Join TaskerPH</button>`;
-  if (state.user?.role === 'superadmin') $('#mobile-auth').insertAdjacentHTML('afterbegin', '<button id="mobile-activity-dashboard" data-activity-dashboard class="touch-target mb-3 w-full rounded-lg bg-[#006f70] px-4 text-left text-sm font-bold text-white"><i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>Account activity</button>');
+  if (state.user?.role === 'superadmin') $('#mobile-auth').insertAdjacentHTML('afterbegin', '<button id="mobile-activity-dashboard" data-activity-dashboard class="touch-target mb-3 w-full rounded-lg bg-[#006f70] px-4 text-left text-sm font-bold text-white"><i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>Superadmin dashboard</button>');
   $('#role-banner').innerHTML = loggedIn ? `<strong>${escapeHtml(state.user.role === 'superadmin' ? 'Superadmin control' : state.user.role === 'admin' ? 'Admin moderation' : 'Your task space')}:</strong> ${state.user.role === 'user' ? 'Post tasks, track your listings, and discover work nearby.' : 'Use your moderation tools responsibly to keep the marketplace useful.'}` : '<strong>Welcome to TaskerPH:</strong> Find trusted local help or post your next task in minutes.';
   $('#post-task-button').classList.toggle('hidden', !loggedIn);
   $('#mobile-post').classList.toggle('hidden', !loggedIn);
@@ -639,17 +639,24 @@ function renderAccountActivity(payload) {
   $('#account-activity-events').innerHTML = accountActivityData.events.length ? accountActivityData.events.map((event) => `<article class="rounded-lg border border-[#dbe3e7] p-3"><strong>${escapeHtml(event.summary)}</strong><p class="mt-1 text-xs text-[#68727c]">${escapeHtml(event.user ? `${event.user.first_name} ${event.user.last_name} · ${event.user.email}` : 'System')} · ${escapeHtml(formatActivityTimestamp(event.created_at))}</p></article>`).join('') : '<p class="text-sm text-[#68727c]">No activity recorded yet.</p>';
   $('#account-activity-reports').innerHTML = accountActivityData.reports.length ? accountActivityData.reports.map((report) => `<article class="rounded-lg border border-[#dbe3e7] p-3"><div class="flex flex-wrap items-start justify-between gap-2"><div><strong>${escapeHtml(report.task?.title || 'Removed task')}</strong><p class="text-sm">${escapeHtml(report.reason)} · ${escapeHtml(report.status)}</p><p class="text-xs text-[#68727c]">${escapeHtml(report.reporter ? `${report.reporter.first_name} ${report.reporter.last_name}` : 'Member')} · ${escapeHtml(formatActivityTimestamp(report.created_at))}</p>${report.details ? `<p class="mt-2 text-sm">${escapeHtml(report.details)}</p>` : ''}</div>${report.status === 'Open' ? `<div class="flex gap-2"><button data-review-report="${report.id}" data-report-status="Reviewed" class="rounded border px-3 py-1 text-sm">Mark reviewed</button><button data-review-report="${report.id}" data-report-status="Dismissed" class="rounded border px-3 py-1 text-sm">Dismiss</button></div>` : ''}</div></article>`).join('') : '<p class="text-sm text-[#68727c]">No reports submitted.</p>';
   $('#account-activity-tasks').innerHTML = accountActivityData.tasks.length ? accountActivityData.tasks.map((task) => `<article class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#dbe3e7] p-3"><div><strong>${escapeHtml(task.title)}</strong><p class="text-xs text-[#68727c]">${escapeHtml(task.category)} · ${escapeHtml(task.status)} · ₱${escapeHtml(Number(task.budget).toLocaleString('en-PH'))}</p><p class="text-xs text-[#68727c]">${escapeHtml(task.owner ? `${task.owner.first_name} ${task.owner.last_name} · ${task.owner.email}` : '')}</p></div><button data-delete="${Number(task.id)}" class="rounded border border-red-200 px-3 py-1 text-sm font-bold text-red-600">Remove task</button></article>`).join('') : '<p class="text-sm text-[#68727c]">No tasks posted yet.</p>';
-  renderAccountActivityUsers();
+  renderSuperadminUsers();
+}
+function renderSuperadminUsers() {
+  const body = $('#superadmin-users-table'); if (!body) return;
+  const term = ($('#superadmin-user-search')?.value || '').trim().toLocaleLowerCase();
+  const role = $('#superadmin-user-filter')?.value || 'all';
+  const users = accountActivityData.users.filter((user) => (role === 'all' || user.role === role) && `${user.first_name} ${user.middle_initial || ''} ${user.last_name} ${user.email}`.toLocaleLowerCase().includes(term));
+  body.innerHTML = users.length ? users.map((user) => `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`)}</td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3">${user.role === 'superadmin' ? '<span class="text-xs text-[#68727c]">Protected</span>' : `<button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button>`}</td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
 }
 async function loadAccountActivity() {
   if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can view account activity.', 'error'); return; }
-  $('#account-activity-users').innerHTML = '<p class="text-sm text-[#68727c]">Loading account list…</p>';
+  $('#superadmin-users-table').innerHTML = '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">Loading accounts…</td></tr>';
   try {
     const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'activity_dashboard' }) });
     renderAccountActivity(payload);
   } catch (error) {
     const message = escapeHtml(error.message);
-    $('#account-activity-users').innerHTML = `<p class="text-sm text-red-600">${message}</p>`;
+    $('#superadmin-users-table').innerHTML = `<tr><td colspan="5" class="p-6 text-center text-sm text-red-600">${message}</td></tr>`;
   }
 }
 async function openAccountActivity() {
@@ -1270,6 +1277,16 @@ async function resumeAuthIntent(intent) {
   }
 }
 document.addEventListener('click', async (event) => {
+  const adminPageButton = event.target.closest('[data-admin-page]');
+  if (adminPageButton) { event.preventDefault(); showPage(adminPageButton.dataset.adminPage); return; }
+  const deleteUserButton = event.target.closest('[data-delete-user]');
+  if (deleteUserButton) {
+    const user = accountActivityData.users.find((item) => Number(item.id) === Number(deleteUserButton.dataset.deleteUser));
+    if (!user || user.role === 'superadmin' || !window.confirm(`Permanently delete ${user.first_name} ${user.last_name} and their related profile content? This cannot be undone.`)) return;
+    try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_user', user_id: user.id }) }); notify(payload.message); await loadAccountActivity(); }
+    catch (error) { notify(error.message, 'error'); }
+    return;
+  }
   const accountActivityButton = event.target.closest('[data-activity-dashboard]');
   if (accountActivityButton) { event.preventDefault(); await openAccountActivity(); return; }
   const reportButton = event.target.closest('[data-report-task]');
@@ -1469,6 +1486,8 @@ $('#profile-picture-input').addEventListener('change', async (event) => { const 
 $('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#account-activity-filter')?.addEventListener('change', renderAccountActivityUsers);
 $('#account-activity-search')?.addEventListener('input', renderAccountActivityUsers);
+$('#superadmin-user-filter')?.addEventListener('change', renderSuperadminUsers);
+$('#superadmin-user-search')?.addEventListener('input', renderSuperadminUsers);
 $('#refresh-account-activity')?.addEventListener('click', async (event) => { const button = event.currentTarget; button.disabled = true; try { await loadAccountActivity(); } finally { button.disabled = false; } });
 $('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task…'); try { const form = event.target; const formData = new FormData(form); const photoPayload = await taskFormPayload(form); const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(formData), photos: photoPayload.photos, keep_image_urls: photoPayload.keep_image_urls }) }); const taskId = Number(formData.get('task_id')); closeModal('edit-modal'); setBusy(form, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#bid-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!state.user) { requestBidAuthGate(Number($('#task-detail-id').value), event.submitter || event.target.querySelector('[type="submit"]')); return; } setBusy(event.target, true); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'place', task_id: $('#task-detail-id').value, ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#task-detail-id').value)) || state.activeTask; if (task) openTask(task); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
@@ -1512,5 +1531,5 @@ document.addEventListener('submit', async (event) => { const form = event.target
 $('#conversation-body').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#conversation-form').requestSubmit(); } });
 $('#confirm-delete-bid').addEventListener('click', async () => { const button = $('#confirm-delete-bid'); setButtonBusy(button, true, 'Deleting bid…'); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'delete', bid_id: $('#delete-bid-id').value, task_id: $('#delete-bid-task-id').value }) }); closeModal('delete-bid-modal'); notify(payload.message); await loadMyBids(); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
 $('#confirm-remove-bid').addEventListener('click', async () => { const button = $('#confirm-remove-bid'); const reason = $('#remove-bid-reason').value.trim(); if (!reason) { notify('Please provide a reason for removing the bidder.', 'error'); return; } setButtonBusy(button, true, 'Removing bidder…'); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'remove_bid', bid_id: $('#remove-bid-id').value, task_id: $('#remove-bid-task-id').value, reason }) }); closeModal('remove-bid-modal'); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#remove-bid-task-id').value)) || state.activeTask; if (task) await openTask(task); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
-$('#confirm-delete-task').addEventListener('click', async () => { const button = $('#confirm-delete-task'); const taskId = $('#delete-task-id').value; setButtonBusy(button, true, 'Deleting task…'); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_task', task_id: taskId }) }); closeModal('delete-task-modal'); notify(payload.message); await loadTasks(); showPage('marketplace-page'); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
+$('#confirm-delete-task').addEventListener('click', async () => { const button = $('#confirm-delete-task'); const taskId = $('#delete-task-id').value; setButtonBusy(button, true, 'Deleting task…'); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_task', task_id: taskId }) }); closeModal('delete-task-modal'); notify(payload.message); await loadTasks(); if (state.user?.role === 'superadmin') { await loadAccountActivity(); showPage('task-management-page'); } else showPage('marketplace-page'); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
 init();
