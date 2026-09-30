@@ -754,3 +754,18 @@ html.liquid-glass-active body.superadmin-mode .superadmin-dashboard-grid > .supe
 html.liquid-glass-active body.superadmin-mode .superadmin-stat { background-color: rgba(255,255,255,var(--admin-glass-opacity)); }
 html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-dashboard-grid > .superadmin-panel,
 html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-stat { background-color: rgba(26,38,52,var(--admin-glass-opacity)) !important; }
+
+/* Keep the admin identity on two clear lines and make the active item high-contrast. */
+body.superadmin-mode .superadmin-profile-copy { display: flex; min-width: 130px; flex-direction: column; align-items: flex-start; gap: 2px; }
+body.superadmin-mode .superadmin-profile-copy strong { display: block; color: #263348; font-size: .82rem; line-height: 1.2; white-space: nowrap; }
+body.superadmin-mode .superadmin-profile-copy small { display: block; margin: 0; color: #738096; font-size: .68rem; line-height: 1.2; white-space: nowrap; }
+body:not(.dark-mode).superadmin-mode .superadmin-sidebar button.is-active,
+body:not(.dark-mode).superadmin-mode .superadmin-sidebar button[aria-current="page"] { border-color: #c9e8e2 !important; background: #e4f4f1 !important; color: #075e59 !important; box-shadow: inset 3px 0 #087e78; }
+body:not(.dark-mode).superadmin-mode .superadmin-sidebar button.is-active::before,
+body:not(.dark-mode).superadmin-mode .superadmin-sidebar button[aria-current="page"]::before { color: #075e59 !important; }
+body.dark-mode.superadmin-mode .superadmin-profile-copy strong { color: #f1f5f9; }
+body.dark-mode.superadmin-mode .superadmin-profile-copy small { color: #b6c2d1; }
+body.dark-mode.superadmin-mode .superadmin-sidebar button.is-active,
+body.dark-mode.superadmin-mode .superadmin-sidebar button[aria-current="page"] { border-color: #285652 !important; background: #173b3b !important; color: #c3fff2 !important; box-shadow: inset 3px 0 #47c7b1; }
+body.dark-mode.superadmin-mode .superadmin-sidebar button.is-active::before,
+body.dark-mode.superadmin-mode .superadmin-sidebar button[aria-current="page"]::before { color: #a4f2e2 !important; }
