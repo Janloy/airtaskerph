@@ -539,3 +539,29 @@ body.dark-mode .action-progress-indicator { border-color: #34d399; color: #ecfdf
   body:not(.dark-mode) .main-header.glass-header { border-color: #e2e8f0; background: #f8fafc !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
   body.dark-mode .main-header.glass-header { border-color: #1e293b; background: #0f172a !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 }
+
+/* Align the admin rail to the content surface and keep translucent surfaces legible. */
+body.superadmin-mode .superadmin-sidebar { top: 90px; bottom: 8px; }
+body.superadmin-mode .superadmin-menu-link { display: flex; width: 100%; min-height: 40px; align-items: center; gap: .7rem; border-radius: 9px; padding: 0 .8rem; color: #475569; font-size: .76rem; font-weight: 650; text-align: left; transition: background .16s ease, color .16s ease; }
+body.superadmin-mode .superadmin-menu-link i { width: 16px; color: #8290a2; text-align: center; }
+body.superadmin-mode .superadmin-menu-link:hover { background: #f1f7f6; color: #087e78; }
+body.superadmin-mode .superadmin-menu-link:hover i { color: #087e78; }
+body.dark-mode.superadmin-mode .superadmin-menu-link { color: #cbd5e1; }
+body.dark-mode.superadmin-mode .superadmin-menu-link i { color: #94a3b8; }
+body.dark-mode.superadmin-mode .superadmin-menu-link:hover { background: #202e3e; color: #8ce0d2; }
+body.dark-mode.superadmin-mode .superadmin-menu-link:hover i { color: #8ce0d2; }
+body.superadmin-mode #profile-page .profile-group-title { color: #526176; }
+body.superadmin-mode #profile-page .profile-card, body.superadmin-mode #profile-page .profile-list { border: 1px solid #e8edf4; border-radius: 16px; background: #fff; box-shadow: 0 8px 28px rgba(30,41,59,.05); }
+body.dark-mode.superadmin-mode #profile-page .profile-group-title { color: #cbd5e1; }
+body.dark-mode.superadmin-mode #profile-page .profile-card, body.dark-mode.superadmin-mode #profile-page .profile-list { border-color: #293647; background: #182330; color: #e2e8f0; }
+body.dark-mode.superadmin-mode #profile-page .profile-group-title, body.dark-mode.superadmin-mode #profile-page .profile-row-copy strong { color: #e2e8f0; }
+body.dark-mode.superadmin-mode #profile-page .profile-row-copy small, body.dark-mode.superadmin-mode #profile-page .profile-glass-heading small { color: #aab6c5; }
+body.dark-mode.superadmin-mode #profile-page .profile-inline-form { border-color: #344255; }
+html.liquid-glass-active body.superadmin-mode .page-shell:has(.superadmin-sidebar) .card { border-color: rgba(255,255,255,var(--glass-light-border-alpha)); background-color: rgba(255,255,255,var(--glass-opacity)) !important; backdrop-filter: blur(var(--glass-blur)) saturate(170%); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(170%); }
+html.liquid-glass-active body.dark-mode.superadmin-mode .page-shell:has(.superadmin-sidebar) .card { border-color: rgba(255,255,255,var(--glass-dark-border-alpha)); background-color: rgba(30,41,59,var(--glass-opacity)) !important; backdrop-filter: blur(var(--glass-blur)) saturate(1.35); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35); }
+html.liquid-glass-active body.superadmin-mode .superadmin-sidebar { background-color: rgba(255,255,255,var(--glass-opacity)); backdrop-filter: blur(var(--glass-blur)) saturate(170%); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(170%); }
+html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-sidebar { background-color: rgba(24,35,48,var(--glass-opacity)); backdrop-filter: blur(var(--glass-blur)) saturate(1.35); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35); }
+html.liquid-glass-active body.superadmin-mode .superadmin-profile-dropdown { background-color: rgba(255,255,255,var(--glass-opacity)); backdrop-filter: blur(var(--glass-blur)) saturate(170%); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(170%); }
+html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-profile-dropdown { background-color: rgba(24,35,48,var(--glass-opacity)); backdrop-filter: blur(var(--glass-blur)) saturate(1.35); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35); }
+html.liquid-glass-active body.dark-mode.superadmin-mode #profile-page .profile-card, html.liquid-glass-active body.dark-mode.superadmin-mode #profile-page .profile-list { background-color: rgba(24,35,48,var(--glass-opacity)) !important; backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
+@media (max-width: 1023px) { body.superadmin-mode .superadmin-sidebar { top: auto; bottom: auto; } }

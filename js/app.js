@@ -604,6 +604,7 @@ function renderAuth() {
   $('#admin-button').classList.toggle('hidden', state.user?.role !== 'superadmin');
   $('#activity-dashboard-button')?.classList.toggle('hidden', state.user?.role !== 'superadmin');
   $('#mobile-activity-dashboard')?.classList.toggle('hidden', state.user?.role !== 'superadmin');
+  document.querySelectorAll('[data-superadmin-return]').forEach((button) => button.classList.toggle('hidden', state.user?.role !== 'superadmin'));
   const desktopAppearanceState = $('#desktop-appearance-state');
   if (desktopAppearanceState) desktopAppearanceState.textContent = document.body.classList.contains('dark-mode') ? 'Dark' : 'Light';
   if ($('#desktop-glass-opacity')) applyGlassOpacity(state.glassOpacity);
