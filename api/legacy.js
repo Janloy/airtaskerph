@@ -283,6 +283,12 @@ export default async function handler(req, res) {
     }
     if (route === 'admin_actions') {
       ({ profile } = await userFor(req,s, action !== 'activity_dashboard'));
+      if (action === 'has_reported') {
+        const taskId = Number(body.task_id);
+        if (!Number.isSafeInteger(taskId) || taskId < 1) throw fail('Invalid task.', 422);
+        const priorReport = await rows(s.from('task_reports').select('id').eq('task_id', taskId).eq('reporter_id', profile.id).maybeSingle());
+        return res.status(200).json(ok('', { has_reported: Boolean(priorReport) }));
+      }
       if (action === 'activity_dashboard') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view account activity.',403);
         const [accounts, events, reports, tasks, totalTasks, completedTasks, openTasks] = await Promise.all([
