@@ -1153,6 +1153,26 @@ body.superadmin-mode #task-management-page .superadmin-task-card-owner,body.supe
   body.superadmin-mode #task-management-page .superadmin-task-card { padding:.95rem; }
   body.superadmin-mode #task-management-page .superadmin-task-card h3 { font-size:1.12rem; }
 }
+/* Replace low-contrast slate-500 text throughout Superadmin pages in light mode. */
+body.superadmin-mode:not(.dark-mode) .text-slate-500,
+body.superadmin-mode:not(.dark-mode) .superadmin-sidebar button,
+body.superadmin-mode:not(.dark-mode) .superadmin-stat-label,
+body.superadmin-mode:not(.dark-mode) .superadmin-report-row p,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-row p,
+body.superadmin-mode:not(.dark-mode) .superadmin-menu-appearance > b,
+body.superadmin-mode:not(.dark-mode) .superadmin-status-pill,
+body.superadmin-mode:not(.dark-mode) .superadmin-profile-hero p:not(.superadmin-review-label),
+body.superadmin-mode:not(.dark-mode) .superadmin-profile-activity small,
+body.superadmin-mode:not(.dark-mode) .superadmin-bid-person small,
+body.superadmin-mode:not(.dark-mode) .superadmin-bid-message small,
+body.superadmin-mode:not(.dark-mode) .superadmin-profile-bid p,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-count,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-status,
+body.superadmin-mode:not(.dark-mode) .superadmin-pagination,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-view-toggle button,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-card-description,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-card-owner,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-detail { color:#475569; }
 @media(max-width:640px) {
   .my-tasks-page #my-task-drafts { margin-top:1.5rem; }
   .task-drafts-section { margin:0 0 1.1rem; border-radius:1rem; padding:.9rem; }
