@@ -313,9 +313,9 @@ export default async function handler(req, res) {
         ]);
         if (!account) throw fail('Account not found.',404);
         for (const result of [totalTasks,completedTasks]) if (result.error) throw fail(result.error.message);
-        const profile = {...account,id:Number(account.id),...(presence||{last_login_at:null,last_seen_at:null})};
+        const profileData = {...account,id:Number(account.id),...(presence||{last_login_at:null,last_seen_at:null})};
         const taskItems = tasks.map((task)=>({...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:`${account.first_name} ${account.last_name}`.trim(),owner:{first_name:account.first_name,last_name:account.last_name,email:account.email}}));
-        return res.status(200).json(ok('',{profile,tasks:taskItems,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0}}));
+        return res.status(200).json(ok('',{profile:profileData,tasks:taskItems,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0}}));
       }
       if (action === 'submit_report') {
         const taskId=Number(body.task_id), reason=clean(body.reason,80), details=clean(body.details,1000);
