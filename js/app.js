@@ -153,6 +153,19 @@ function notify(message, type = 'success') {
   document.body.appendChild(element);
   setTimeout(() => dismissToast(element), 4000);
 }
+function notifyReceived(title, message) {
+  const element = document.createElement('div');
+  element.className = 'app-toast app-toast-received fixed right-4 top-20 z-[70] max-w-sm rounded-lg px-4 py-3 shadow-xl';
+  element.setAttribute('role', 'status');
+  element.setAttribute('aria-live', 'polite');
+  element.innerHTML = '<span class="app-toast-icon"><i class="fa-solid fa-bell" aria-hidden="true"></i></span><span class="app-toast-copy"><strong></strong><span></span></span><button class="app-toast-action" type="button">View</button><button class="app-toast-close" type="button" aria-label="Dismiss notification"><i class="fa-solid fa-xmark"></i></button>';
+  element.querySelector('.app-toast-copy strong').textContent = title || 'New notification';
+  element.querySelector('.app-toast-copy span').textContent = message || 'You have a new update.';
+  element.querySelector('.app-toast-close').addEventListener('click', () => dismissToast(element));
+  element.querySelector('.app-toast-action').addEventListener('click', async () => { dismissToast(element); await loadNotificationCenter(); });
+  document.body.appendChild(element);
+  setTimeout(() => dismissToast(element), 7000);
+}
 function dismissToast(element) {
   if (element.classList.contains('app-toast-leaving')) return;
   element.classList.add('app-toast-leaving');
@@ -242,9 +255,9 @@ async function updateNotificationCounts() {
       const toastKey = `${state.user.id}:${item.id}`;
       if (seenTaskUpdateToasts.has(toastKey)) return;
       seenTaskUpdateToasts.add(toastKey);
-      const title = item.title && item.title !== 'undefined' ? item.title : 'Task update';
+      const title = item.title && item.title !== 'undefined' ? item.title : 'New notification';
       const body = item.body && item.body !== 'undefined' ? item.body : 'There is a new update about one of your tasks.';
-      notify(`${title}: ${body}`);
+      notifyReceived(title, body);
     });
     const center = await api('api/notifications?action=center');
     setNotificationCount('#desktop-notification-count', center.unread_count || 0);
