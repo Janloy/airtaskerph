@@ -294,7 +294,7 @@ export default async function handler(req, res) {
         const [accounts, events, reports, tasks, totalTasks, completedTasks, openTasks] = await Promise.all([
           rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at').order('role').order('first_name')),
           rows(s.from('account_activity').select('id,event_type,summary,reference_type,reference_id,created_at,user:user_profiles!account_activity_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(40)),
-          rows(s.from('task_reports').select('id,task_id,reason,details,status,created_at,task:tasks!task_reports_task_id_fkey(title),reporter:user_profiles!task_reports_reporter_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(30)),
+          rows(s.from('task_reports').select('id,task_id,reporter_id,reason,details,status,created_at,task:tasks!task_reports_task_id_fkey(id,user_id,title,description,category,status,budget,location,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)),reporter:user_profiles!task_reports_reporter_id_fkey(id,first_name,last_name,email)').order('created_at',{ascending:false}).limit(30)),
           rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).order('id',{ascending:false}).limit(50)),
           s.from('tasks').select('id',{count:'exact',head:true}),
           s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Completed'),
