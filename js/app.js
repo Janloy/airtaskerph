@@ -1534,11 +1534,10 @@ document.addEventListener('click', async (event) => {
   if (accountActivityButton) { event.preventDefault(); await openAccountActivity(); return; }
   const reportButton = event.target.closest('[data-report-task]');
   if (reportButton) {
-    const reason = window.prompt('Report reason: Scam or fraud, Inappropriate content, Misleading information, or Other');
-    if (!reason) return;
-    const details = window.prompt('Add details (optional):') || '';
-    try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'submit_report', task_id: reportButton.dataset.reportTask, reason, details }) }); notify(payload.message); }
-    catch (error) { notify(error.message, 'error'); }
+    $('#report-task-id').value = reportButton.dataset.reportTask;
+    $('#report-task-form').reset();
+    $('#report-task-id').value = reportButton.dataset.reportTask;
+    openModal('#report-task-modal');
     return;
   }
   const reviewButton = event.target.closest('[data-review-report]');
@@ -1785,6 +1784,7 @@ $('#admin-global-search')?.addEventListener('keydown', (event) => {
   renderSuperadminUsers();
 });
 $('#refresh-account-activity')?.addEventListener('click', async (event) => { const button = event.currentTarget; button.disabled = true; try { await loadAccountActivity(); } finally { button.disabled = false; } });
+$('#report-task-form').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; setBusy(form, true, 'Sending report...'); try { await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'submit_report', task_id: $('#report-task-id').value, reason: form.elements.reason.value, details: form.elements.details.value }) }); closeModal('report-task-modal'); form.reset(); notify('Salamat sa pag-report. Natanggap na namin ito at rerepasuhin ng aming team.'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); } });
 $('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task...'); try { const form = event.target; const formData = new FormData(form); const photoPayload = await taskFormPayload(form); const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(formData), photos: photoPayload.photos, keep_image_urls: photoPayload.keep_image_urls }) }); const taskId = Number(formData.get('task_id')); closeModal('edit-modal'); setBusy(form, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#bid-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!state.user) { requestBidAuthGate(Number($('#task-detail-id').value), event.submitter || event.target.querySelector('[type="submit"]')); return; } setBusy(event.target, true); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'place', task_id: $('#task-detail-id').value, ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#task-detail-id').value)) || state.activeTask; if (task) openTask(task); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#conversation-form').addEventListener('submit', async (event) => {
