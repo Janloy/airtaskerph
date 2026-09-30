@@ -1350,6 +1350,8 @@ async function openTask(task) {
     $('#bid-section').classList.toggle('hidden', Boolean(myBid) || isOwner || task.status !== 'Open');
     $('#bid-submitted-state').classList.toggle('hidden', !myBid);
     renderBids(payload.bids, task);
+    const roleContext = roleTaskContextMarkup(task, payload.bids, Boolean(isOwner));
+    if (roleContext) $('#task-detail-content').insertAdjacentHTML('beforeend', roleContext);
     void updateNotificationCounts();
   } catch (error) { notify(error.message, 'error'); }
 }
@@ -1534,6 +1536,27 @@ function renderEditableMyBids(bids) { const html = bids.length ? bids.map((bid) 
 function renderMyBids(bids) { const html = bids.length ? bids.map((bid) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(bid.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(bid.title)}</h3><p class="mt-1 text-xs text-[#68727c]">Task owner: ${escapeHtml(bid.owner_name)} &middot; ${escapeHtml(bid.location)}</p></div><span class="badge ${bid.status === 'Accepted' ? 'badge-open' : bid.status === 'Rejected' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(bid.status)}</span></div><div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#edf0f1] pt-3 text-sm"><span>Your offer: <strong>${money(bid.amount)}</strong></span><span class="text-[#68727c]">Task: ${escapeHtml(bid.task_status)}</span><button data-message-task="${bid.task_id}" data-message-user="${bid.owner_id}" class="touch-target rounded-lg border border-[#008f8c] px-3 text-xs font-bold text-[#006f70]">Message owner</button></div><p class="mt-2 text-sm text-[#4c5962]">${escapeHtml(bid.message)}</p></article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><i class="fa-solid fa-gavel mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not placed any bids yet.</p><p class="mt-1 text-sm text-[#68727c]">Open a task from the marketplace to make your first offer.</p></div>'; $('#my-bids-page-list').innerHTML = html; }
 function renderMyTasks(tasks) { $('#my-tasks-list').innerHTML = tasks.length ? tasks.map((task) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(task.title)}</h3><p class="mt-1 text-xs text-[#68727c]">${escapeHtml(task.location)} · ${money(task.budget)}${task.schedule_date ? ` · ${escapeHtml(task.schedule_date)}` : ''}</p></div><span class="badge ${task.status === 'Open' ? 'badge-open' : task.status === 'Completed' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(task.status)}</span></div><div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#edf0f1] pt-3"><span class="text-sm text-[#68727c]">${escapeHtml((task.description || '').slice(0,90))}${(task.description || '').length > 90 ? '...' : ''}</span><div class="flex flex-wrap items-center justify-end gap-3"><span class="task-bid-count"><i class="fa-solid fa-gavel"></i> ${task.bid_count} ${task.bid_count === 1 ? 'bid' : 'bids'}</span><button data-open-my-task="${task.id}" class="touch-target rounded-lg px-3 text-xs font-bold text-[#006f70]">Open</button>${task.status === 'Completed' ? `<button type="button" data-repost-task="${Number(task.id)}" class="touch-target rounded-lg border border-[#b8ded8] px-3 text-xs font-bold text-[#076c64]"><i class="fa-solid fa-rotate-right mr-1" aria-hidden="true"></i>Repost</button>` : ''}</div></div>${lifecycleActionsForOwner(task)}</article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d4] px-5 py-10 text-center"><i class="fa-solid fa-clipboard-list mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not posted a task yet.</p><p class="mt-1 text-sm text-[#68727c]">Post a task and it will appear here.</p></div>'; }
 function lifecycleActionsForTasker(bid) { if (bid.status !== 'Accepted') return ''; if (bid.task_status === 'In Progress') return `<div class="task-lifecycle-panel"><strong>Your bid was accepted</strong><p>Coordinate the schedule with the poster. When all agreed work is finished, mark it done to request confirmation.</p><div><button type="button" data-task-lifecycle="mark_done" data-task-id="${Number(bid.task_id)}" class="touch-target rounded-lg bg-[#006f70] px-4 font-bold text-white">Mark as done</button><button type="button" data-task-lifecycle="report_problem" data-task-id="${Number(bid.task_id)}" class="touch-target rounded-lg border border-amber-300 px-4 font-bold text-amber-800">Report a problem</button><button type="button" data-task-lifecycle="cancel_assignment" data-task-id="${Number(bid.task_id)}" class="touch-target rounded-lg border border-rose-300 px-4 font-bold text-rose-700">Cancel assignment</button></div></div>`; if (bid.task_status === 'Awaiting Confirmation') return '<div class="task-lifecycle-panel is-awaiting"><strong>Waiting for poster confirmation</strong><p>The poster has been notified. The task is not complete until they confirm it.</p></div>'; if (bid.task_status === 'Under Review') return '<div class="task-lifecycle-panel is-awaiting"><strong>Task paused for review</strong><p>A problem was reported. The task is paused while the issue is reviewed.</p></div>'; if (bid.task_status === 'Cancelled') return '<div class="task-lifecycle-panel is-cancelled"><strong>Assignment cancelled</strong></div>'; if (bid.task_status === 'Completed') return bid.has_reviewed ? '<div class="task-lifecycle-panel is-complete"><strong>Completion confirmed · You reviewed the poster</strong></div>' : `<div class="task-lifecycle-panel is-complete"><strong>Completion confirmed</strong>${reviewForm(bid.task_id,bid.owner_name)}</div>`; return ''; }
+function roleTaskContextMarkup(task, bids, isOwner) {
+  const acceptedBid = (bids || []).find((bid) => bid.status === 'Accepted');
+  if (isOwner) {
+    if (!acceptedBid) return `<section class="task-role-context"><p class="task-role-eyebrow">Poster view</p><h3>Manage your listing</h3><p>Review incoming offers in the bids section below. Task progress and completion controls will appear here after you accept a tasker.</p></section>`;
+    const assignedTask = { ...task, accepted_tasker_id: acceptedBid.bidder_id, accepted_tasker_name: acceptedBid.bidder_name, has_reviewed: acceptedBid.has_reviewed };
+    return `<section class="task-role-context"><p class="task-role-eyebrow">Poster view · ${escapeHtml(task.status)}</p><h3>Assigned tasker</h3><div class="task-role-person"><button type="button" data-public-profile="${Number(acceptedBid.bidder_id)}" data-profile-task="${Number(task.id)}">${escapeHtml(acceptedBid.bidder_name)} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button><span>Accepted offer: <strong>${money(acceptedBid.amount)}</strong></span></div></section>${lifecycleActionsForOwner(assignedTask)}`;
+  }
+  const myBid = (bids || []).find((bid) => Number(bid.bidder_id) === Number(state.user?.id));
+  if (!myBid) return '';
+  const taskerBid = { ...myBid, task_status: task.status, owner_name: task.owner_name, has_reviewed: myBid.has_reviewed };
+  return `<section class="task-role-context"><p class="task-role-eyebrow">Tasker view · ${escapeHtml(task.status)}</p><h3>Your offer</h3><div class="task-role-person"><span>Offer: <strong>${money(myBid.amount)}</strong></span><span>Bid status: <strong>${escapeHtml(myBid.status)}</strong></span></div>${myBid.status === 'Accepted' ? lifecycleActionsForTasker(taskerBid) : `<p class="mt-3 text-sm">${myBid.status === 'Pending' ? 'Your offer is waiting for the poster.' : myBid.status === 'Rejected' ? 'The poster selected another tasker.' : 'This bid is no longer active.'}</p>`}</section>`;
+}
+async function refreshCurrentTaskWorkflow(taskId) {
+  const pageId = document.querySelector('.app-page:not(.hidden)')?.id;
+  if (pageId === 'my-bids-page') return loadMyBids();
+  if (pageId === 'task-detail-modal') {
+    const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(taskId)}`);
+    return openTask(payload.task);
+  }
+  return loadMyTasks();
+}
 function renderMyBidWorkflow(bids) { bids.forEach((bid,index)=>{ const actions=lifecycleActionsForTasker(bid); if(actions) $('#my-bids-page-list').children[index]?.insertAdjacentHTML('beforeend',actions); }); }
 function formatMessageTime(value) { const date = new Date(String(value).replace(' ', 'T')); return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
 async function refreshConversation() {
@@ -2073,7 +2096,7 @@ document.addEventListener('click', async (event) => {
       if (!approved) return;
     }
     lifecycleButton.disabled=true;
-    try { const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:lifecycleAction,task_id:taskId,...(cancelDetails?{reason:cancelDetails.reason}:{})})}); notify(payload.message); if(document.querySelector('.app-page:not(.hidden)')?.id==='my-bids-page') await loadMyBids(); else await loadMyTasks(); void updateNotificationCounts(); }
+    try { const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:lifecycleAction,task_id:taskId,...(cancelDetails?{reason:cancelDetails.reason}:{})})}); notify(payload.message); await refreshCurrentTaskWorkflow(taskId); void updateNotificationCounts(); }
     catch(error){notify(error.message,'error');lifecycleButton.disabled=false;}
     return;
   }
@@ -2321,13 +2344,13 @@ document.addEventListener('submit', async (event) => {
   const problemForm=event.target.closest('#task-problem-form');
   if(problemForm) {
     event.preventDefault(); if(!problemForm.reportValidity()) return; setBusy(problemForm,true,'Sending report...');
-    try { const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:'report_problem',task_id:problemForm.elements.task_id.value,details:problemForm.elements.details.value})}); closeModal('task-problem-modal'); notify(payload.message); if(document.querySelector('.app-page:not(.hidden)')?.id==='my-bids-page') await loadMyBids(); else await loadMyTasks(); }
+    try { const taskId=Number(problemForm.elements.task_id.value); const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:'report_problem',task_id:taskId,details:problemForm.elements.details.value})}); closeModal('task-problem-modal'); notify(payload.message); await refreshCurrentTaskWorkflow(taskId); }
     catch(error){notify(error.message,'error');} finally {setBusy(problemForm,false);} return;
   }
   const review=event.target.closest('[data-task-review]');
   if(review) {
     event.preventDefault(); if(!review.reportValidity()) return; setBusy(review,true,'Submitting review...');
-    try { const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:'review',task_id:review.dataset.taskReview,rating:review.elements.rating.value,comment:review.elements.comment.value})}); notify(payload.message); if(document.querySelector('.app-page:not(.hidden)')?.id==='my-bids-page') await loadMyBids(); else await loadMyTasks(); }
+    try { const taskId=Number(review.dataset.taskReview); const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:'review',task_id:taskId,rating:review.elements.rating.value,comment:review.elements.comment.value})}); notify(payload.message); await refreshCurrentTaskWorkflow(taskId); }
     catch(error){notify(error.message,'error');} finally {setBusy(review,false);}
   }
 });

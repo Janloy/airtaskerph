@@ -86,9 +86,10 @@ const loadTaskBids = async (s, task, profile) => {
   const reads = Number(task.user_id) === Number(profile.id)
     ? all.filter((bid) => bid.status === 'Pending').map((bid) => ({ user_id: profile.id, notification_type: 'bid', reference_id: bid.id }))
     : [];
-  const [people, unreadMessages] = await Promise.all([
+  const [people, unreadMessages, reviews] = await Promise.all([
     rows(s.from('user_profiles').select('id,first_name,last_name,avatar_path').in('id', bidderIds)),
     rows(s.from('messages').select('sender_id').eq('task_id', task.id).eq('recipient_id', profile.id).in('sender_id', bidderIds).is('read_at', null)),
+    rows(s.from('task_reviews').select('task_id').eq('task_id',task.id).eq('reviewer_id',profile.id)),
     reads.length ? rows(s.from('notification_reads').upsert(reads, { onConflict: 'user_id,notification_type,reference_id', ignoreDuplicates: true })) : Promise.resolve([])
   ]);
   const personById = new Map(people.map((person) => [Number(person.id), person]));
@@ -100,7 +101,7 @@ const loadTaskBids = async (s, task, profile) => {
       ...bid, id: Number(bid.id), task_id: Number(bid.task_id), bidder_id: Number(bid.bidder_id),
       amount: Number(bid.amount), unread_message_count: unreadByBidder.get(Number(bid.bidder_id)) || 0,
       bidder_name: person ? `${person.first_name} ${person.last_name}`.trim() : 'TaskerPH member',
-      bidder_avatar_path: publicAvatarUrl(s, person?.avatar_path)
+      bidder_avatar_path: publicAvatarUrl(s, person?.avatar_path), has_reviewed: reviews.some((review)=>Number(review.task_id)===Number(task.id))
     };
   });
 };

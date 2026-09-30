@@ -1169,6 +1169,15 @@ body.superadmin-mode #task-management-page .superadmin-task-card-owner,body.supe
   body.superadmin-mode #task-management-page .superadmin-task-card { padding:.95rem; }
   body.superadmin-mode #task-management-page .superadmin-task-card h3 { font-size:1.12rem; }
 }
+.task-role-context { display:grid; gap:.6rem; margin-top:1.25rem; border:1px solid #cfe3df; border-radius:1rem; padding:1rem; background:#f8fcfb; }
+.task-role-context > h3 { margin:0; color:#17202a; font-size:1.05rem; font-weight:850; }
+.task-role-eyebrow { margin:0; color:#08756d; font-size:.72rem; font-weight:850; letter-spacing:.12em; text-transform:uppercase; }
+.task-role-person { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem 1rem; color:#52616c; font-size:.88rem; }
+.task-role-person strong { color:#17202a; }
+.task-role-person button { color:#006f70; font-weight:800; text-decoration:underline; text-underline-offset:3px; }
+body.dark-mode .task-role-context { border-color:#31514e; background:#142a2a; }
+body.dark-mode .task-role-context > h3, body.dark-mode .task-role-person strong { color:#f1f5f9; }
+body.dark-mode .task-role-person { color:#cbd5e1; }
 .task-lifecycle-panel { display:grid; gap:.55rem; margin-top:1rem; border:1px solid #d5e5e1; border-radius:1rem; padding:1rem; background:#f2faf8; }
 .task-lifecycle-panel > strong,.task-review-form > div > strong { color:#174b47; font-size:.95rem; font-weight:850; }
 .task-lifecycle-panel > p,.task-review-form > div > small { color:#52616c; font-size:.83rem; line-height:1.5; }
