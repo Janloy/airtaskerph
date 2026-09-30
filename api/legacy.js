@@ -304,10 +304,28 @@ export default async function handler(req, res) {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can load platform tasks.',403);
         const offset = Number(body.offset);
         if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw fail('Choose a valid task page.',422);
-        const rowsFound = await rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+50));
-        const hasMore = rowsFound.length > 50;
-        const taskItems = rowsFound.slice(0,50).map((task)=>({...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:task.owner?`${task.owner.first_name} ${task.owner.last_name}`.trim():'TaskerPH member'}));
-        return res.status(200).json(ok('',{tasks:taskItems,has_more_tasks:hasMore}));
+        const search = clean(body.search,80).replace(/[^a-zA-Z0-9@.\- ]/g,' ').replace(/\s+/g,' ').trim();
+        const status = clean(body.status,20) || 'all';
+        if (!['all','Open','In Progress','Completed'].includes(status)) throw fail('Choose a valid task status.',422);
+        let ownerIds = [];
+        if (search) ownerIds = (await rows(s.from('user_profiles').select('id').or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`).limit(500))).map((user)=>Number(user.id));
+        let taskQuery = s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)',{count:'exact'});
+        if (status !== 'all') taskQuery = taskQuery.eq('status',status);
+        if (search) {
+          const filters = [`title.ilike.%${search}%`,`category.ilike.%${search}%`,`location.ilike.%${search}%`,`description.ilike.%${search}%`];
+          const loweredSearch = search.toLowerCase();
+          if ('open'.includes(loweredSearch)) filters.push('status.eq.Open');
+          if ('in progress'.includes(loweredSearch)) filters.push('status.eq."In Progress"');
+          if ('completed'.includes(loweredSearch)) filters.push('status.eq.Completed');
+          if (/^\d+$/.test(search)) filters.push(`id.eq.${Number(search)}`);
+          if (ownerIds.length) filters.push(`user_id.in.(${ownerIds.join(',')})`);
+          taskQuery = taskQuery.or(filters.join(','));
+        }
+        const {data:rowsFound,error,count} = await taskQuery.order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+49);
+        if (error) throw fail(error.message);
+        const taskItems = (rowsFound||[]).map((task)=>({...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:task.owner?`${task.owner.first_name} ${task.owner.last_name}`.trim():'TaskerPH member'}));
+        const totalCount = count||0;
+        return res.status(200).json(ok('',{tasks:taskItems,total_count:totalCount,has_more_tasks:offset+taskItems.length<totalCount}));
       }
       if (action === 'view_task_details') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view task moderation details.',403);

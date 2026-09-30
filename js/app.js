@@ -624,6 +624,11 @@ let superadminTaskView = 'list';
 let superadminUserPage = 1;
 let superadminHasMoreTasks = false;
 let superadminLoadingMoreTasks = false;
+let superadminSearchingTasks = false;
+let superadminTaskResultTotal = 0;
+let superadminTaskSearchRequestId = 0;
+let superadminTaskSearchTimer = null;
+let superadminTaskQuery = { search: '', status: 'all' };
 try { superadminTaskView = localStorage.getItem('taskerph-superadmin-task-view') === 'cards' ? 'cards' : 'list'; } catch (error) { void error; }
 function renderAccountActivityUsers() {
   const filter = $('#account-activity-filter')?.value || 'all';
@@ -645,6 +650,10 @@ function renderAccountActivityUsers() {
 function renderAccountActivity(payload) {
   accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [], tasks: Array.isArray(payload.tasks) ? payload.tasks : [], stats: payload.stats || {} };
   superadminHasMoreTasks = Boolean(payload.has_more_tasks);
+  superadminTaskResultTotal = Number(accountActivityData.stats.total_tasks) || 0;
+  superadminTaskQuery = { search: '', status: 'all' };
+  if ($('#superadmin-task-search')) $('#superadmin-task-search').value = '';
+  if ($('#superadmin-task-status-filter')) $('#superadmin-task-status-filter').value = 'all';
   const users = accountActivityData.users;
   const active = users.filter((user) => user.last_seen_at && Date.now() - new Date(user.last_seen_at).getTime() <= 5 * 60 * 1000).length;
   const admins = users.filter((user) => user.role === 'admin').length;
@@ -704,7 +713,7 @@ function renderSuperadminTasks() {
     const searchable = `${task.id} ${task.title} ${task.category} ${task.status} ${task.location} ${task.description} ${task.budget} ${owner.first_name} ${owner.last_name} ${owner.email}`;
     return searchable.toLocaleLowerCase().includes(term);
   });
-  const totalPlatformTasks = Number(accountActivityData.stats?.total_tasks) || allTasks.length;
+  const totalPlatformTasks = superadminTaskResultTotal || Number(accountActivityData.stats?.total_tasks) || allTasks.length;
   if ($('#superadmin-task-result-count')) $('#superadmin-task-result-count').textContent = `Showing ${tasks.length} matching · ${allTasks.length} loaded of ${totalPlatformTasks} tasks`;
   container.className = superadminTaskView === 'cards' ? 'superadmin-task-cards' : 'superadmin-task-list';
   const content = tasks.map((task) => {
@@ -723,18 +732,42 @@ function renderSuperadminTasks() {
   });
   let loadMoreButton = $('#superadmin-task-load-more');
   if (!loadMoreButton) { container.insertAdjacentHTML('afterend','<div class="superadmin-load-more-wrap"><button type="button" id="superadmin-task-load-more" class="superadmin-load-more-button"></button></div>'); loadMoreButton = $('#superadmin-task-load-more'); }
-  if (loadMoreButton) { loadMoreButton.hidden = !superadminHasMoreTasks; loadMoreButton.disabled = superadminLoadingMoreTasks; loadMoreButton.innerHTML = superadminLoadingMoreTasks ? '<i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading...' : '<i class="fa-solid fa-chevron-down mr-2" aria-hidden="true"></i>Load more tasks'; }
+  if (loadMoreButton) { loadMoreButton.hidden = !superadminHasMoreTasks; loadMoreButton.disabled = superadminLoadingMoreTasks || superadminSearchingTasks; loadMoreButton.innerHTML = superadminLoadingMoreTasks || superadminSearchingTasks ? '<i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading...' : '<i class="fa-solid fa-chevron-down mr-2" aria-hidden="true"></i>Load more tasks'; }
 }
 async function loadMoreSuperadminTasks() {
   if (superadminLoadingMoreTasks || !superadminHasMoreTasks) return;
+  const requestId = superadminTaskSearchRequestId;
   superadminLoadingMoreTasks = true;
   renderSuperadminTasks();
   try {
-    const payload = await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'more_tasks',offset:accountActivityData.tasks.length})});
+    const payload = await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'more_tasks',offset:accountActivityData.tasks.length,search:superadminTaskQuery.search,status:superadminTaskQuery.status})});
+    if (requestId !== superadminTaskSearchRequestId) return;
     accountActivityData.tasks.push(...(payload.tasks||[]));
     superadminHasMoreTasks = Boolean(payload.has_more_tasks);
+    superadminTaskResultTotal = Number(payload.total_count) || 0;
   } catch (error) { notify(error.message,'error'); }
   finally { superadminLoadingMoreTasks = false; renderSuperadminTasks(); }
+}
+async function searchSuperadminTasks() {
+  if (state.user?.role !== 'superadmin') return;
+  const query = { search: ($('#superadmin-task-search')?.value || '').trim(), status: $('#superadmin-task-status-filter')?.value || 'all' };
+  superadminTaskQuery = query;
+  const requestId = ++superadminTaskSearchRequestId;
+  superadminSearchingTasks = true;
+  renderSuperadminTasks();
+  if ($('#superadmin-task-result-count')) $('#superadmin-task-result-count').textContent = 'Searching all platform tasks...';
+  try {
+    const payload = await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'more_tasks',offset:0,...query})});
+    if (requestId !== superadminTaskSearchRequestId) return;
+    accountActivityData.tasks = payload.tasks || [];
+    superadminTaskResultTotal = Number(payload.total_count) || 0;
+    superadminHasMoreTasks = Boolean(payload.has_more_tasks);
+    renderSuperadminTasks();
+  } catch (error) {
+    if (requestId === superadminTaskSearchRequestId) notify(error.message,'error');
+  } finally {
+    if (requestId === superadminTaskSearchRequestId) { superadminSearchingTasks = false; renderSuperadminTasks(); }
+  }
 }
 async function loadAccountActivity() {
   if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can view account activity.', 'error'); return; }
@@ -1742,8 +1775,8 @@ $('#account-activity-filter')?.addEventListener('change', renderAccountActivityU
 $('#account-activity-search')?.addEventListener('input', renderAccountActivityUsers);
 $('#superadmin-user-filter')?.addEventListener('change', () => { superadminUserPage = 1; renderSuperadminUsers(); });
 $('#superadmin-user-search')?.addEventListener('input', () => { superadminUserPage = 1; renderSuperadminUsers(); });
-$('#superadmin-task-search')?.addEventListener('input', renderSuperadminTasks);
-$('#superadmin-task-status-filter')?.addEventListener('change', renderSuperadminTasks);
+$('#superadmin-task-search')?.addEventListener('input', () => { clearTimeout(superadminTaskSearchTimer); superadminTaskSearchTimer = setTimeout(searchSuperadminTasks, 300); });
+$('#superadmin-task-status-filter')?.addEventListener('change', () => { clearTimeout(superadminTaskSearchTimer); searchSuperadminTasks(); });
 $('#admin-global-search')?.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter') return;
   event.preventDefault();
