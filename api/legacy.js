@@ -353,8 +353,8 @@ export default async function handler(req, res) {
         ]);
         if (!task) throw fail('Task not found.',404);
         for (const result of [totalBids,acceptedBids,pendingBids,rejectedBids]) if(result.error) throw fail(result.error.message);
-        const taskData = {...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:task.owner?`${task.owner.first_name} ${task.owner.last_name}`.trim():'TaskerPH member'};
-        const bidItems = bids.map((bid)=>({...bid,id:Number(bid.id),task_id:Number(bid.task_id),bidder_id:Number(bid.bidder_id),amount:Number(bid.amount)||0,bidder:bid.bidder?{...bid.bidder,id:Number(bid.bidder.id)}:null}));
+        const taskData = {...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner:task.owner?{...task.owner,id:Number(task.owner.id),avatar_path:publicAvatarUrl(s,task.owner.avatar_path)}:null,owner_name:task.owner?`${task.owner.first_name} ${task.owner.last_name}`.trim():'TaskerPH member'};
+        const bidItems = bids.map((bid)=>({...bid,id:Number(bid.id),task_id:Number(bid.task_id),bidder_id:Number(bid.bidder_id),amount:Number(bid.amount)||0,bidder:bid.bidder?{...bid.bidder,id:Number(bid.bidder.id),avatar_path:publicAvatarUrl(s,bid.bidder.avatar_path)}:null}));
         return res.status(200).json(ok('',{task:taskData,bids:bidItems,stats:{total_bids:totalBids.count||0,accepted_bids:acceptedBids.count||0,pending_bids:pendingBids.count||0,rejected_bids:rejectedBids.count||0}}));
       }
       if (action === 'view_user_profile') {

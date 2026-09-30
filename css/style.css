@@ -947,6 +947,10 @@ body.dark-mode.superadmin-mode .superadmin-task-card-owner,body.dark-mode.supera
 .superadmin-report-button-dismiss { border-color:#f0cfcc; color:#b53b35; background:#fff5f4; }
 .superadmin-report-button-dismiss:hover { background:#fee9e7; }
 .superadmin-report-removed { padding:.5rem; color:#8b98a4; font-size:.72rem; text-align:center; }
+.superadmin-review-owner-profile { margin-bottom:1rem; }
+.superadmin-review-owner-profile .superadmin-review-owner-icon { margin:0; }
+.superadmin-review-owner-avatar { display:block; width:3.5rem; height:3.5rem; border:3px solid #fff; border-radius:1.1rem; object-fit:cover; background:#e7f5f2; box-shadow:0 4px 12px rgba(15,23,42,.14); }
+body.dark-mode.superadmin-mode .superadmin-review-owner-avatar { border-color:#263445; background:#173b3b; }
 body.dark-mode.superadmin-mode .superadmin-report-row { border-color:#334155; background:linear-gradient(145deg,#172334 0%,#14202e 100%); }
 body.dark-mode.superadmin-mode .superadmin-report-heading strong { color:#f1f5f9; }
 body.dark-mode.superadmin-mode .superadmin-report-details p { color:#cbd5e1; }
