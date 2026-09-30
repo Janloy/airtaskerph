@@ -792,3 +792,19 @@ body.dark-mode .superadmin-review-field strong,body.dark-mode .superadmin-review
 body.dark-mode .superadmin-review-description p { color:#cbd5e1; }
 body.dark-mode .superadmin-review-label,body.dark-mode .superadmin-review-field span { color:#a8b5c7; }
 @media(max-width:640px){.superadmin-task-detail-header{align-items:flex-start;flex-direction:column;padding:1.35rem}.superadmin-review-summary{grid-template-columns:1fr}.superadmin-review-summary>div{flex-direction:row;align-items:center;justify-content:space-between;width:100%}}
+.superadmin-profile-hero { display:flex; align-items:center; gap:1.25rem; padding:1.4rem; border:1px solid var(--review-border); border-radius:1rem; background:linear-gradient(120deg,#f0fdfa,#f8fafc); }
+.superadmin-profile-avatar { display:grid; width:4.5rem; height:4.5rem; flex:none; place-items:center; border-radius:1.25rem; object-fit:cover; box-shadow:0 5px 16px #0f766e1c; }
+.superadmin-profile-initials { color:#087f78; background:#ccfbf1; font-size:1.35rem; font-weight:900; }
+.superadmin-profile-hero h2 { margin-top:.2rem; overflow-wrap:anywhere; font-size:1.55rem; font-weight:900; color:#17202a; }
+.superadmin-profile-hero p:not(.superadmin-review-label) { margin-top:.2rem; overflow-wrap:anywhere; color:#64748b; font-size:.9rem; }
+.superadmin-profile-role { flex:none; border-radius:999px; padding:.45rem .75rem; color:#087f78; background:#ccfbf1; font-size:.75rem; font-weight:800; text-transform:capitalize; }
+.superadmin-profile-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; }
+.superadmin-profile-stats article { display:flex; min-height:5.3rem; flex-direction:column; justify-content:center; gap:.4rem; border:1px solid var(--review-border); border-radius:1rem; padding:1rem; background:#fff; }
+.superadmin-profile-stats span { color:var(--review-muted); font-size:.72rem; font-weight:700; text-transform:uppercase; }
+.superadmin-profile-stats strong { color:#17202a; font-size:.95rem; }
+.superadmin-profile-task { display:flex; align-items:center; gap:1rem; justify-content:space-between; border:1px solid var(--review-border); border-radius:.9rem; padding:1rem; background:#fff; }
+.superadmin-profile-empty { border:1px dashed var(--review-border); border-radius:1rem; padding:2.5rem 1rem; color:var(--review-muted); text-align:center; }
+body.dark-mode .superadmin-profile-hero,body.dark-mode .superadmin-profile-stats article,body.dark-mode .superadmin-profile-task { border-color:#334155; background:#172334; }
+body.dark-mode .superadmin-profile-hero h2,body.dark-mode .superadmin-profile-stats strong { color:#f1f5f9; }
+body.dark-mode .superadmin-profile-hero p:not(.superadmin-review-label),body.dark-mode .superadmin-profile-stats span,body.dark-mode .superadmin-profile-empty { color:#a8b5c7; }
+@media(max-width:700px){.superadmin-profile-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.superadmin-profile-hero{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task .admin-action-button{margin-left:auto}}
