@@ -685,7 +685,9 @@ function renderSuperadminTasks() {
   if (!container) return;
   const allTasks = accountActivityData.tasks || [];
   const term = ($('#superadmin-task-search')?.value || '').trim().toLocaleLowerCase();
+  const statusFilter = $('#superadmin-task-status-filter')?.value || 'all';
   const tasks = allTasks.filter((task) => {
+    if (statusFilter !== 'all' && task.status !== statusFilter) return false;
     if (!term) return true;
     const owner = task.owner || {};
     const searchable = `${task.id} ${task.title} ${task.category} ${task.status} ${task.location} ${task.description} ${task.budget} ${owner.first_name} ${owner.last_name} ${owner.email}`;
@@ -700,7 +702,7 @@ function renderSuperadminTasks() {
     const actions = `<div class="superadmin-task-card-actions"><button type="button" data-superadmin-view-task="${Number(task.id)}" class="admin-action-button text-[#006f70]"><i class="fa-regular fa-eye mr-1" aria-hidden="true"></i>View</button><button type="button" data-delete="${Number(task.id)}" class="admin-action-button text-rose-600"><i class="fa-regular fa-trash-can mr-1" aria-hidden="true"></i>Remove</button></div>`;
     if (superadminTaskView === 'cards') return `<article class="superadmin-task-card"><div class="superadmin-task-card-top"><span class="superadmin-review-label">${escapeHtml(task.category || 'Uncategorized')}</span><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span></div><h3>${escapeHtml(task.title)}</h3>${taskPhotoMarkup(task, true)}<p class="superadmin-task-card-description">${escapeHtml(task.description || 'No description provided.')}</p><div class="superadmin-task-card-meta"><span><i class="fa-solid fa-peso-sign" aria-hidden="true"></i>${money(task.budget)}</span><span><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${escapeHtml(task.location || 'No location')}</span></div><div class="superadmin-task-card-owner"><i class="fa-regular fa-user" aria-hidden="true"></i><span>${escapeHtml(ownerLine)}</span><small>${escapeHtml(formatActivityTimestamp(task.created_at))}</small></div>${actions}</article>`;
     return `<article class="superadmin-task-row"><div class="min-w-0"><strong>${escapeHtml(task.title)}</strong><p>${escapeHtml(task.category || 'Uncategorized')} · ${escapeHtml(task.status)} · ${money(task.budget)}</p><small>${escapeHtml(ownerLine)}</small></div>${actions}</article>`;
-  }).join('') || `<p class="superadmin-profile-empty">${term ? 'No tasks match your search.' : 'No tasks posted yet.'}</p>`;
+  }).join('') || `<p class="superadmin-profile-empty">${term || statusFilter !== 'all' ? 'No tasks match your search or status filter.' : 'No tasks posted yet.'}</p>`;
   container.innerHTML = content;
   document.querySelectorAll('[data-admin-task-view]').forEach((button) => {
     const active = button.dataset.adminTaskView === superadminTaskView;
@@ -1712,6 +1714,7 @@ $('#account-activity-search')?.addEventListener('input', renderAccountActivityUs
 $('#superadmin-user-filter')?.addEventListener('change', renderSuperadminUsers);
 $('#superadmin-user-search')?.addEventListener('input', renderSuperadminUsers);
 $('#superadmin-task-search')?.addEventListener('input', renderSuperadminTasks);
+$('#superadmin-task-status-filter')?.addEventListener('change', renderSuperadminTasks);
 $('#admin-global-search')?.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter') return;
   event.preventDefault();
