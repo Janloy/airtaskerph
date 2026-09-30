@@ -300,23 +300,45 @@ export default async function handler(req, res) {
         const taskItems = tasks.map((task) => ({ ...task, id:Number(task.id), user_id:Number(task.user_id), budget:Number(task.budget)||0, owner_name:task.owner ? `${task.owner.first_name} ${task.owner.last_name}`.trim() : 'TaskerPH member' }));
         return res.status(200).json(ok('',{users,events,reports,tasks:taskItems,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0,open_tasks:openTasks.count||0}}));
       }
+      if (action === 'view_task_details') {
+        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view task moderation details.',403);
+        const taskId = Number(body.task_id);
+        if (!Number.isSafeInteger(taskId) || taskId < 1) throw fail('Choose a valid task.',422);
+        const [task, bids, totalBids, acceptedBids, pendingBids, rejectedBids] = await Promise.all([
+          rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,owner:user_profiles!tasks_user_id_fkey(id,first_name,middle_initial,last_name,email,avatar_path,role,created_at)').eq('id',taskId).maybeSingle()),
+          rows(s.from('bids').select('id,task_id,bidder_id,amount,status,message,created_at,removal_reason,bidder:user_profiles!bids_bidder_id_fkey(id,first_name,middle_initial,last_name,email,avatar_path,role,created_at)').eq('task_id',taskId).order('created_at',{ascending:false}).limit(200)),
+          s.from('bids').select('id',{count:'exact',head:true}).eq('task_id',taskId),
+          s.from('bids').select('id',{count:'exact',head:true}).eq('task_id',taskId).eq('status','Accepted'),
+          s.from('bids').select('id',{count:'exact',head:true}).eq('task_id',taskId).eq('status','Pending'),
+          s.from('bids').select('id',{count:'exact',head:true}).eq('task_id',taskId).eq('status','Rejected')
+        ]);
+        if (!task) throw fail('Task not found.',404);
+        for (const result of [totalBids,acceptedBids,pendingBids,rejectedBids]) if(result.error) throw fail(result.error.message);
+        const taskData = {...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:task.owner?`${task.owner.first_name} ${task.owner.last_name}`.trim():'TaskerPH member'};
+        const bidItems = bids.map((bid)=>({...bid,id:Number(bid.id),task_id:Number(bid.task_id),bidder_id:Number(bid.bidder_id),amount:Number(bid.amount)||0,bidder:bid.bidder?{...bid.bidder,id:Number(bid.bidder.id)}:null}));
+        return res.status(200).json(ok('',{task:taskData,bids:bidItems,stats:{total_bids:totalBids.count||0,accepted_bids:acceptedBids.count||0,pending_bids:pendingBids.count||0,rejected_bids:rejectedBids.count||0}}));
+      }
       if (action === 'view_user_profile') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view member profiles.',403);
         const userId = Number(body.user_id);
         if (!Number.isSafeInteger(userId) || userId < 1) throw fail('Choose a valid account.',422);
-        const [account, tasks, totalTasks, completedTasks, presence, recentActivity] = await Promise.all([
+        const [account, tasks, totalTasks, completedTasks, presence, recentActivity, submittedBids, totalBids, acceptedBids] = await Promise.all([
           rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,avatar_path,created_at').eq('id',userId).maybeSingle()),
           rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(25)),
           s.from('tasks').select('id',{count:'exact',head:true}).eq('user_id',userId),
           s.from('tasks').select('id',{count:'exact',head:true}).eq('user_id',userId).eq('status','Completed'),
           rows(s.from('account_presence').select('last_login_at,last_seen_at').eq('user_id',userId).maybeSingle()),
-          rows(s.from('account_activity').select('id,event_type,summary,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(10))
+          rows(s.from('account_activity').select('id,event_type,summary,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(10)),
+          rows(s.from('bids').select('id,task_id,amount,message,status,created_at,task:tasks!bids_task_id_fkey(id,title,category,status,budget,location,owner:user_profiles!tasks_user_id_fkey(first_name,last_name))').eq('bidder_id',userId).order('created_at',{ascending:false}).limit(30)),
+          s.from('bids').select('id',{count:'exact',head:true}).eq('bidder_id',userId),
+          s.from('bids').select('id',{count:'exact',head:true}).eq('bidder_id',userId).eq('status','Accepted')
         ]);
         if (!account) throw fail('Account not found.',404);
-        for (const result of [totalTasks,completedTasks]) if (result.error) throw fail(result.error.message);
+        for (const result of [totalTasks,completedTasks,totalBids,acceptedBids]) if (result.error) throw fail(result.error.message);
         const profileData = {...account,id:Number(account.id),...(presence||{last_login_at:null,last_seen_at:null})};
         const taskItems = tasks.map((task)=>({...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:`${account.first_name} ${account.last_name}`.trim(),owner:{first_name:account.first_name,last_name:account.last_name,email:account.email}}));
-        return res.status(200).json(ok('',{profile:profileData,tasks:taskItems,recent_activity:recentActivity,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0}}));
+        const bidItems = submittedBids.map((bid)=>({...bid,id:Number(bid.id),task_id:Number(bid.task_id),amount:Number(bid.amount)||0}));
+        return res.status(200).json(ok('',{profile:profileData,tasks:taskItems,submitted_bids:bidItems,recent_activity:recentActivity,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0,total_bids:totalBids.count||0,accepted_bids:acceptedBids.count||0}}));
       }
       if (action === 'submit_report') {
         const taskId=Number(body.task_id), reason=clean(body.reason,80), details=clean(body.details,1000);

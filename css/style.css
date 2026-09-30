@@ -812,6 +812,29 @@ body.dark-mode .superadmin-review-label,body.dark-mode .superadmin-review-field 
 .superadmin-profile-activity strong,.superadmin-profile-activity small { display:block; }
 .superadmin-profile-activity strong { color:#334155; font-size:.88rem; }
 .superadmin-profile-activity small { margin-top:.22rem; color:#64748b; font-size:.72rem; text-transform:capitalize; }
+.superadmin-bid-count-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; }
+.superadmin-bid-count-grid article { display:flex; min-height:5rem; flex-direction:column; justify-content:center; gap:.35rem; border:1px solid var(--review-border); border-radius:1rem; padding:1rem; background:#fff; }
+.superadmin-bid-count-grid span,.superadmin-bid-offer span { color:var(--review-muted); font-size:.7rem; font-weight:750; letter-spacing:.05em; text-transform:uppercase; }
+.superadmin-bid-count-grid strong { color:#17202a; font-size:1.35rem; }
+.superadmin-bid-row { display:grid; grid-template-columns:minmax(190px,1.1fr) minmax(105px,.5fr) auto; align-items:center; gap:.8rem 1rem; border:1px solid var(--review-border); border-radius:.9rem; padding:1rem; background:#fff; }
+.superadmin-bid-person { display:flex; min-width:0; align-items:center; gap:.7rem; }
+.superadmin-bid-avatar { display:grid; width:2.6rem; height:2.6rem; flex:none; place-items:center; overflow:hidden; border-radius:.85rem; color:#087f78; background:#e6f7f3; }
+.superadmin-bid-avatar img { width:100%; height:100%; object-fit:cover; }
+.superadmin-bid-profile { display:block; max-width:100%; overflow:hidden; color:#006f70; font-weight:800; text-align:left; text-overflow:ellipsis; white-space:nowrap; }
+.superadmin-bid-person small { display:block; margin-top:.18rem; overflow-wrap:anywhere; color:#64748b; font-size:.72rem; }
+.superadmin-bid-offer { display:grid; gap:.2rem; }
+.superadmin-bid-offer strong { color:#17202a; }
+.superadmin-bid-status { display:inline-flex; width:max-content; align-items:center; border-radius:999px; padding:.35rem .65rem; font-size:.72rem; font-weight:800; }
+.superadmin-bid-status.is-accepted { color:#047857; background:#d1fae5; }
+.superadmin-bid-status.is-pending { color:#a16207; background:#fef3c7; }
+.superadmin-bid-status.is-rejected { color:#be123c; background:#ffe4e6; }
+.superadmin-bid-message { grid-column:1/-1; border-top:1px solid var(--review-border); padding-top:.7rem; }
+.superadmin-bid-message p,.superadmin-profile-bid blockquote { color:#475569; font-size:.85rem; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+.superadmin-bid-message small { display:block; margin-top:.3rem; color:#64748b; font-size:.7rem; }
+.superadmin-profile-bid { display:flex; align-items:flex-start; gap:.85rem; justify-content:space-between; border:1px solid var(--review-border); border-radius:.9rem; padding:1rem; background:#fff; }
+.superadmin-profile-bid h4 { margin-top:.2rem; font-weight:800; }
+.superadmin-profile-bid p { margin-top:.25rem; color:#64748b; font-size:.75rem; }
+.superadmin-profile-bid blockquote { margin-top:.55rem; }
 body.dark-mode .superadmin-profile-hero,body.dark-mode .superadmin-profile-stats article,body.dark-mode .superadmin-profile-task { border-color:#334155; background:#172334; }
 body.dark-mode .superadmin-profile-hero h2,body.dark-mode .superadmin-profile-stats strong { color:#f1f5f9; }
 body.dark-mode .superadmin-profile-hero p:not(.superadmin-review-label),body.dark-mode .superadmin-profile-stats span,body.dark-mode .superadmin-profile-empty { color:#a8b5c7; }
@@ -819,4 +842,9 @@ body.dark-mode .superadmin-profile-activity { border-color:#334155; }
 body.dark-mode .superadmin-profile-activity > span { color:#8ce0d2; background:#173b3b; }
 body.dark-mode .superadmin-profile-activity strong { color:#e2e8f0; }
 body.dark-mode .superadmin-profile-activity small { color:#a8b5c7; }
-@media(max-width:700px){.superadmin-profile-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.superadmin-profile-hero{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task .admin-action-button{margin-left:auto}}
+body.dark-mode .superadmin-bid-count-grid article,body.dark-mode .superadmin-bid-row,body.dark-mode .superadmin-profile-bid { border-color:#334155; background:#172334; }
+body.dark-mode .superadmin-bid-count-grid strong,body.dark-mode .superadmin-bid-offer strong,body.dark-mode .superadmin-profile-bid h4 { color:#e2e8f0; }
+body.dark-mode .superadmin-bid-person small,body.dark-mode .superadmin-bid-message small,body.dark-mode .superadmin-profile-bid p { color:#a8b5c7; }
+body.dark-mode .superadmin-bid-message { border-color:#334155; }
+body.dark-mode .superadmin-bid-message p,body.dark-mode .superadmin-profile-bid blockquote { color:#cbd5e1; }
+@media(max-width:700px){.superadmin-profile-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.superadmin-profile-hero{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task,.superadmin-profile-bid{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task .admin-action-button,.superadmin-profile-bid .admin-action-button{margin-left:auto}.superadmin-bid-count-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.superadmin-bid-row{grid-template-columns:1fr auto}.superadmin-bid-offer{grid-column:1}.superadmin-bid-message{grid-column:1/-1}}
