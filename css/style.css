@@ -565,3 +565,38 @@ html.liquid-glass-active body.superadmin-mode .superadmin-profile-dropdown { bac
 html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-profile-dropdown { background-color: rgba(24,35,48,var(--glass-opacity)); backdrop-filter: blur(var(--glass-blur)) saturate(1.35); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35); }
 html.liquid-glass-active body.dark-mode.superadmin-mode #profile-page .profile-card, html.liquid-glass-active body.dark-mode.superadmin-mode #profile-page .profile-list { background-color: rgba(24,35,48,var(--glass-opacity)) !important; backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
 @media (max-width: 1023px) { body.superadmin-mode .superadmin-sidebar { top: auto; bottom: auto; } }
+
+/* Keep the fixed navigation anchored while glass settings change. */
+html.liquid-glass-active body.superadmin-mode #account-activity-modal .card,
+html.liquid-glass-active body.superadmin-mode #user-management-page .card,
+html.liquid-glass-active body.superadmin-mode #task-management-page .card,
+html.liquid-glass-active body.superadmin-mode #report-management-page .card,
+html.liquid-glass-active body.superadmin-mode #audit-log-page .card { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html.liquid-glass-active body.superadmin-mode .superadmin-sidebar { position: fixed; }
+
+/* Restore readable contrast for all Superadmin data in dark mode. */
+body.dark-mode.superadmin-mode .superadmin-stat-label,
+body.dark-mode.superadmin-mode .superadmin-panel-heading p,
+body.dark-mode.superadmin-mode .superadmin-feed-row small,
+body.dark-mode.superadmin-mode .superadmin-report-row small,
+body.dark-mode.superadmin-mode .superadmin-task-row small,
+body.dark-mode.superadmin-mode .superadmin-shortcuts small { color: #b6c2d1; }
+body.dark-mode.superadmin-mode .superadmin-stat-value,
+body.dark-mode.superadmin-mode .superadmin-panel-heading h3,
+body.dark-mode.superadmin-mode .superadmin-feed-row strong,
+body.dark-mode.superadmin-mode .superadmin-report-row strong,
+body.dark-mode.superadmin-mode .superadmin-task-row strong,
+body.dark-mode.superadmin-mode .superadmin-shortcuts strong,
+body.dark-mode.superadmin-mode #admin-topbar-name { color: #f1f5f9; }
+body.dark-mode.superadmin-mode .superadmin-report-row p,
+body.dark-mode.superadmin-mode .superadmin-task-row p { color: #d1d9e4; }
+body.dark-mode.superadmin-mode #user-management-page table tbody td { color: #e2e8f0; }
+body.dark-mode.superadmin-mode #user-management-page th { color: #b6c2d1; }
+body.dark-mode.superadmin-mode #user-management-page thead { background: #202e3e; }
+body.dark-mode.superadmin-mode #user-management-page tbody tr { border-color: #293647; }
+body.dark-mode.superadmin-mode #user-management-page tbody tr:hover { background: #202e3e; }
+body.dark-mode.superadmin-mode .superadmin-dashboard-state { border-color: #854d0e; background: #422006; color: #fde68a; }
+html.liquid-glass-active body.superadmin-mode .superadmin-sidebar,
+html.liquid-glass-active body.superadmin-mode .superadmin-profile-dropdown { border-color: rgba(255,255,255,var(--glass-light-border-alpha)); }
+html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-sidebar,
+html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-profile-dropdown { border-color: rgba(255,255,255,var(--glass-dark-border-alpha)); }
