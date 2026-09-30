@@ -1407,9 +1407,13 @@ async function openPublicProfile(userId, taskId = null) {
     if (statsGrid) {
       const rating = Number(payload.average_rating) || 0;
       const ratingCount = Number(payload.rating_count) || 0;
+      const completedListingStat = statsGrid.children[1];
+      if (completedListingStat) {
+        completedListingStat.querySelector('p:first-child').textContent = String(Number(payload.completed_listings) || 0);
+        completedListingStat.querySelector('p:last-child').textContent = 'Completed listings';
+      }
+      statsGrid.insertAdjacentHTML('beforeend', `<div class="rounded-xl bg-[#f5f7f8] p-4"><p class="text-2xl font-extrabold text-[#17202a]">${Number(payload.completed_as_tasker) || 0}</p><p class="mt-1 text-xs font-semibold uppercase tracking-wider text-[#68727c]">Completed as tasker</p></div>`);
       statsGrid.insertAdjacentHTML('beforeend', `<div class="rounded-xl bg-[#f5f7f8] p-4"><p class="text-2xl font-extrabold text-[#17202a]">${ratingCount ? `${rating.toFixed(1)} <span class="text-amber-500">★</span>` : '—'}</p><p class="mt-1 text-xs font-semibold uppercase tracking-wider text-[#68727c]">Average rating</p><p class="mt-1 text-xs text-[#52616c]">${ratingCount} ${ratingCount === 1 ? 'review' : 'reviews'}</p></div>`);
-      const completedLabel = statsGrid.children[1]?.querySelector('p:last-child');
-      if (completedLabel) completedLabel.textContent = 'Completed tasks';
     }
     const reviews=(payload.reviews||[]).map((review)=>`<article class="profile-review"><div><strong>${escapeHtml(review.reviewer_name)}</strong><span>${Number(review.rating)}/5 stars</span></div><small>${escapeHtml(formatActivityTimestamp(review.created_at))}</small>${review.comment?`<p>${escapeHtml(review.comment)}</p>`:''}</article>`).join('');
     $('#public-profile-content').insertAdjacentHTML('beforeend',`<section class="mt-8"><p class="text-xs font-bold uppercase tracking-[.16em] text-[#008f8c]">Completed task feedback</p><h2 class="mt-1 text-2xl font-bold">Reviews</h2><div class="mt-4 grid gap-3">${reviews||'<p class="text-sm text-[#52616c]">No reviews yet.</p>'}</div></section>`);
