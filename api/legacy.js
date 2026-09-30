@@ -377,7 +377,11 @@ export default async function handler(req, res) {
         const taskId=Number(body.task_id), reason=clean(body.reason,80), details=clean(body.details,1000);
         if (!Number.isSafeInteger(taskId) || !['Scam or fraud','Inappropriate content','Misleading information','Other'].includes(reason)) throw fail('Choose a valid report reason.',422);
         const task=await rows(s.from('tasks').select('id,title').eq('id',taskId).maybeSingle()); if(!task) throw fail('Task not found.',404);
-        const [report]=await rows(s.from('task_reports').insert({task_id:taskId,reporter_id:profile.id,reason,details}).select('id'));
+        const previousReport=await rows(s.from('task_reports').select('id').eq('task_id',taskId).eq('reporter_id',profile.id).maybeSingle());
+        if (previousReport) throw fail('You have already reported this task. You can submit only one report per task.',409);
+        const {data:report,error:reportError}=await s.from('task_reports').insert({task_id:taskId,reporter_id:profile.id,reason,details}).select('id').single();
+        if (reportError?.code==='23505') throw fail('You have already reported this task. You can submit only one report per task.',409);
+        if (reportError || !report) throw fail(reportError?.message || 'Your report could not be submitted.',400);
         await logActivity(s,profile.id,'report_submitted',`Report submitted for: ${task.title}`,'report',report.id);
         return res.status(200).json(ok('Report sent to the Superadmin for review.'));
       }
