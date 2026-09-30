@@ -643,6 +643,7 @@ function renderAccountActivity(payload) {
     ['Completed', accountActivityData.stats.completed_tasks || 0, 'fa-circle-check', 'text-emerald-600'], ['Open reports', accountActivityData.reports.filter((r) => r.status === 'Open').length, 'fa-flag', 'text-rose-600'], ['Active now', active, 'fa-bolt', 'text-blue-600']
   ].map(([label, value, icon, color]) => `<article class="superadmin-stat"><span class="superadmin-stat-icon ${color}"><i class="fa-solid ${icon}" aria-hidden="true"></i></span><span class="superadmin-stat-label">${label}</span><strong class="superadmin-stat-value">${value}</strong></article>`).join('');
   $('#account-activity-summary').innerHTML = summary;
+  $('#superadmin-dashboard-state')?.classList.add('hidden');
   const openReports = accountActivityData.reports.filter((report) => report.status === 'Open').length;
   if ($('#admin-report-badge')) $('#admin-report-badge').textContent = String(openReports);
   const eventsHtml = accountActivityData.events.slice(0, 6).map((event) => `<article class="superadmin-feed-row"><span class="superadmin-feed-icon"><i class="fa-solid ${event.event_type === 'user_registered' ? 'fa-user-plus' : event.event_type === 'task_completed' ? 'fa-circle-check' : event.event_type.includes('report') ? 'fa-flag' : 'fa-clock'}"></i></span><div class="min-w-0"><strong>${escapeHtml(event.summary)}</strong><small>${escapeHtml(event.user ? `${event.user.first_name} ${event.user.last_name} · ${event.user.email}` : 'System')} · ${escapeHtml(formatActivityTimestamp(event.created_at))}</small></div></article>`).join('') || '<p class="p-4 text-sm text-slate-500">No activity recorded yet.</p>';
@@ -662,6 +663,8 @@ function renderAccountActivity(payload) {
 }
 async function loadAccountActivity() {
   if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can view account activity.', 'error'); return; }
+  $('#superadmin-dashboard-state')?.classList.remove('hidden');
+  if ($('#superadmin-dashboard-state')) $('#superadmin-dashboard-state').textContent = 'Loading admin dashboard data...';
   $('#superadmin-users-table').innerHTML = '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">Loading accountsâ€¦</td></tr>';
   try {
     const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'activity_dashboard' }) });
@@ -669,6 +672,7 @@ async function loadAccountActivity() {
   } catch (error) {
     const message = escapeHtml(error.message);
     $('#superadmin-users-table').innerHTML = `<tr><td colspan="5" class="p-6 text-center text-sm text-red-600">${message}</td></tr>`;
+    if ($('#superadmin-dashboard-state')) { $('#superadmin-dashboard-state').innerHTML = `<strong>Dashboard data could not load.</strong> ${message} Check that the latest Supabase migration has been applied.`; $('#superadmin-dashboard-state').className = 'superadmin-dashboard-state'; }
   }
 }
 async function openAccountActivity() {
@@ -1140,11 +1144,16 @@ async function init() {
   else applySystemAppearance();
   loadUserGlassPreference(state.user);
   try { localStorage.removeItem('taskerph-glass-opacity'); } catch (error) { void error; }
+  if (state.user?.role === 'superadmin') {
+    showPage('account-activity-modal');
+    await openAccountActivity();
+    await finishMobileSplash(mobileSplash);
+    return;
+  }
   const initialLoads = [loadTasks()];
   if (state.user) initialLoads.push(refreshSavedTaskData().catch((error) => notify(error.message, 'error')));
   await Promise.all(initialLoads);
   if (state.user) renderTasks();
-  if (state.user?.role === 'superadmin') { showPage('account-activity-modal'); await openAccountActivity(); }
   startNotificationPolling(); startTaskPolling(); await finishMobileSplash(mobileSplash); maybeShowInstallGuide();
 }
 window.addEventListener('storage', async (event) => {
@@ -1175,7 +1184,7 @@ window.addEventListener('storage', async (event) => {
     }
     renderAuth();
     renderTasks();
-    if (state.user && (!wasLoggedIn || Number(previousUserId) !== Number(state.user.id))) await loadTasks();
+    if (state.user && state.user.role !== 'superadmin' && (!wasLoggedIn || Number(previousUserId) !== Number(state.user.id))) await loadTasks();
     if (state.user?.role === 'superadmin' && (!wasLoggedIn || Number(previousUserId) !== Number(state.user.id))) await openAccountActivity();
     await updateNotificationCounts();
   } catch (error) { notify(error.message, 'error'); }
@@ -1454,7 +1463,7 @@ $('#refresh-tasks-button').addEventListener('click', async (event) => {
 });
 $('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting taskâ€¦'); try { await api('api/create_task', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); closeModal('task-modal'); setBusy(event.target, false); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#create-task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting taskâ€¦'); try { await api('api/create_task', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); setBusy(event.target, false); showPage('marketplace-page'); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing inâ€¦'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage(state.user.role === 'superadmin' ? 'account-activity-modal' : 'marketplace-page'); await loadTasks(); if (state.user.role === 'superadmin') await openAccountActivity(); startNotificationPolling(); notify(payload.message); await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing inâ€¦'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; if (state.user.role !== "superadmin") await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage(state.user.role === 'superadmin' ? 'account-activity-modal' : 'marketplace-page'); if (state.user.role !== "superadmin") await loadTasks(); if (state.user.role === 'superadmin') await openAccountActivity(); startNotificationPolling(); notify(payload.message); if (state.user.role !== "superadmin") await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-profile-form').addEventListener('submit', (event) => {
   event.preventDefault();
