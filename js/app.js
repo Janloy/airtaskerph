@@ -1,6 +1,7 @@
 const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, publicProfileReturn: null, publicProfileTasks: [], conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], conversationLastFullSync: 0, conversationFetchInFlight: false, pendingMessages: [], sendingMessage: false, notificationTimer: null, taskRefreshTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
 let myBidsData = [];
 let notificationCenterItems = [];
+const seenTaskUpdateToasts = new Set();
 let taskFetchSequence = 0;
 let taskFetchInFlight = false;
 let taskListLoaded = false;
@@ -237,7 +238,14 @@ async function updateNotificationCounts() {
     setNotificationCount('#desktop-message-count', payload.bidder_unread_messages);
     setNotificationCount('#mobile-message-count', payload.bidder_unread_messages);
     const updates = await api('api/notifications?action=task_updates');
-    (updates.updates || []).reverse().forEach((item) => notify(`${item.title}: ${item.body}`));
+    (updates.updates || []).reverse().forEach((item) => {
+      const toastKey = `${state.user.id}:${item.id}`;
+      if (seenTaskUpdateToasts.has(toastKey)) return;
+      seenTaskUpdateToasts.add(toastKey);
+      const title = item.title && item.title !== 'undefined' ? item.title : 'Task update';
+      const body = item.body && item.body !== 'undefined' ? item.body : 'There is a new update about one of your tasks.';
+      notify(`${title}: ${body}`);
+    });
     const center = await api('api/notifications?action=center');
     setNotificationCount('#desktop-notification-count', center.unread_count || 0);
     setNotificationCount('#mobile-notification-count', center.unread_count || 0);
