@@ -1173,6 +1173,22 @@ body.superadmin-mode:not(.dark-mode) .superadmin-task-view-toggle button,
 body.superadmin-mode:not(.dark-mode) .superadmin-task-card-description,
 body.superadmin-mode:not(.dark-mode) .superadmin-task-card-owner,
 body.superadmin-mode:not(.dark-mode) .superadmin-task-detail { color:#475569; }
+/* Darken slate-400 Superadmin labels and secondary text in light mode. */
+body.superadmin-mode:not(.dark-mode) .superadmin-search,
+body.superadmin-mode:not(.dark-mode) .superadmin-topbar-right small,
+body.superadmin-mode:not(.dark-mode) .superadmin-feed-row small,
+body.superadmin-mode:not(.dark-mode) .superadmin-report-row small,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-row small,
+body.superadmin-mode:not(.dark-mode) .superadmin-shortcuts small,
+body.superadmin-mode:not(.dark-mode) .superadmin-sidebar::before,
+body.superadmin-mode:not(.dark-mode) .superadmin-sidebar button::before,
+body.superadmin-mode:not(.dark-mode) .superadmin-profile-chevron,
+body.superadmin-mode:not(.dark-mode) .superadmin-menu-heading small,
+body.superadmin-mode:not(.dark-mode) .superadmin-menu-appearance small,
+body.superadmin-mode:not(.dark-mode) .superadmin-menu-glass small,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-search,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-search input::placeholder,
+body.superadmin-mode:not(.dark-mode) .superadmin-task-card-owner small { color:#64748b; }
 @media(max-width:640px) {
   .my-tasks-page #my-task-drafts { margin-top:1.5rem; }
   .task-drafts-section { margin:0 0 1.1rem; border-radius:1rem; padding:.9rem; }
