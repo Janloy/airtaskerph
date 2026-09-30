@@ -620,7 +620,7 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('',{task:{...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:owner?`${owner.first_name} ${owner.last_name}`.trim():'TaskerPH member'}}));
       }
       if(action==='list') { const bids=await loadTaskBids(s,task,profile); return res.status(200).json(ok('',{bids})); }
-      if(action==='place') { if(Number(task.user_id)===Number(profile.id)) throw fail('You cannot bid on your own task.',403); if(task.status!=='Open') throw fail('This task is no longer accepting bids.',409); const accepted=await rows(s.from('bids').select('id').eq('bidder_id',profile.id).eq('status','Accepted').maybeSingle()); if(accepted) throw fail('You already have an accepted bid. Complete that task before bidding on another task.',409); const amount=Number(body.amount),message=clean(body.message,1000);if(!Number.isFinite(amount)||amount<0||!message)throw fail('Enter a valid offer and message.',422); await rows(s.from('bids').upsert({task_id:taskId,bidder_id:profile.id,amount,message,status:'Pending'},{onConflict:'task_id,bidder_id'}));  return res.status(200).json(ok('Your bid has been submitted.')); }
+      if(action==='place') { if(Number(task.user_id)===Number(profile.id)) throw fail('You cannot bid on your own task.',403); if(task.status!=='Open') throw fail('This task is no longer accepting bids.',409); const accepted=await rows(s.from('bids').select('id').eq('bidder_id',profile.id).eq('status','Accepted').maybeSingle()); if(accepted) throw fail('You already have an accepted bid. Complete that task before bidding on another task.',409); const amount=Number(body.amount),message=clean(body.message,1000);if(!Number.isFinite(amount)||amount<0||!message)throw fail('Enter a valid offer and message.',422); const [placedBid]=await rows(s.from('bids').upsert({task_id:taskId,bidder_id:profile.id,amount,message,status:'Pending'},{onConflict:'task_id,bidder_id'}).select('id')); await taskNotice(s,task.user_id,taskId,'bid_received','New bid received',`${profile.first_name} ${profile.last_name} offered ${new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(amount)} for “${task.title}”.`,`bid:${placedBid.id}:received`); return res.status(200).json(ok('Your bid has been submitted.')); }
       const bidId=Number(body.bid_id);
       if(action==='update') {const amount=Number(body.amount),message=clean(body.message,1000);if(!Number.isFinite(amount)||amount<0||!message||task.status!=='Open')throw fail('Enter a valid offer and message.',422);const updated=await rows(s.from('bids').update({amount,message}).eq('id',bidId).eq('task_id',taskId).eq('bidder_id',profile.id).eq('status','Pending').select('id'));if(!updated.length)throw fail('Only your pending bid on an open task can be edited.',403);return res.status(200).json(ok('Your bid was updated.')); }
       if(action==='delete') {const bid=await rows(s.from('bids').select('id').eq('id',bidId).eq('task_id',taskId).eq('bidder_id',profile.id).eq('status','Pending').maybeSingle());if(!bid||task.status!=='Open')throw fail('Only your pending bid on an open task can be deleted.',403);await rows(s.from('messages').delete().eq('task_id',taskId).or(`sender_id.eq.${profile.id},recipient_id.eq.${profile.id}`));await rows(s.from('bids').delete().eq('id',bidId).eq('task_id',taskId).eq('bidder_id',profile.id));return res.status(200).json(ok('Your bid was deleted.')); }
@@ -739,7 +739,61 @@ export default async function handler(req, res) {
       if(action==='send') {const text=clean(body.body,2000);if(!text)throw fail('Message cannot be empty.',422);const [message]=await rows(s.from('messages').insert({task_id:taskId,sender_id:profile.id,recipient_id:other,body:text}).select('*'));return res.status(200).json(ok('Message sent.',{message}));}
     }
     if (route === 'notifications') {
-      ({ profile } = await userFor(req,s, action !== 'counts' && action !== 'task_messages' && action !== 'task_updates'));
+      ({ profile } = await userFor(req,s, action !== 'counts' && action !== 'task_messages' && action !== 'task_updates' && action !== 'center'));
+      if(action==='center') {
+        const [taskNotices,messageRows,ownedTasks]=await Promise.all([
+          rows(s.from('task_notifications').select('id,task_id,event_type,title,body,dedupe_key,is_read,created_at').eq('user_id',profile.id).order('created_at',{ascending:false}).limit(50)),
+          rows(s.from('messages').select('id,task_id,sender_id,body,read_at,created_at').eq('recipient_id',profile.id).order('created_at',{ascending:false}).limit(50)),
+          rows(s.from('tasks').select('id,title').eq('user_id',profile.id))
+        ]);
+        const ownedTaskIds=ownedTasks.map((task)=>Number(task.id));
+        const pendingBids=ownedTaskIds.length?await rows(s.from('bids').select('id,task_id,bidder_id,amount,created_at').in('task_id',ownedTaskIds).eq('status','Pending').order('created_at',{ascending:false}).limit(50)):[];
+        const pendingBidIds=pendingBids.map((bid)=>Number(bid.id));
+        const relatedTaskIds=[...new Set([...messageRows.map((message)=>Number(message.task_id)),...pendingBids.map((bid)=>Number(bid.task_id))])].filter(Boolean);
+        const relatedUserIds=[...new Set([...messageRows.map((message)=>Number(message.sender_id)),...pendingBids.map((bid)=>Number(bid.bidder_id))])].filter(Boolean);
+        const [bidReads, taskRows, userRows, unreadMessageCount]=await Promise.all([
+          pendingBidIds.length?rows(s.from('notification_reads').select('reference_id').eq('user_id',profile.id).eq('notification_type','bid').in('reference_id',pendingBidIds)):Promise.resolve([]),
+          relatedTaskIds.length?rows(s.from('tasks').select('id,title').in('id',relatedTaskIds)):Promise.resolve([]),
+          relatedUserIds.length?rows(s.from('user_profiles').select('id,first_name,last_name').in('id',relatedUserIds)):Promise.resolve([]),
+          s.from('messages').select('id',{count:'exact',head:true}).eq('recipient_id',profile.id).is('read_at',null)
+        ]);
+        if(unreadMessageCount.error) throw unreadMessageCount.error;
+        const taskById=new Map([...ownedTasks,...taskRows].map((task)=>[Number(task.id),task]));
+        const userById=new Map(userRows.map((user)=>[Number(user.id),user]));
+        const seenBidIds=new Set(bidReads.map((row)=>Number(row.reference_id)));
+        const notifiedBidIds=new Set(taskNotices.map((notice)=>/^bid:(\d+):received$/.exec(notice.dedupe_key||'')?.[1]).filter(Boolean).map(Number));
+        const items=[
+          ...taskNotices.map((notice)=>({...notice,type:'task'})),
+          ...messageRows.map((message)=>{
+            const sender=userById.get(Number(message.sender_id));
+            return {id:`message-${message.id}`,type:'message',event_type:'message',task_id:Number(message.task_id),other_user_id:Number(message.sender_id),title:`Message from ${sender?`${sender.first_name} ${sender.last_name}`.trim():'TaskerPH member'}`,body:message.body,created_at:message.created_at,is_read:Boolean(message.read_at)};
+          }),
+          ...pendingBids.filter((bid)=>!notifiedBidIds.has(Number(bid.id))).map((bid)=>{
+            const bidder=userById.get(Number(bid.bidder_id)), task=taskById.get(Number(bid.task_id));
+            return {id:`bid-${bid.id}`,type:'bid',event_type:'pending_bid',entity_id:Number(bid.id),task_id:Number(bid.task_id),title:'New bid received',body:`${bidder?`${bidder.first_name} ${bidder.last_name}`.trim():'A tasker'} offered ${new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(Number(bid.amount)||0)} for “${task?.title||'your task'}”.`,created_at:bid.created_at,is_read:seenBidIds.has(Number(bid.id))};
+          })
+        ].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)).slice(0,100);
+        const unreadCount=taskNotices.filter((item)=>!item.is_read).length+(unreadMessageCount.count||0)+pendingBids.filter((item)=>!notifiedBidIds.has(Number(item.id))&&!seenBidIds.has(Number(item.id))).length;
+        return res.status(200).json(ok('',{items,unread_count:unreadCount}));
+      }
+      if(action==='mark_all_read') {
+        const now=new Date().toISOString();
+        await Promise.all([
+          rows(s.from('task_notifications').update({is_read:true}).eq('user_id',profile.id).eq('is_read',false)),
+          rows(s.from('messages').update({read_at:now}).eq('recipient_id',profile.id).is('read_at',null))
+        ]);
+        const ownedTasks=await rows(s.from('tasks').select('id').eq('user_id',profile.id));
+        const ownedTaskIds=ownedTasks.map((task)=>Number(task.id));
+        if(ownedTaskIds.length) {
+          const pending=await rows(s.from('bids').select('id').in('task_id',ownedTaskIds).eq('status','Pending'));
+          if(pending.length) await rows(s.from('notification_reads').upsert(pending.map((bid)=>({user_id:profile.id,notification_type:'bid',reference_id:bid.id})),{onConflict:'user_id,notification_type,reference_id',ignoreDuplicates:true}));
+        }
+        return res.status(200).json(ok('All notifications marked as read.'));
+      }
+      if(action==='read_item' && body.type==='task') {
+        await rows(s.from('task_notifications').update({is_read:true}).eq('id',Number(body.id)).eq('user_id',profile.id));
+        return res.status(200).json(ok());
+      }
       if(action==='task_updates') {
         const cutoff=new Date(Date.now()-24*60*60*1000).toISOString();
         const overdue=await rows(s.from('tasks').select('id,title,user_id').eq('user_id',profile.id).eq('status','Awaiting Confirmation').lt('completion_requested_at',cutoff));

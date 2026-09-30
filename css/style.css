@@ -75,6 +75,22 @@ body.dark-mode .mobile-task-refresh-row button { border-color: #065f46; color: #
 .mobile-nav-item { display: flex; min-height: 54px; flex-direction: column; align-items: center; justify-content: center; gap: .2rem; border: 0; border-radius: 12px; background: transparent; color: #475569; font-size: .68rem; font-weight: 700; transition: color .18s ease, background-color .18s ease, transform .18s ease, box-shadow .18s ease; }
 .mobile-nav-item i { font-size: 1.05rem; }
 .notification-count { display: inline-flex; min-width: 1.15rem; height: 1.15rem; align-items: center; justify-content: center; margin-left: .3rem; padding: 0 .25rem; border-radius: 999px; color: #0f172a; background: #fbbf24; font-size: .68rem; font-weight: 800; line-height: 1; vertical-align: middle; animation: notification-pop .25s cubic-bezier(.2,.8,.2,1) both; }
+.notification-trigger { position: relative; display: inline-flex; min-width: 2.65rem; align-items: center; justify-content: center; }
+.notification-trigger .notification-count { position: absolute; top: -.35rem; right: -.35rem; margin: 0; }
+.notification-center-item { display: grid; grid-template-columns: 2.75rem minmax(0,1fr) .55rem; align-items: start; gap: .85rem; width: 100%; padding: 1rem; border: 1px solid #dbe3e7; border-radius: 1rem; color: #17202a; background: #fff; text-align: left; transition: border-color .16s ease, background-color .16s ease, transform .16s ease; }
+.notification-center-item:hover, .notification-center-item:focus-visible { border-color: #74bdb2; background: #f8fcfb; transform: translateY(-1px); }
+.notification-center-item.is-unread { border-color: #9bd1c7; background: #f0faf7; }
+.notification-center-icon { display: grid; width: 2.65rem; height: 2.65rem; place-items: center; border-radius: .85rem; color: #08756d; background: #e2f4ef; font-size: 1rem; }
+.notification-center-copy { display: grid; min-width: 0; gap: .3rem; }
+.notification-center-copy strong { color: #17202a; font-size: .95rem; }
+.notification-center-copy > span { overflow-wrap: anywhere; color: #475569; font-size: .88rem; line-height: 1.5; }
+.notification-center-copy small { color: #64748b; font-size: .75rem; }
+.notification-center-unread { width: .55rem; height: .55rem; margin-top: .45rem; border-radius: 50%; background: #008f8c; }
+body.dark-mode .notification-center-item { border-color: #334155; color: #e2e8f0; background: #111b2b; }
+body.dark-mode .notification-center-item:hover, body.dark-mode .notification-center-item.is-unread { border-color: #0f766e; background: #142d32; }
+body.dark-mode .notification-center-copy strong { color: #f1f5f9; }
+body.dark-mode .notification-center-copy > span { color: #cbd5e1; }
+body.dark-mode .notification-center-copy small { color: #aab6c5; }
 .glass-header #my-tasks-button, .glass-header #my-bids-button { position: relative; }
 .glass-header #my-tasks-button .notification-count, .glass-header #my-bids-button .notification-count { position: absolute; top: .2rem; right: .25rem; margin: 0; }
 .mobile-nav-item .notification-count { position: absolute; top: .2rem; right: .45rem; margin: 0; }

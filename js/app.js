@@ -1,5 +1,6 @@
 const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, publicProfileReturn: null, publicProfileTasks: [], conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], conversationLastFullSync: 0, conversationFetchInFlight: false, pendingMessages: [], sendingMessage: false, notificationTimer: null, taskRefreshTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
 let myBidsData = [];
+let notificationCenterItems = [];
 let taskFetchSequence = 0;
 let taskFetchInFlight = false;
 let taskListLoaded = false;
@@ -180,6 +181,43 @@ function setActionProgress(key, label, busy) {
   else activeActionProgress.delete(key);
   renderActionProgress();
 }
+function ensureNotificationControls() {
+  const controls = [
+    { saved: '.desktop-only .saved-header-button:not(.mobile-saved-button)', id: 'desktop-notification-trigger', countId: 'desktop-notification-count', extra: 'hidden' },
+    { saved: '.mobile-saved-button', id: 'mobile-notification-trigger', countId: 'mobile-notification-count', extra: 'mobile-only hidden' }
+  ];
+  controls.forEach(({ saved, id, countId, extra }) => {
+    if ($(`#${id}`)) return;
+    const savedButton = $(saved);
+    if (!savedButton) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = id;
+    button.dataset.notifications = '';
+    button.className = `notification-trigger touch-target ${extra} rounded-lg border border-[#c9d4d9] px-3 text-[#006f70]`;
+    button.setAttribute('aria-label', 'Notifications');
+    button.innerHTML = `<i class="fa-regular fa-bell" aria-hidden="true"></i><span id="${countId}" class="notification-count hidden">0</span>`;
+    savedButton.parentElement.insertBefore(button, savedButton);
+  });
+}
+function ensureNotificationsPage() {
+  if ($('#notifications-page')) return;
+  document.body.insertAdjacentHTML('beforeend', '<section id="notifications-page" class="app-page page-shell hidden"><div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10"><div class="flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-bold uppercase tracking-[.16em] text-[#008f8c]">Your activity</p><h1 class="mt-1 text-3xl font-bold sm:text-4xl">Notifications</h1><p class="mt-2 text-sm text-[#52616c]">Messages, bids, and updates about your tasks.</p></div><div class="flex gap-2"><button type="button" data-notifications-mark-all class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Mark all as read</button><button type="button" data-page="marketplace-page" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Browse tasks</button></div></div><div id="notification-center-list" class="mt-6 grid gap-3" aria-live="polite"></div></div></section>');
+}
+async function loadNotificationCenter() {
+  ensureNotificationsPage();
+  showPage('notifications-page');
+  $('#notification-center-list').innerHTML = '<div class="card p-8 text-center text-sm text-[#52616c]"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading notifications...</div>';
+  try {
+    const payload = await api('api/notifications?action=center');
+    notificationCenterItems = payload.items || [];
+    setNotificationCount('#desktop-notification-count', payload.unread_count || 0);
+    setNotificationCount('#mobile-notification-count', payload.unread_count || 0);
+    $('#notification-center-list').innerHTML = notificationCenterItems.length ? notificationCenterItems.map((item) => `<button type="button" data-open-notification="${escapeHtml(item.id)}" class="notification-center-item ${item.is_read ? '' : 'is-unread'}"><span class="notification-center-icon"><i class="${item.type === 'message' ? 'fa-regular fa-message' : item.type === 'bid' ? 'fa-solid fa-gavel' : 'fa-regular fa-bell'}" aria-hidden="true"></i></span><span class="notification-center-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.body)}</span><small>${escapeHtml(formatActivityTimestamp(item.created_at))}</small></span>${item.is_read ? '' : '<span class="notification-center-unread" aria-label="Unread"></span>'}</button>`).join('') : '<div class="empty-state rounded-xl border border-dashed border-[#c9d4d9] px-5 py-12 text-center"><i class="fa-regular fa-bell mb-3 text-2xl text-[#008f8c]" aria-hidden="true"></i><p class="font-bold">You’re all caught up.</p><p class="mt-1 text-sm text-[#52616c]">New messages, bids, and task updates will appear here.</p></div>';
+  } catch (error) {
+    $('#notification-center-list').innerHTML = `<div class="empty-state rounded-xl border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><p class="font-bold">Could not load notifications.</p><p class="mt-2 text-sm text-[#52616c]">${escapeHtml(error.message)}</p><button type="button" data-notifications-retry class="touch-target mt-4 rounded-lg border border-[#c9d4d9] px-4 font-bold text-[#006f70]">Try again</button></div>`;
+  }
+}
 function setNotificationCount(selector, count) {
   const element = $(selector);
   if (!element) return;
@@ -189,6 +227,7 @@ function setNotificationCount(selector, count) {
 async function updateNotificationCounts() {
   if (!state.user) {
     ['#desktop-bid-count', '#mobile-bid-count'].forEach((selector) => setNotificationCount(selector, 0));
+    ['#desktop-notification-count', '#mobile-notification-count'].forEach((selector) => setNotificationCount(selector, 0));
     return;
   }
   try {
@@ -199,6 +238,9 @@ async function updateNotificationCounts() {
     setNotificationCount('#mobile-message-count', payload.bidder_unread_messages);
     const updates = await api('api/notifications?action=task_updates');
     (updates.updates || []).reverse().forEach((item) => notify(`${item.title}: ${item.body}`));
+    const center = await api('api/notifications?action=center');
+    setNotificationCount('#desktop-notification-count', center.unread_count || 0);
+    setNotificationCount('#mobile-notification-count', center.unread_count || 0);
   } catch (error) { void error; }
 }
 function startNotificationPolling() {
@@ -748,6 +790,9 @@ function showPage(pageId) {
 
 function renderAuth() {
   const loggedIn = Boolean(state.user);
+  ensureNotificationControls();
+  $('#desktop-notification-trigger')?.classList.toggle('hidden', !loggedIn);
+  $('#mobile-notification-trigger')?.classList.toggle('hidden', !loggedIn);
   document.body.classList.toggle('superadmin-mode', state.user?.role === 'superadmin');
   if ($('#admin-topbar-name') && loggedIn) $('#admin-topbar-name').textContent = `${state.user.first_name || ''} ${state.user.last_name || ''}`.trim();
   $('#mobile-header-login-button')?.classList.toggle('hidden', loggedIn);
@@ -1789,6 +1834,27 @@ async function resumeAuthIntent(intent) {
   }
 }
 document.addEventListener('click', async (event) => {
+  if (event.target.closest('[data-notifications]')) { closeDesktopProfileMenu(); closeDrawer(); await loadNotificationCenter(); return; }
+  if (event.target.closest('[data-notifications-retry]')) { await loadNotificationCenter(); return; }
+  if (event.target.closest('[data-notifications-mark-all]')) {
+    try { const payload = await api('api/notifications?action=mark_all_read', { method: 'POST', body: JSON.stringify({}) }); notify(payload.message); await loadNotificationCenter(); void updateNotificationCounts(); }
+    catch (error) { notify(error.message, 'error'); }
+    return;
+  }
+  const openNotificationButton = event.target.closest('[data-open-notification]');
+  if (openNotificationButton) {
+    const item = notificationCenterItems.find((entry) => String(entry.id) === openNotificationButton.dataset.openNotification);
+    if (!item) return;
+    if (item.type === 'message') { await openConversation(item.task_id, item.other_user_id); return; }
+    try {
+      if (item.type === 'bid') await api(`api/notifications?action=read_bids&task_id=${encodeURIComponent(item.task_id)}`);
+      else await api('api/notifications?action=read_item', { method: 'POST', body: JSON.stringify({ type: 'task', id: item.id }) });
+      const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(item.task_id)}`);
+      await openTask(payload.task);
+      void updateNotificationCounts();
+    } catch (error) { notify(error.message, 'error'); }
+    return;
+  }
   const draftsShortcut = event.target.closest('[data-my-task-drafts]');
   if (draftsShortcut) {
     closeDesktopProfileMenu();
