@@ -573,7 +573,9 @@ html.liquid-glass-active body.superadmin-mode #user-management-page .card,
 html.liquid-glass-active body.superadmin-mode #task-management-page .card,
 html.liquid-glass-active body.superadmin-mode #report-management-page .card,
 html.liquid-glass-active body.superadmin-mode #audit-log-page .card,
-html.liquid-glass-active body.superadmin-mode #superadmin-account-page .card { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html.liquid-glass-active body.superadmin-mode #superadmin-account-page .card,
+html.liquid-glass-active body.superadmin-mode #superadmin-task-detail-page .card,
+html.liquid-glass-active body.superadmin-mode #superadmin-user-profile-page .card { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 html.liquid-glass-active body.superadmin-mode .superadmin-sidebar { position: fixed; }
 
 /* Restore readable contrast for all Superadmin data in dark mode. */
