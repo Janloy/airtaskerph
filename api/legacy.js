@@ -12,6 +12,11 @@ const fail = (message, status = 400) => Object.assign(new Error(message), { stat
 const ok = (message = '', data = {}) => ({ success: true, message, ...data });
 const clean = (v, n = 255) => String(v ?? '').trim().slice(0, n);
 const publicUser = (p) => ({ id: Number(p.id), first_name: p.first_name, middle_initial: p.middle_initial || '', last_name: p.last_name, email: p.email, role: p.role, avatar_path: p.avatar_path || null });
+const publicAvatarUrl = (s, path) => {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  return s.storage.from('avatars').getPublicUrl(String(path).replace(/^\/+/, '')).data.publicUrl;
+};
 const getProfile = async (s, authId) => {
   const { data, error } = await s.from('user_profiles').select('*').eq('auth_user_id', authId).single();
   if (error || !data) throw fail('Your account profile could not be found.', 401);
@@ -74,7 +79,7 @@ const loadTaskBids = async (s, task, profile) => {
     ? all.filter((bid) => bid.status === 'Pending').map((bid) => ({ user_id: profile.id, notification_type: 'bid', reference_id: bid.id }))
     : [];
   const [people, unreadMessages] = await Promise.all([
-    rows(s.from('user_profiles').select('id,first_name,last_name').in('id', bidderIds)),
+    rows(s.from('user_profiles').select('id,first_name,last_name,avatar_path').in('id', bidderIds)),
     rows(s.from('messages').select('sender_id').eq('task_id', task.id).eq('recipient_id', profile.id).in('sender_id', bidderIds).is('read_at', null)),
     reads.length ? rows(s.from('notification_reads').upsert(reads, { onConflict: 'user_id,notification_type,reference_id', ignoreDuplicates: true })) : Promise.resolve([])
   ]);
@@ -86,7 +91,8 @@ const loadTaskBids = async (s, task, profile) => {
     return {
       ...bid, id: Number(bid.id), task_id: Number(bid.task_id), bidder_id: Number(bid.bidder_id),
       amount: Number(bid.amount), unread_message_count: unreadByBidder.get(Number(bid.bidder_id)) || 0,
-      bidder_name: person ? `${person.first_name} ${person.last_name}`.trim() : 'TaskerPH member'
+      bidder_name: person ? `${person.first_name} ${person.last_name}`.trim() : 'TaskerPH member',
+      bidder_avatar_path: publicAvatarUrl(s, person?.avatar_path)
     };
   });
 };
@@ -245,7 +251,7 @@ export default async function handler(req, res) {
           s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId).eq('status', 'Completed')
         ]);
         if (listingResult.error || totalResult.error || completedResult.error) throw fail((listingResult.error || totalResult.error || completedResult.error).message, 500);
-        return res.status(200).json(ok('', { profile: { id: Number(publicProfile.id), first_name: publicProfile.first_name, middle_initial: publicProfile.middle_initial || '', last_name: publicProfile.last_name, avatar_path: publicProfile.avatar_path || null, created_at: publicProfile.created_at }, tasks: (listingResult.data || []).map((task) => ({ ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget) })), total_tasks: totalResult.count || 0, completed_tasks: completedResult.count || 0 }));
+        return res.status(200).json(ok('', { profile: { id: Number(publicProfile.id), first_name: publicProfile.first_name, middle_initial: publicProfile.middle_initial || '', last_name: publicProfile.last_name, avatar_path: publicAvatarUrl(s, publicProfile.avatar_path), created_at: publicProfile.created_at }, tasks: (listingResult.data || []).map((task) => ({ ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget) })), total_tasks: totalResult.count || 0, completed_tasks: completedResult.count || 0 }));
       }
       ({ profile } = await userFor(req, s, action !== 'get'));
       if (action === 'get') return res.status(200).json(ok('',{user:publicUser(profile)}));
