@@ -723,10 +723,11 @@ export default async function handler(req, res) {
         if(!['In Progress','Completed','Cancelled'].includes(resolutionStatus)) throw fail('Choose a valid dispute resolution.',422);
         if(task.status!=='Under Review') throw fail('This task is not under review.',409);
         const resolution=clean(body.resolution,1000)||`Superadmin set task status to ${resolutionStatus}.`, now=new Date().toISOString();
+        const resolvedTask=await rows(s.from('tasks').update({status:resolutionStatus,...(resolutionStatus==='Completed'?{completion_confirmed_at:now}:{})}).eq('id',taskId).eq('status','Under Review').select('id'));
+        if(!resolvedTask.length) throw fail('The task status changed. Refresh and review the dispute again.',409);
         await rows(s.from('task_disputes').update({status:'Resolved',resolution,resolved_by:profile.id,resolved_at:now}).eq('task_id',taskId).eq('status','Open'));
-        await rows(s.from('tasks').update({status:resolutionStatus,...(resolutionStatus==='Completed'?{completion_confirmed_at:now}:{})}).eq('id',taskId).eq('status','Under Review'));
         if(resolutionStatus==='Cancelled') await rows(s.from('bids').update({status:'Cancelled'}).eq('task_id',taskId).eq('id',acceptedBid.id));
-        for(const recipient of [posterId,taskerId]) await taskNotice(s,recipient,taskId,'dispute_resolved','Task issue reviewed',`The Superadmin reviewed “${task.title}”. Resolution: ${resolutionStatus}.`,`task:${taskId}:dispute-resolved:${recipient}`);
+        for(const recipient of [posterId,taskerId]) await taskNotice(s,recipient,taskId,'dispute_resolved','Task issue reviewed',`The Superadmin reviewed “${task.title}”. Resolution: ${resolutionStatus}.`,`task:${taskId}:dispute-resolved:${recipient}:${randomUUID()}`);
         await logActivity(s,profile.id,'task_dispute_resolved',`Task dispute resolved: ${task.title} (${resolutionStatus})`,'task',taskId);
         return res.status(200).json(ok('Task dispute resolved.'));
       }
