@@ -263,7 +263,7 @@ export default async function handler(req, res) {
         if (!Number.isSafeInteger(sourceId) || sourceId < 1) throw fail('Choose a valid task to repost.', 422);
         const source = await rows(s.from('tasks').select('*').eq('id', sourceId).eq('user_id', profile.id).maybeSingle());
         if (!source) throw fail('Task not found in your account.', 404);
-        if (source.status !== 'Completed') throw fail('Only completed tasks can be reposted.', 409);
+        if (!['Completed','Cancelled'].includes(source.status)) throw fail('Only completed or cancelled tasks can be reposted.', 409);
         const [created] = await rows(s.from('tasks').insert({
           user_id: profile.id, title: source.title, category: source.category, budget: source.budget, location: source.location,
           description: source.description, status: 'Open', schedule_date: source.schedule_date, task_mode: source.task_mode || 'on_site',
@@ -561,7 +561,7 @@ export default async function handler(req, res) {
         const {data,error}=await s.auth.admin.createUser({email:clean(body.email,190).toLowerCase(),password:String(body.password||''),email_confirm:true,user_metadata:{first_name:clean(body.first_name,80),middle_initial:clean(body.middle_initial,1),last_name:clean(body.last_name,80)}});
         if(error) throw fail(error.message,400); await rows(s.from('user_profiles').update({role:'admin'}).eq('auth_user_id',data.user.id)); return res.status(200).json(ok('Admin account provisioned.'));
       }
-      const id=Number(body.task_id); const taskColumns=['update_task','delete_task'].includes(action)?'user_id,image_urls,status':'user_id'; const t=await rows(s.from('tasks').select(taskColumns).eq('id',id).maybeSingle());
+      const id=Number(body.task_id); const taskColumns=['update_task','delete_task','reopen_task'].includes(action)?'user_id,image_urls,status':'user_id'; const t=await rows(s.from('tasks').select(taskColumns).eq('id',id).maybeSingle());
       if(!t || (!isMod(profile)&&Number(t.user_id)!==Number(profile.id))) throw fail('You can only manage your own task postings.',403);
       if(action==='delete_task') {
         if(t.status==='Completed'&&!isMod(profile)) throw fail('Completed tasks cannot be deleted by their owner.',409);
@@ -571,6 +571,13 @@ export default async function handler(req, res) {
         if(photoPaths.length) await s.storage.from('task-photos').remove(photoPaths).catch(()=>{});
 
         return res.status(200).json(ok('Task removed from the marketplace.'));
+      }
+      if(action==='reopen_task') {
+        if(t.status!=='Cancelled') throw fail('Only a cancelled task can be reopened.',409);
+        const reopened=await rows(s.from('tasks').update({status:'Open',completion_requested_at:null,completion_confirmed_at:null}).eq('id',id).eq('status','Cancelled').select('id'));
+        if(!reopened.length) throw fail('The task status changed. Refresh and try again.',409);
+        await logActivity(s,profile.id,'task_reopened',`Reopened cancelled task #${id}`,'task',id);
+        return res.status(200).json(ok('Task reopened. It is now accepting bids again.'));
       }
       if(action==='update_task') {
         const allowedTaskStatuses=['Open','In Progress','Awaiting Confirmation','Under Review','Completed','Cancelled'];
