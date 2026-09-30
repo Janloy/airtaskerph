@@ -1350,8 +1350,9 @@ async function openTask(task) {
     const bidRequest = api(`api/bid_actions?action=list&task_id=${task.id}`);
     const [payload] = await Promise.all([bidRequest, ...backgroundLoads]);
     const myBid = payload.bids.find((bid) => Number(bid.bidder_id) === Number(state.user?.id));
-    $('#bid-section').classList.toggle('hidden', Boolean(myBid) || isOwner || task.status !== 'Open');
-    $('#bid-submitted-state').classList.toggle('hidden', !myBid);
+    const hasActiveBid = Boolean(myBid && ['Pending', 'Accepted'].includes(myBid.status));
+    $('#bid-section').classList.toggle('hidden', hasActiveBid || isOwner || task.status !== 'Open');
+    $('#bid-submitted-state').classList.toggle('hidden', !hasActiveBid);
     renderBids(payload.bids, task);
     const roleContext = roleTaskContextMarkup(task, payload.bids, Boolean(isOwner));
     if (roleContext) $('#task-detail-content').insertAdjacentHTML('beforeend', roleContext);

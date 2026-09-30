@@ -136,7 +136,7 @@ const shapeTasks = async (s, tasks, viewer, { mine = false } = {}) => {
   const ownerIds = [...new Set(tasks.map((t) => t.user_id))];
   const [owners, bids, saves, messages, reviews] = await Promise.all([
     rows(s.from('user_profiles').select('id,first_name,last_name').in('id', ownerIds)),
-    rows(s.from('bids').select('task_id,bidder_id').in('task_id', taskIds)),
+    rows(s.from('bids').select('task_id,bidder_id,status').in('task_id', taskIds)),
     viewer ? rows(s.from('saved_tasks').select('task_id').eq('user_id', viewer.id).in('task_id', taskIds)) : Promise.resolve([]),
     viewer ? rows(s.from('messages').select('task_id').eq('recipient_id', viewer.id).is('read_at', null).in('task_id', taskIds)) : Promise.resolve([]),
     viewer ? rows(s.from('task_reviews').select('task_id').eq('reviewer_id', viewer.id).in('task_id', taskIds)) : Promise.resolve([])
@@ -146,7 +146,7 @@ const shapeTasks = async (s, tasks, viewer, { mine = false } = {}) => {
   for (const bid of bids) {
     const item = bidsByTask.get(Number(bid.task_id)) || { count: 0, hasBid: false };
     item.count += 1;
-    if (viewer && Number(bid.bidder_id) === Number(viewer.id)) item.hasBid = true;
+    if (viewer && Number(bid.bidder_id) === Number(viewer.id) && ['Pending','Accepted'].includes(bid.status)) item.hasBid = true;
     bidsByTask.set(Number(bid.task_id), item);
   }
   const savedIds = new Set(saves.map((r) => Number(r.task_id)));
