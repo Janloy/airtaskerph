@@ -1092,6 +1092,19 @@ body.dark-mode .task-draft-card > div > p,.task-drafts-empty > i { color:#5ee0c7
 body.dark-mode .task-drafts-empty { color:#cbd5e1; }
 body.dark-mode .task-drafts-empty > strong { color:#f1f5f9; }
 body.dark-mode .task-drafts-empty > span { color:#a8b5c7; }
+.superadmin-report-submissions { display:grid; gap:.75rem; margin-top:1rem; }
+.superadmin-report-submission { min-width:0; border:1px solid #e4ebef; border-radius:.85rem; padding:.9rem; background:#f8fbfc; }
+.superadmin-report-submission-head { display:flex; align-items:flex-start; justify-content:space-between; gap:.8rem; }
+.superadmin-report-submission-head > div { display:grid; justify-items:start; gap:.15rem; min-width:0; }
+.superadmin-report-submission-head > div > small { color:#8b98a4; font-size:.7rem; overflow-wrap:anywhere; }
+.superadmin-report-submission-actions { display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.75rem; }
+body.dark-mode.superadmin-mode .superadmin-report-submission { border-color:#334155; background:#111e2e; }
+body.dark-mode.superadmin-mode .superadmin-report-submission-head > div > small { color:#a8b5c7; }
+@media(max-width:700px) {
+  .superadmin-report-submission { padding:.75rem; }
+  .superadmin-report-submission-head { flex-wrap:wrap; }
+  .superadmin-report-submission-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 @media(max-width:640px) {
   .my-tasks-page #my-task-drafts { margin-top:1.5rem; }
   .task-drafts-section { margin:0 0 1.1rem; border-radius:1rem; padding:.9rem; }
