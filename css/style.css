@@ -194,7 +194,8 @@ body.dark-mode .superadmin-sidebar button:hover, body.dark-mode .superadmin-side
 .superadmin-topbar-right strong, .superadmin-topbar-right small { display: block; }
 .superadmin-topbar-right strong { font-size: .85rem; }
 .superadmin-topbar-right small { margin-top: .1rem; color: #94a3b8; font-size: .72rem; }
-.superadmin-topbar-icon { position: relative; display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; background: #f1f5f9; color: #475569; }
+.superadmin-topbar-icon { position: relative; display: grid; width: 38px; height: 38px; place-items: center; border: 0; border-radius: 10px; background: #f1f5f9; color: #475569; cursor: pointer; }
+.superadmin-topbar-icon:hover { background: #e2e8f0; color: #0f766e; }
 .superadmin-topbar-icon b { position: absolute; top: -5px; right: -5px; display: grid; min-width: 17px; height: 17px; place-items: center; border-radius: 99px; background: #ef6b5b; color: #fff; font-size: .65rem; }
 .superadmin-avatar { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 50%; background: #dff3ef; color: #087e78; }
 .superadmin-stats-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .8rem; }
@@ -227,7 +228,7 @@ body.dark-mode .superadmin-stat, body.dark-mode .superadmin-panel { border-color
 body.dark-mode .superadmin-stat-value, body.dark-mode .superadmin-panel-heading h3, body.dark-mode .superadmin-feed-row strong, body.dark-mode .superadmin-report-row strong, body.dark-mode .superadmin-task-row strong, body.dark-mode .superadmin-shortcuts strong { color: #f1f5f9; }
 body.dark-mode .superadmin-topbar { border-color: #374151; }
 body.dark-mode .superadmin-search, body.dark-mode .superadmin-topbar-icon, body.dark-mode .superadmin-shortcuts button { border-color: #374151; background: #0f172a; }
-@media (max-width: 760px) { .superadmin-topbar { padding: .75rem 1rem; } .superadmin-topbar-right small, .superadmin-topbar-icon { display: none; } .superadmin-stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .superadmin-dashboard-grid { grid-template-columns: minmax(0,1fr); } .superadmin-wide-panel { grid-column: auto; } .superadmin-shortcuts { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 760px) { .superadmin-topbar { padding: .75rem 1rem; } .superadmin-topbar-right small { display: none; } .superadmin-stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .superadmin-dashboard-grid { grid-template-columns: minmax(0,1fr); } .superadmin-wide-panel { grid-column: auto; } .superadmin-shortcuts { grid-template-columns: minmax(0,1fr); } }
 
 /* Superadmin workspace refresh */
 body.superadmin-mode { background: #f4f7fb; }
@@ -798,6 +799,29 @@ body.superadmin-mode #user-management-page .superadmin-user-edit { border-color:
 body.superadmin-mode #user-management-page .superadmin-user-edit:hover { border-color: #9ecfc8; background: #eff8f6; color: #075e59; }
 body.dark-mode.superadmin-mode #user-management-page .superadmin-user-edit { border-color: #43536a; background: #1a2634; color: #e2e8f0; }
 body.dark-mode.superadmin-mode #user-management-page .superadmin-user-edit:hover { border-color: #39897e; background: #173b3b; color: #c3fff2; }
+.superadmin-notifications-panel { width: min(100%, 620px); max-height: min(80vh, 720px); overflow: hidden; padding: 0; }
+.superadmin-notifications-panel > header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; border-bottom:1px solid #e2e8f0; padding:1.25rem 1.5rem; }
+.superadmin-notifications-panel > header h2 { margin-top:.2rem; color:#17202a; font-size:1.4rem; font-weight:850; }
+.superadmin-notifications-panel > header p:last-child { margin-top:.35rem; color:#64748b; font-size:.85rem; }
+.superadmin-notifications-panel > header button { display:grid; width:2.5rem; height:2.5rem; flex:none; place-items:center; border-radius:.65rem; color:#64748b; }
+.superadmin-notifications-list { display:grid; max-height:calc(min(80vh, 720px) - 110px); gap:.6rem; overflow:auto; padding:1rem 1.25rem 1.25rem; }
+.superadmin-notification-item { display:flex; width:100%; align-items:center; gap:.8rem; border:1px solid #e2e8f0; border-radius:.85rem; padding:.8rem; text-align:left; }
+.superadmin-notification-item:hover { border-color:#8bcac0; background:#f0fdfa; }
+.superadmin-notification-item > span:nth-child(2) { min-width:0; flex:1; }
+.superadmin-notification-item strong,.superadmin-notification-item small { display:block; }
+.superadmin-notification-item strong { color:#1e293b; font-size:.9rem; }
+.superadmin-notification-item small { margin-top:.2rem; color:#64748b; font-size:.78rem; }
+.superadmin-notification-item > i { color:#94a3b8; font-size:.75rem; }
+.superadmin-notification-icon { display:grid; width:2.5rem; height:2.5rem; flex:none; place-items:center; border-radius:.75rem; background:#fff1f2; color:#be123c; }
+.superadmin-notification-icon.is-dispute { background:#fff7ed; color:#c2410c; }
+.superadmin-notifications-empty { display:grid; justify-items:center; gap:.4rem; padding:2.5rem 1rem; color:#64748b; text-align:center; }
+.superadmin-notifications-empty i { margin-bottom:.3rem; color:#0f766e; font-size:1.8rem; }
+.superadmin-notifications-empty strong { color:#1e293b; }
+body.dark-mode .superadmin-notifications-panel > header { border-color:#334155; }
+body.dark-mode .superadmin-notifications-panel > header h2,body.dark-mode .superadmin-notification-item strong,body.dark-mode .superadmin-notifications-empty strong { color:#f1f5f9; }
+body.dark-mode .superadmin-notifications-panel > header p:last-child,body.dark-mode .superadmin-notification-item small,body.dark-mode .superadmin-notifications-empty { color:#b6c2d1; }
+body.dark-mode .superadmin-notification-item { border-color:#334155; background:#172334; }
+body.dark-mode .superadmin-notification-item:hover { border-color:#39897e; background:#173b3b; }
 .superadmin-task-detail { --review-border: #e2e8f0; --review-muted: #64748b; }
 .superadmin-task-detail-header { display:flex; align-items:center; justify-content:space-between; gap:1.5rem; padding:1.75rem 2rem; color:#fff; background:linear-gradient(115deg,#075f60,#087f78 58%,#159b83); }
 .superadmin-task-detail-header p { color:rgba(255,255,255,.78); }

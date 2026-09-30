@@ -841,7 +841,7 @@ function formatActivityTimestamp(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Not recorded yet' : new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
-let accountActivityData = { users: [], events: [], reports: [], tasks: [], stats: {} };
+let accountActivityData = { users: [], events: [], reports: [], tasks: [], under_review_tasks: [], stats: {} };
 let superadminTaskView = 'list';
 let superadminUserPage = 1;
 let superadminHasMoreTasks = false;
@@ -893,8 +893,31 @@ function openReportersModal(taskId) {
   openModal('#reporters-detail-modal');
 }
 
+function openSuperadminNotifications() {
+  const openReports = accountActivityData.reports.filter((report) => report.status === 'Open');
+  const reportGroups = new Map();
+  openReports.forEach((report) => {
+    const key = report.task_id ? String(report.task_id) : `report-${report.id}`;
+    if (!reportGroups.has(key)) reportGroups.set(key, []);
+    reportGroups.get(key).push(report);
+  });
+  const reportItems = [...reportGroups.values()].map((reports) => {
+    const report = reports[0], title = report.task?.title || 'Removed task';
+    return `<button type="button" data-admin-notification-report="${Number(report.task_id) || 0}" class="superadmin-notification-item"><span class="superadmin-notification-icon is-report"><i class="fa-solid fa-flag" aria-hidden="true"></i></span><span><strong>Open task report${reports.length === 1 ? '' : 's'}</strong><small>${escapeHtml(title)} · ${reports.length} ${reports.length === 1 ? 'report needs' : 'reports need'} review</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`;
+  }).join('');
+  const disputeItems = accountActivityData.under_review_tasks.map((task) => `<button type="button" data-admin-notification-task="${Number(task.id)}" class="superadmin-notification-item"><span class="superadmin-notification-icon is-dispute"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span><strong>Task paused for review</strong><small>${escapeHtml(task.title)} · ${escapeHtml(task.owner_name || 'Task poster')}</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join('');
+  let modal = $('#superadmin-notifications-modal');
+  if (!modal) {
+    document.body.insertAdjacentHTML('beforeend', '<div id="superadmin-notifications-modal" class="modal-backdrop fixed inset-0 z-[108] hidden items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="superadmin-notifications-title"><section class="modal-panel superadmin-notifications-panel"><header><div><p class="superadmin-review-label">Superadmin dashboard</p><h2 id="superadmin-notifications-title">Action notifications</h2><p>Open reports and tasks paused for review.</p></div><button type="button" data-close="superadmin-notifications-modal" aria-label="Close notifications"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header><div id="superadmin-notifications-list" class="superadmin-notifications-list"></div></section></div>');
+    modal = $('#superadmin-notifications-modal');
+  }
+  const items = `${reportItems}${disputeItems}`;
+  $('#superadmin-notifications-list').innerHTML = items || '<div class="superadmin-notifications-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><strong>You’re all caught up</strong><span>No open reports or tasks under review.</span></div>';
+  openModal('#superadmin-notifications-modal');
+}
+
 function renderAccountActivity(payload) {
-  accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [], tasks: Array.isArray(payload.tasks) ? payload.tasks : [], stats: payload.stats || {} };
+  accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [], tasks: Array.isArray(payload.tasks) ? payload.tasks : [], under_review_tasks: Array.isArray(payload.under_review_tasks) ? payload.under_review_tasks : [], stats: payload.stats || {} };
   superadminHasMoreTasks = Boolean(payload.has_more_tasks);
   superadminTaskResultTotal = Number(accountActivityData.stats.total_tasks) || 0;
   superadminTaskQuery = { search: '', status: 'all' };
@@ -912,7 +935,9 @@ function renderAccountActivity(payload) {
   $('#account-activity-summary').innerHTML = summary;
   $('#superadmin-dashboard-state')?.classList.add('hidden');
   const openReports = accountActivityData.reports.filter((report) => report.status === 'Open').length;
-  if ($('#admin-report-badge')) $('#admin-report-badge').textContent = String(openReports);
+  const adminActionCount = openReports + accountActivityData.under_review_tasks.length;
+  if ($('#admin-report-badge')) $('#admin-report-badge').textContent = String(adminActionCount);
+  $('#admin-notification-trigger')?.setAttribute('aria-label', `${adminActionCount} Superadmin notifications: ${openReports} open reports and ${accountActivityData.under_review_tasks.length} tasks under review`);
   const eventsHtml = accountActivityData.events.slice(0, 6).map((event) => `<article class="superadmin-feed-row"><span class="superadmin-feed-icon"><i class="fa-solid ${event.event_type === 'user_registered' ? 'fa-user-plus' : event.event_type === 'task_completed' ? 'fa-circle-check' : event.event_type.includes('report') ? 'fa-flag' : 'fa-clock'}"></i></span><div class="min-w-0"><strong>${escapeHtml(event.summary)}</strong><small>${escapeHtml(event.user ? `${event.user.first_name} ${event.user.last_name} · ${event.user.email}` : 'System')} · ${escapeHtml(formatActivityTimestamp(event.created_at))}</small></div></article>`).join('') || '<p class="p-4 text-sm text-slate-500">No activity recorded yet.</p>';
   document.querySelectorAll('#dashboard-events, #account-activity-events').forEach((node) => { node.innerHTML = eventsHtml; });
   const reportsByTask = new Map();
@@ -1988,6 +2013,23 @@ document.addEventListener('click', async (event) => {
     const taskId = Number(viewAdminTaskButton.dataset.superadminViewTask);
     const task = [...(accountActivityData.tasks || []), ...(state.superadminProfileTasks || [])].find((item) => Number(item.id) === taskId) || { id: taskId };
     if (viewAdminTaskButton.closest('#reporters-detail-modal')) closeModal('reporters-detail-modal');
+    openSuperadminTask(task);
+    return;
+  }
+  if (event.target.closest('#admin-notification-trigger')) { openSuperadminNotifications(); return; }
+  const adminNotificationReport = event.target.closest('[data-admin-notification-report]');
+  if (adminNotificationReport) {
+    const taskId = Number(adminNotificationReport.dataset.adminNotificationReport);
+    closeModal('superadmin-notifications-modal');
+    if (taskId > 0) openReportersModal(taskId);
+    else showPage('report-management-page');
+    return;
+  }
+  const adminNotificationTask = event.target.closest('[data-admin-notification-task]');
+  if (adminNotificationTask) {
+    const taskId = Number(adminNotificationTask.dataset.adminNotificationTask);
+    const task = accountActivityData.under_review_tasks.find((item) => Number(item.id) === taskId) || { id: taskId };
+    closeModal('superadmin-notifications-modal');
     openSuperadminTask(task);
     return;
   }
