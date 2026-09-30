@@ -655,7 +655,7 @@ export default async function handler(req, res) {
       ({ profile } = await userFor(req,s,true));
       const taskId=Number(body.task_id);
       if(!Number.isSafeInteger(taskId)||taskId<1) throw fail('A valid task ID is required. Refresh the task and try again.',422);
-      const task=await rows(s.from('tasks').select('id,user_id,title,status,completion_requested_at,bids(bidder_id,status)').eq('id',taskId).maybeSingle());
+      const task=await rows(s.from('tasks').select('id,user_id,title,status,completion_requested_at,bids(id,bidder_id,status)').eq('id',taskId).maybeSingle());
       if(!task) throw fail('Task not found.',404);
       const acceptedBid=(task.bids||[]).find((bid)=>bid.status==='Accepted');
       if(!acceptedBid) throw fail('This task has no accepted tasker.',409);
@@ -698,10 +698,12 @@ export default async function handler(req, res) {
       if(action==='cancel_assignment') {
         if(!isPoster&&!isTasker) throw fail('Only the task poster or selected tasker can cancel this assignment.',403);
         if(!['In Progress','Awaiting Confirmation'].includes(task.status)) throw fail('This assignment cannot be cancelled in its current status.',409);
+        if(!Number.isSafeInteger(Number(acceptedBid.id))||Number(acceptedBid.id)<1) throw fail('The accepted bid could not be identified. Refresh the task and try again.',409);
         const now=new Date().toISOString(), reason=clean(body.reason,500);
         const changed=await rows(s.from('tasks').update({status:'Cancelled'}).eq('id',taskId).in('status',['In Progress','Awaiting Confirmation']).select('id'));
         if(!changed.length) throw fail('The task status changed. Refresh and try again.',409);
-        await rows(s.from('bids').update({status:'Cancelled'}).eq('task_id',taskId).eq('id',acceptedBid.id));
+        const cancelledBid=await rows(s.from('bids').update({status:'Cancelled'}).eq('task_id',taskId).eq('id',acceptedBid.id).eq('status','Accepted').select('id'));
+        if(!cancelledBid.length) throw fail('The accepted bid changed before cancellation. Refresh and try again.',409);
         await taskNotice(s,isPoster?taskerId:posterId,taskId,'assignment_cancelled','Task assignment cancelled',reason||`The assignment for “${task.title}” was cancelled.`,`task:${taskId}:cancelled`);
         await logActivity(s,profile.id,'task_cancelled',`Task assignment cancelled: ${task.title}`,'task',taskId);
         return res.status(200).json(ok('Assignment cancelled. The other participant has been notified.'));
