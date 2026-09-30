@@ -548,8 +548,9 @@ function protectedRouteForElement(target) {
 function showPage(pageId) {
   const protectedIntent = { 'create-task-page': 'post', 'my-tasks-modal': 'tasks', 'my-bids-page': 'bids', 'profile-page': 'profile', 'saved-tasks-page': 'saved', 'conversation-modal': 'messages' }[pageId];
   if (protectedIntent && requestAuthGate(protectedIntent)) return false;
-  if (['account-activity-modal','user-management-page','task-management-page','report-management-page','audit-log-page'].includes(pageId) && state.user?.role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
+  if (['account-activity-modal','user-management-page','task-management-page','report-management-page','audit-log-page','superadmin-account-page'].includes(pageId) && state.user?.role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
+  if (pageId === 'superadmin-account-page') renderSuperadminAccountSettings();
   document.querySelectorAll('.superadmin-sidebar [data-admin-page], .superadmin-sidebar [data-page]').forEach((button) => {
     const active = (button.dataset.adminPage || button.dataset.page) === pageId;
     button.classList.toggle('is-active', active);
@@ -580,6 +581,7 @@ function showPage(pageId) {
 function renderAuth() {
   const loggedIn = Boolean(state.user);
   document.body.classList.toggle('superadmin-mode', state.user?.role === 'superadmin');
+  if ($('#admin-topbar-name') && loggedIn) $('#admin-topbar-name').textContent = `${state.user.first_name || ''} ${state.user.last_name || ''}`.trim();
   $('#mobile-header-login-button')?.classList.toggle('hidden', loggedIn);
   $('.mobile-saved-button')?.classList.toggle('hidden', !loggedIn);
   $('#auth-actions').innerHTML = loggedIn ? `<div class="desktop-profile-root relative hidden lg:block"><button id="desktop-profile-trigger" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="desktop-profile-dropdown" class="desktop-profile-trigger touch-target flex items-center gap-2 rounded-xl border border-slate-200 px-2 py-1.5 text-left hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"><span class="desktop-profile-avatar"><img id="desktop-avatar-image" class="hidden" alt=""><span id="desktop-avatar-fallback">${escapeHtml(initials(state.user))}</span></span><span class="max-w-32"><strong class="block truncate text-sm">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.last_name)}</strong><small class="block truncate text-xs text-slate-500">${escapeHtml(state.user.email)}</small></span><i class="fa-solid fa-chevron-down text-xs text-slate-500" aria-hidden="true"></i></button><div id="desktop-profile-dropdown" class="desktop-profile-dropdown hidden" aria-label="Profile menu"><div class="desktop-profile-menu-user"><span class="desktop-profile-menu-avatar"><img id="desktop-menu-avatar-image" class="hidden" alt=""><span id="desktop-menu-avatar-fallback">${escapeHtml(initials(state.user))}</span></span><span class="min-w-0"><strong class="block truncate">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.middle_initial ? `${state.user.middle_initial}. ` : '')}${escapeHtml(state.user.last_name)}</strong><small class="block truncate">${escapeHtml(state.user.email)}</small><em>${state.user.role === 'superadmin' ? 'Super Admin' : state.user.role === 'admin' ? 'Administrator' : 'TaskerPH Member'}</em></span></div><button data-appearance-toggle class="desktop-profile-menu-row"><i class="fa-solid fa-circle-half-stroke"></i><span>Appearance</span><strong id="desktop-appearance-state">Light</strong></button><label class="desktop-glass-row"><span><i class="fa-solid fa-wand-magic-sparkles"></i> Glass transparency</span><strong id="desktop-glass-label">0%</strong><input id="desktop-glass-opacity" type="range" min="0" max="100" step="1" value="0" aria-label="Glass transparency"></label><button data-page="create-task-page" class="desktop-profile-menu-row"><i class="fa-solid fa-plus"></i><span>Post a task</span></button><button data-my-tasks class="desktop-profile-menu-row"><i class="fa-solid fa-clipboard-list"></i><span>My tasks</span></button><button data-my-bids class="desktop-profile-menu-row"><i class="fa-solid fa-gavel"></i><span>My bids</span></button><button data-saved-tasks class="desktop-profile-menu-row"><i class="fa-regular fa-bookmark"></i><span>Saved tasks</span><strong id="desktop-saved-task-count" class="desktop-menu-count">0</strong></button><div class="desktop-profile-menu-divider"></div><button data-profile-page class="desktop-profile-menu-row"><i class="fa-solid fa-user"></i><span>View profile</span></button><button data-desktop-profile-form="edit-profile-form" class="desktop-profile-menu-row"><i class="fa-solid fa-user-pen"></i><span>Edit profile</span></button><button data-desktop-profile-form="change-email-form" class="desktop-profile-menu-row"><i class="fa-solid fa-envelope"></i><span>Change email</span></button><button data-desktop-profile-form="change-password-form" class="desktop-profile-menu-row"><i class="fa-solid fa-lock"></i><span>Change password</span></button><button data-modal="support-modal" class="desktop-profile-menu-row"><i class="fa-solid fa-circle-question"></i><span>Help &amp; Support</span></button><button data-action="logout" class="desktop-profile-logout"><i class="fa-solid fa-arrow-right-from-bracket"></i>Log out</button><small class="desktop-profile-version">TaskerPH Â· Version 1.0.0</small></div></div><button data-action="logout" class="mobile-only touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold">Log out</button>` : `<button data-modal="login-modal" class="touch-target rounded-lg px-4 text-sm font-bold text-[#006f70] hover:bg-[#e9f4f2]">Log in</button><button data-modal="register-modal" class="touch-target rounded-lg bg-[#006f70] px-4 text-sm font-bold text-white shadow-sm hover:bg-[#005b5c]">Join TaskerPH</button>`;
@@ -703,6 +705,18 @@ function renderProfile() {
   avatar.classList.toggle('hidden', !user.avatar_path);
   $('#profile-avatar-fallback').classList.toggle('hidden', Boolean(user.avatar_path));
   if (user.avatar_path) avatar.src = `${user.avatar_path}?v=${encodeURIComponent(user.avatar_path)}`;
+}
+function renderSuperadminAccountSettings() {
+  if (state.user?.role !== 'superadmin') return;
+  const profile = $('#admin-edit-profile');
+  if (profile) {
+    profile.elements.first_name.value = state.user.first_name || '';
+    profile.elements.middle_initial.value = state.user.middle_initial || '';
+    profile.elements.last_name.value = state.user.last_name || '';
+  }
+  const email = $('#admin-change-email');
+  if (email) email.elements.email.value = state.user.email || '';
+  if ($('#admin-topbar-name')) $('#admin-topbar-name').textContent = `${state.user.first_name || ''} ${state.user.last_name || ''}`.trim();
 }
 async function openProfile(formId = null) {
   closeDrawer();
@@ -1373,6 +1387,14 @@ document.addEventListener('click', async (event) => {
     superadminProfileTrigger.setAttribute('aria-expanded', String(Boolean(opening)));
     return;
   }
+  const superadminAccountFormButton = event.target.closest('[data-superadmin-account-form]');
+  if (superadminAccountFormButton) {
+    closeDesktopProfileMenu();
+    renderSuperadminAccountSettings();
+    showPage('superadmin-account-page');
+    requestAnimationFrame(() => $(`#${superadminAccountFormButton.dataset.superadminAccountForm}`)?.querySelector('input')?.focus({ preventScroll: true }));
+    return;
+  }
   const desktopProfileForm = event.target.closest('[data-desktop-profile-form]');
   if (desktopProfileForm) { closeDesktopProfileMenu(); await openProfile(desktopProfileForm.dataset.desktopProfileForm); return; }
   const pageButton = event.target.closest('[data-page]'); if (pageButton) { showPage(pageButton.dataset.page); return; }
@@ -1529,6 +1551,21 @@ $('#profile-confirm-form').addEventListener('submit', async (event) => {
 });
 $('#change-email-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating email...'); try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'update_email', ...Object.fromEntries(new FormData(event.target)) }) }); state.user = payload.user; event.target.elements.current_password.value = ''; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#change-password-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating password...'); try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'change_password', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#admin-edit-profile')?.addEventListener('submit', async (event) => {
+  event.preventDefault(); const form = event.currentTarget; setBusy(form, true, 'Saving profile...');
+  try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'update_profile', ...Object.fromEntries(new FormData(form)) }) }); state.user = payload.user; renderAuth(); renderSuperadminAccountSettings(); form.elements.current_password.value = ''; notify(payload.message); }
+  catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); }
+});
+$('#admin-change-email')?.addEventListener('submit', async (event) => {
+  event.preventDefault(); const form = event.currentTarget; setBusy(form, true, 'Updating email...');
+  try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'update_email', ...Object.fromEntries(new FormData(form)) }) }); state.user = payload.user; renderAuth(); renderSuperadminAccountSettings(); form.elements.current_password.value = ''; notify(payload.message); }
+  catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); }
+});
+$('#admin-change-password')?.addEventListener('submit', async (event) => {
+  event.preventDefault(); const form = event.currentTarget; setBusy(form, true, 'Updating password...');
+  try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'change_password', ...Object.fromEntries(new FormData(form)) }) }); form.reset(); notify(payload.message); }
+  catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); }
+});
 $('#profile-picture-input').addEventListener('change', async (event) => { const input = event.target, file = input.files?.[0]; if (!file) return; const edit = input.closest('.profile-avatar-wrap')?.querySelector('.profile-avatar-edit'); const original = edit?.innerHTML; setActionProgress(input, 'Uploading profile photo...', true); input.disabled = true; input.closest('.profile-avatar-wrap')?.setAttribute('aria-busy', 'true'); if (edit) edit.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">Uploading photo...</span>'; try { const avatar_data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const payload = await api('api/profile_actions?action=upload_avatar', { method: 'POST', body: JSON.stringify({ avatar_data }) }); state.user = payload.user; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setActionProgress(input, '', false); input.value = ''; input.disabled = false; input.closest('.profile-avatar-wrap')?.removeAttribute('aria-busy'); if (edit) edit.innerHTML = original; } });
 $('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#account-activity-filter')?.addEventListener('change', renderAccountActivityUsers);

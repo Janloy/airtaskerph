@@ -223,6 +223,7 @@ body.superadmin-mode .superadmin-sidebar button[data-admin-page="user-management
 body.superadmin-mode .superadmin-sidebar button[data-admin-page="task-management-page"]::before { content: "\f0ae"; }
 body.superadmin-mode .superadmin-sidebar button[data-admin-page="report-management-page"]::before { content: "\f071"; }
 body.superadmin-mode .superadmin-sidebar button[data-admin-page="audit-log-page"]::before { content: "\f1da"; }
+body.superadmin-mode .superadmin-sidebar button[data-admin-page="superadmin-account-page"]::before { content: "\f013"; }
 body.superadmin-mode .superadmin-sidebar button:hover { transform: translateX(2px); border-color: #e5efef; background: #f5f9fa; color: #087e78; }
 body.superadmin-mode .superadmin-sidebar button.is-active { border-color: #d7eeeb; background: linear-gradient(100deg,#e8f6f4,#f2f9f8); color: #087e78; box-shadow: inset 3px 0 #07877f; }
 body.superadmin-mode .superadmin-sidebar button.is-active::before { color: #07877f; }
@@ -600,3 +601,35 @@ html.liquid-glass-active body.superadmin-mode .superadmin-sidebar,
 html.liquid-glass-active body.superadmin-mode .superadmin-profile-dropdown { border-color: rgba(255,255,255,var(--glass-light-border-alpha)); }
 html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-sidebar,
 html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-profile-dropdown { border-color: rgba(255,255,255,var(--glass-dark-border-alpha)); }
+
+/* Shared admin identity menu and dedicated administrator account workspace. */
+.superadmin-global-profile { display: none; }
+body.superadmin-mode .superadmin-global-profile { position: fixed; top: 8px; right: clamp(16px,3vw,42px); z-index: 80; display: block; }
+body.superadmin-mode .superadmin-global-profile .superadmin-profile-dropdown { right: 0; }
+body.superadmin-mode .superadmin-account-card { overflow: visible; }
+body.superadmin-mode .superadmin-account-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #edf0f4; padding-bottom: 1.25rem; }
+body.superadmin-mode .superadmin-account-heading h1 { margin: .25rem 0; color: #172033; font-size: clamp(1.65rem,2vw,2rem); font-weight: 750; letter-spacing: -.035em; }
+body.superadmin-mode .superadmin-account-heading p:last-child { margin: .3rem 0 0; color: #758298; font-size: .85rem; }
+body.superadmin-mode .superadmin-account-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; }
+body.superadmin-mode .superadmin-account-panel { display: flex; min-width: 0; flex-direction: column; gap: .9rem; border: 1px solid #e7ecf2; border-radius: 16px; background: rgba(255,255,255,.8); padding: 1.2rem; box-shadow: 0 8px 24px rgba(30,41,59,.035); }
+body.superadmin-mode .superadmin-account-panel > div:first-child { min-height: 112px; }
+body.superadmin-mode .superadmin-account-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 11px; background: #edf7f5; color: #087e78; }
+body.superadmin-mode .superadmin-account-panel h2 { margin: .7rem 0 .2rem; color: #1e293b; font-size: 1rem; font-weight: 750; }
+body.superadmin-mode .superadmin-account-panel p { margin: 0; color: #8995a6; font-size: .76rem; line-height: 1.5; }
+body.superadmin-mode .superadmin-account-panel label { display: grid; gap: .4rem; color: #526176; font-size: .76rem; font-weight: 700; }
+body.superadmin-mode .superadmin-account-panel .form-control { min-height: 42px; border-color: #dfe6ed; border-radius: 10px; background: #fff; padding: .65rem .75rem; color: #1e293b; font-weight: 500; }
+body.superadmin-mode .superadmin-account-panel .form-control:focus { border-color: #75bcb4; box-shadow: 0 0 0 3px rgba(8,126,120,.1); outline: 0; }
+body.superadmin-mode .superadmin-account-save { min-height: 42px; margin-top: auto; border-radius: 10px; background: #087e78; color: #fff; font-size: .8rem; font-weight: 750; transition: background .15s ease, transform .15s ease; }
+body.superadmin-mode .superadmin-account-save:hover { transform: translateY(-1px); background: #066a65; }
+body.dark-mode.superadmin-mode .superadmin-account-heading { border-color: #344255; }
+body.dark-mode.superadmin-mode .superadmin-account-heading h1,
+body.dark-mode.superadmin-mode .superadmin-account-panel h2 { color: #f1f5f9; }
+body.dark-mode.superadmin-mode .superadmin-account-heading p:last-child,
+body.dark-mode.superadmin-mode .superadmin-account-panel p { color: #b6c2d1; }
+body.dark-mode.superadmin-mode .superadmin-account-panel { border-color: #344255; background: rgba(24,35,48,.75); }
+body.dark-mode.superadmin-mode .superadmin-account-panel label { color: #d1d9e4; }
+body.dark-mode.superadmin-mode .superadmin-account-panel .form-control { border-color: #43536a; background: #111b27; color: #f1f5f9; }
+html.liquid-glass-active body.superadmin-mode .superadmin-account-panel { border-color: rgba(255,255,255,var(--glass-light-border-alpha)); background-color: rgba(255,255,255,var(--glass-opacity)); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
+html.liquid-glass-active body.dark-mode.superadmin-mode .superadmin-account-panel { border-color: rgba(255,255,255,var(--glass-dark-border-alpha)); background-color: rgba(24,35,48,var(--glass-opacity)); }
+@media (max-width: 1200px) { body.superadmin-mode .superadmin-account-grid { grid-template-columns: 1fr; } body.superadmin-mode .superadmin-account-panel > div:first-child { min-height: auto; } }
+@media (max-width: 640px) { body.superadmin-mode .superadmin-global-profile { top: 7px; right: 10px; } body.superadmin-mode .superadmin-profile-copy { min-width: auto; } body.superadmin-mode .superadmin-profile-copy small { display: none; } body.superadmin-mode .superadmin-account-heading { flex-direction: column; } }
