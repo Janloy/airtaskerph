@@ -848,3 +848,34 @@ body.dark-mode .superadmin-bid-person small,body.dark-mode .superadmin-bid-messa
 body.dark-mode .superadmin-bid-message { border-color:#334155; }
 body.dark-mode .superadmin-bid-message p,body.dark-mode .superadmin-profile-bid blockquote { color:#cbd5e1; }
 @media(max-width:700px){.superadmin-profile-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.superadmin-profile-hero{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task,.superadmin-profile-bid{align-items:flex-start;flex-wrap:wrap}.superadmin-profile-task .admin-action-button,.superadmin-profile-bid .admin-action-button{margin-left:auto}.superadmin-bid-count-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.superadmin-bid-row{grid-template-columns:1fr auto}.superadmin-bid-offer{grid-column:1}.superadmin-bid-message{grid-column:1/-1}}
+.superadmin-task-toolbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin:1rem 0; }
+.superadmin-task-count { margin-top:.25rem; color:#64748b; font-size:.82rem; }
+.superadmin-task-view-toggle { display:inline-flex; gap:.25rem; border:1px solid #dbe3e7; border-radius:.8rem; padding:.25rem; background:#f8fafc; }
+.superadmin-task-view-toggle button { display:inline-flex; min-height:2.35rem; align-items:center; gap:.45rem; border:1px solid transparent; border-radius:.6rem; padding:0 .8rem; color:#64748b; font-size:.8rem; font-weight:750; }
+.superadmin-task-view-toggle button.is-active { border-color:#c9e8e2; color:#075e59; background:#e4f4f1; box-shadow:0 1px 3px rgba(15,23,42,.07); }
+.superadmin-task-list { display:grid; gap:.6rem; }
+.superadmin-task-list .superadmin-task-row { min-height:5.2rem; border:1px solid #e2e8f0; border-radius:.9rem; background:#fff; }
+.superadmin-task-card-actions { display:flex; flex:none; align-items:center; gap:.35rem; }
+.superadmin-task-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:1rem; }
+.superadmin-task-card { display:flex; min-width:0; flex-direction:column; border:1px solid #e2e8f0; border-radius:1rem; padding:1.1rem; background:#fff; box-shadow:0 5px 18px rgba(30,41,59,.035); transition:transform .16s ease,box-shadow .16s ease; }
+.superadmin-task-card:hover { transform:translateY(-2px); box-shadow:0 12px 28px rgba(30,41,59,.08); }
+.superadmin-task-card-top { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+.superadmin-task-card h3 { margin-top:.8rem; color:#17202a; font-size:1.08rem; font-weight:850; line-height:1.35; }
+.superadmin-task-card-description { display:-webkit-box; min-height:3.9rem; margin-top:.45rem; overflow:hidden; color:#64748b; font-size:.82rem; line-height:1.5; -webkit-box-orient:vertical; -webkit-line-clamp:3; }
+.superadmin-task-card-meta { display:flex; flex-wrap:wrap; gap:.5rem 1rem; margin-top:.9rem; color:#475569; font-size:.78rem; font-weight:700; }
+.superadmin-task-card-meta span { display:flex; align-items:center; gap:.4rem; }
+.superadmin-task-card-meta i { color:#087f78; }
+.superadmin-task-card-owner { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:.15rem .5rem; margin-top:1rem; border-top:1px solid #edf0f4; padding-top:.75rem; color:#64748b; font-size:.72rem; }
+.superadmin-task-card-owner i { grid-row:span 2; }
+.superadmin-task-card-owner span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.superadmin-task-card-owner small { color:#94a3b8; font-size:.68rem; }
+.superadmin-task-card-actions { justify-content:flex-end; margin-top:1rem; border-top:1px solid #edf0f4; padding-top:.75rem; }
+body.dark-mode.superadmin-mode .superadmin-task-view-toggle { border-color:#334155; background:#172334; }
+body.dark-mode.superadmin-mode .superadmin-task-view-toggle button { color:#a8b5c7; }
+body.dark-mode.superadmin-mode .superadmin-task-view-toggle button.is-active { border-color:#285652; color:#c3fff2; background:#173b3b; }
+body.dark-mode.superadmin-mode .superadmin-task-count { color:#a8b5c7; }
+body.dark-mode.superadmin-mode .superadmin-task-list .superadmin-task-row,body.dark-mode.superadmin-mode .superadmin-task-card { border-color:#334155; background:#172334; }
+body.dark-mode.superadmin-mode .superadmin-task-card h3 { color:#f1f5f9; }
+body.dark-mode.superadmin-mode .superadmin-task-card-description,body.dark-mode.superadmin-mode .superadmin-task-card-meta { color:#cbd5e1; }
+body.dark-mode.superadmin-mode .superadmin-task-card-owner,body.dark-mode.superadmin-mode .superadmin-task-card-actions { border-color:#334155; color:#a8b5c7; }
+@media(max-width:560px){.superadmin-task-toolbar{align-items:flex-start;flex-direction:column}.superadmin-task-view-toggle{width:100%}.superadmin-task-view-toggle button{flex:1;justify-content:center}.superadmin-task-list .superadmin-task-row{align-items:flex-start;flex-direction:column}.superadmin-task-list .superadmin-task-card-actions{width:100%;justify-content:flex-end}}
