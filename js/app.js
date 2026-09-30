@@ -1,4 +1,5 @@
 const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, publicProfileReturn: null, publicProfileTasks: [], conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], conversationLastFullSync: 0, conversationFetchInFlight: false, pendingMessages: [], sendingMessage: false, notificationTimer: null, taskRefreshTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
+let myBidsData = [];
 let taskFetchSequence = 0;
 let taskFetchInFlight = false;
 let taskListLoaded = false;
@@ -1441,7 +1442,28 @@ function lifecycleActionsForOwner(task) {
   return '';
 }
 function renderBids(bids, task) { const isOwner = state.user && Number(state.user.id) === Number(task.user_id); const isModerator = ['admin', 'superadmin'].includes(state.user?.role); $('#bids-section h3').textContent = `Bids (${bids.length})`; $('#bids-list').innerHTML = bids.length ? bids.map((bid) => `<div class="bid-row rounded-lg border border-[#dbe3e7] p-4"><div class="bid-row-heading"><div class="bid-person"><button type="button" data-public-profile="${Number(bid.bidder_id)}" data-profile-task="${Number(task.id)}" class="bidder-profile-link">${bid.bidder_avatar_path ? `<img src="${escapeHtml(bid.bidder_avatar_path)}" alt="" class="bidder-profile-avatar bidder-profile-photo">` : `<span class="bidder-profile-avatar"><i class="fa-regular fa-user" aria-hidden="true"></i></span>`}<span class="bidder-profile-copy"><strong>${escapeHtml(bid.bidder_name)}</strong><small>View bidder profile <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></small></span></button>${bid.unread_message_count ? `<span data-bid-message-count="${task.id}-${bid.bidder_id}" class="task-message-count"><i class="fa-solid fa-message"></i> ${bid.unread_message_count} new</span>` : ''}<p class="text-xs text-[#68727c]">Offer: ${money(bid.amount)} &middot; ${escapeHtml(bid.status)}</p></div></div><p class="mt-3 text-sm leading-6 text-[#4c5962]">${escapeHtml(bid.message)}</p>${bid.removal_reason ? `<p class="bid-removal-reason"><strong>Removal reason:</strong> ${escapeHtml(bid.removal_reason)}</p>` : ''}<div class="bid-row-actions">${isOwner || isModerator ? `<button data-message-task="${task.id}" data-message-user="${bid.bidder_id}" class="touch-target rounded-lg border border-[#c9d4d9] px-3 text-xs font-bold text-[#006f70]">Message</button>` : ''}${(isOwner || isModerator) && bid.status === 'Pending' ? `<button data-accept-bid="${bid.id}" data-accept-task="${task.id}" class="touch-target rounded-lg bg-[#006f70] px-3 text-xs font-bold text-white">Accept</button><button data-remove-bid="${bid.id}" data-remove-bid-task="${task.id}" class="touch-target rounded-lg border border-red-200 px-3 text-xs font-bold text-red-600">Remove</button>` : ''}</div></div>`).join('') : '<p class="text-sm text-[#68727c]">No bids yet.</p>'; }
-async function loadMyBids() { if (!state.user) { requestAuthGate('bids'); return; } showPage('my-bids-page'); $('#my-bids-page-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your bids...</p>'; try { const payload = await api('api/bid_actions?action=my_bids'); renderEditableMyBids(payload.bids); linkMyBidOwnerProfiles(payload.bids); renderMyBidWorkflow(payload.bids); } catch (error) { notify(error.message, 'error'); } }
+async function loadMyBids() { if (!state.user) { requestAuthGate('bids'); return; } showPage('my-bids-page'); $('#my-bids-page-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your bids...</p>'; $('#my-bids-search').oninput = renderFilteredMyBids; $('#my-bids-status-filter').onchange = renderFilteredMyBids; $('#my-bids-task-filter').onchange = renderFilteredMyBids; try { const payload = await api('api/bid_actions?action=my_bids'); myBidsData = payload.bids || []; renderFilteredMyBids(); } catch (error) { notify(error.message, 'error'); } }
+function renderFilteredMyBids() {
+  const query = ($('#my-bids-search')?.value || '').trim().toLocaleLowerCase();
+  const bidStatus = $('#my-bids-status-filter')?.value || 'all';
+  const taskStatus = $('#my-bids-task-filter')?.value || 'all';
+  const filtered = myBidsData.filter((bid) => {
+    if (bidStatus !== 'all' && bid.status !== bidStatus) return false;
+    if (taskStatus !== 'all' && bid.task_status !== taskStatus) return false;
+    if (!query) return true;
+    return [bid.title, bid.category, bid.owner_name, bid.location, bid.status, bid.task_status, bid.message]
+      .some((value) => String(value || '').toLocaleLowerCase().includes(query));
+  });
+  const count = $('#my-bids-result-count');
+  if (count) count.textContent = `Showing ${filtered.length} of ${myBidsData.length} ${myBidsData.length === 1 ? 'bid' : 'bids'}`;
+  if (!filtered.length && myBidsData.length) {
+    $('#my-bids-page-list').innerHTML = '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><i class="fa-solid fa-filter mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">No bids match these filters.</p><p class="mt-1 text-sm text-[#68727c]">Try another status or search term.</p></div>';
+    return;
+  }
+  renderEditableMyBids(filtered);
+  linkMyBidOwnerProfiles(filtered);
+  renderMyBidWorkflow(filtered);
+}
 function linkMyBidOwnerProfiles(bids) {
   const cards = $('#my-bids-page-list')?.querySelectorAll(':scope > article') || [];
   bids.forEach((bid, index) => {
