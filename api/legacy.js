@@ -654,6 +654,7 @@ export default async function handler(req, res) {
     if (route === 'task_lifecycle') {
       ({ profile } = await userFor(req,s,true));
       const taskId=Number(body.task_id);
+      if(!Number.isSafeInteger(taskId)||taskId<1) throw fail('A valid task ID is required. Refresh the task and try again.',422);
       const task=await rows(s.from('tasks').select('id,user_id,title,status,completion_requested_at,bids(bidder_id,status)').eq('id',taskId).maybeSingle());
       if(!task) throw fail('Task not found.',404);
       const acceptedBid=(task.bids||[]).find((bid)=>bid.status==='Accepted');

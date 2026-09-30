@@ -1585,10 +1585,11 @@ function roleTaskContextMarkup(task, bids, isOwner) {
   const taskerBid = { ...myBid, task_status: task.status, owner_name: task.owner_name, has_reviewed: myBid.has_reviewed };
   return `<section class="task-role-context"><p class="task-role-eyebrow">Tasker view · ${escapeHtml(task.status)}</p><h3>Your offer</h3><div class="task-role-person"><span>Offer: <strong>${money(myBid.amount)}</strong></span><span>Bid status: <strong>${escapeHtml(displayedBidStatus(taskerBid))}</strong></span></div>${myBid.status === 'Accepted' ? lifecycleActionsForTasker(taskerBid) : `<p class="mt-3 text-sm">${myBid.status === 'Pending' ? 'Your offer is waiting for the poster.' : myBid.status === 'Rejected' ? 'The poster selected another tasker.' : 'This bid is no longer active.'}</p>`}</section>`;
 }
-async function refreshCurrentTaskWorkflow(taskId) {
+async function refreshCurrentTaskWorkflow(taskId, nextStatus = null) {
   const pageId = document.querySelector('.app-page:not(.hidden)')?.id;
   if (pageId === 'my-bids-page') return loadMyBids();
   if (pageId === 'task-detail-modal') {
+    if (nextStatus && Number(state.activeTask?.id) === Number(taskId)) return openTask({ ...state.activeTask, status: nextStatus });
     const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(taskId)}`);
     return openTask(payload.task);
   }
@@ -2131,7 +2132,8 @@ document.addEventListener('click', async (event) => {
   }
   const lifecycleButton = event.target.closest('[data-task-lifecycle]');
   if (lifecycleButton) {
-    const lifecycleAction=lifecycleButton.dataset.taskLifecycle, taskId=Number(lifecycleButton.dataset.taskId);
+    const lifecycleAction=lifecycleButton.dataset.taskLifecycle, taskId=Number(lifecycleButton.dataset.taskId || state.activeTask?.id);
+    if (!Number.isSafeInteger(taskId) || taskId < 1) { notify('Could not identify this task. Close and reopen its details, then try again.', 'error'); return; }
     if(lifecycleAction==='report_problem') { taskProblemModal(taskId); return; }
     let cancelDetails = null;
     if(lifecycleAction==='cancel_assignment') {
@@ -2143,7 +2145,14 @@ document.addEventListener('click', async (event) => {
       if (!approved) return;
     }
     lifecycleButton.disabled=true;
-    try { const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:lifecycleAction,task_id:taskId,...(cancelDetails?{reason:cancelDetails.reason}:{})})}); notify(payload.message); await refreshCurrentTaskWorkflow(taskId); void updateNotificationCounts(); }
+    try {
+      const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:lifecycleAction,task_id:taskId,...(cancelDetails?{reason:cancelDetails.reason}:{})})});
+      notify(payload.message);
+      const nextStatus = { mark_done: 'Awaiting Confirmation', confirm_completion: 'Completed', report_problem: 'Under Review', cancel_assignment: 'Cancelled' }[lifecycleAction];
+      try { await refreshCurrentTaskWorkflow(taskId, nextStatus); }
+      catch (refreshError) { console.error('Task action succeeded but the view could not refresh:', refreshError); }
+      void updateNotificationCounts();
+    }
     catch(error){notify(error.message,'error');lifecycleButton.disabled=false;}
     return;
   }
@@ -2391,7 +2400,7 @@ document.addEventListener('submit', async (event) => {
   const problemForm=event.target.closest('#task-problem-form');
   if(problemForm) {
     event.preventDefault(); if(!problemForm.reportValidity()) return; setBusy(problemForm,true,'Sending report...');
-    try { const taskId=Number(problemForm.elements.task_id.value); const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:'report_problem',task_id:taskId,details:problemForm.elements.details.value})}); closeModal('task-problem-modal'); notify(payload.message); await refreshCurrentTaskWorkflow(taskId); }
+    try { const taskId=Number(problemForm.elements.task_id.value); if(!Number.isSafeInteger(taskId)||taskId<1) throw new Error('Could not identify this task. Close and reopen its details, then try again.'); const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:'report_problem',task_id:taskId,details:problemForm.elements.details.value})}); closeModal('task-problem-modal'); notify(payload.message); try { await refreshCurrentTaskWorkflow(taskId,'Under Review'); } catch(refreshError) { console.error('Problem report succeeded but the view could not refresh:',refreshError); } }
     catch(error){notify(error.message,'error');} finally {setBusy(problemForm,false);} return;
   }
   const review=event.target.closest('[data-task-review]');
