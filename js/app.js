@@ -1451,9 +1451,11 @@ document.addEventListener('click', async (event) => {
   }
   if (deleteUserButton) {
     const user = accountActivityData.users.find((item) => Number(item.id) === Number(deleteUserButton.dataset.deleteUser));
-    if (!user || user.role === 'superadmin' || !window.confirm(`Permanently delete ${user.first_name} ${user.last_name} and their related profile content? This cannot be undone.`)) return;
-    try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_user', user_id: user.id }) }); notify(payload.message); await loadAccountActivity(); }
-    catch (error) { notify(error.message, 'error'); }
+    if (!user || user.role === 'superadmin') return;
+    $('#delete-user-id').value = String(user.id);
+    $('#delete-user-name').textContent = `${user.first_name} ${user.last_name}`.trim();
+    $('#delete-user-email').textContent = user.email;
+    openModal('#delete-user-modal');
     return;
   }
   const accountActivityButton = event.target.closest('[data-activity-dashboard]');
@@ -1752,4 +1754,5 @@ $('#conversation-body').addEventListener('keydown', (event) => { if (event.key =
 $('#confirm-delete-bid').addEventListener('click', async () => { const button = $('#confirm-delete-bid'); setButtonBusy(button, true, 'Deleting bid...'); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'delete', bid_id: $('#delete-bid-id').value, task_id: $('#delete-bid-task-id').value }) }); closeModal('delete-bid-modal'); notify(payload.message); await loadMyBids(); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
 $('#confirm-remove-bid').addEventListener('click', async () => { const button = $('#confirm-remove-bid'); const reason = $('#remove-bid-reason').value.trim(); if (!reason) { notify('Please provide a reason for removing the bidder.', 'error'); return; } setButtonBusy(button, true, 'Removing bidder...'); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'remove_bid', bid_id: $('#remove-bid-id').value, task_id: $('#remove-bid-task-id').value, reason }) }); closeModal('remove-bid-modal'); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#remove-bid-task-id').value)) || state.activeTask; if (task) await openTask(task); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
 $('#confirm-delete-task').addEventListener('click', async () => { const button = $('#confirm-delete-task'); const taskId = $('#delete-task-id').value; setButtonBusy(button, true, 'Deleting task...'); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_task', task_id: taskId }) }); closeModal('delete-task-modal'); notify(payload.message); await loadTasks(); if (state.user?.role === 'superadmin') { await loadAccountActivity(); showPage('task-management-page'); } else showPage('marketplace-page'); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
+$('#confirm-delete-user').addEventListener('click', async () => { const button = $('#confirm-delete-user'); const userId = $('#delete-user-id').value; if (!userId) return; setButtonBusy(button, true, 'Deleting account...'); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_user', user_id: userId }) }); closeModal('delete-user-modal'); notify(payload.message); await loadAccountActivity(); showPage('user-management-page'); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
 init();
