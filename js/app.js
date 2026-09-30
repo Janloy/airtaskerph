@@ -1508,8 +1508,23 @@ function renderFilteredMyBids() {
     return;
   }
   renderEditableMyBids(filtered);
+  updateCompletedBidStatusLabels(filtered);
   linkMyBidOwnerProfiles(filtered);
   renderMyBidWorkflow(filtered);
+}
+function displayedBidStatus(bid) {
+  return bid.status === 'Accepted' && bid.task_status === 'Completed' ? 'Completed' : bid.status;
+}
+function updateCompletedBidStatusLabels(bids) {
+  const cards = $('#my-bids-page-list')?.querySelectorAll(':scope > article') || [];
+  bids.forEach((bid, index) => {
+    const badge = cards[index]?.querySelector('.badge');
+    if (!badge) return;
+    const status = displayedBidStatus(bid);
+    badge.textContent = status;
+    badge.classList.remove('badge-open', 'badge-complete', 'badge-progress');
+    badge.classList.add(status === 'Completed' || status === 'Rejected' ? 'badge-complete' : status === 'Accepted' ? 'badge-open' : 'badge-progress');
+  });
 }
 function linkMyBidOwnerProfiles(bids) {
   const cards = $('#my-bids-page-list')?.querySelectorAll(':scope > article') || [];
@@ -1546,7 +1561,7 @@ function roleTaskContextMarkup(task, bids, isOwner) {
   const myBid = (bids || []).find((bid) => Number(bid.bidder_id) === Number(state.user?.id));
   if (!myBid) return '';
   const taskerBid = { ...myBid, task_status: task.status, owner_name: task.owner_name, has_reviewed: myBid.has_reviewed };
-  return `<section class="task-role-context"><p class="task-role-eyebrow">Tasker view · ${escapeHtml(task.status)}</p><h3>Your offer</h3><div class="task-role-person"><span>Offer: <strong>${money(myBid.amount)}</strong></span><span>Bid status: <strong>${escapeHtml(myBid.status)}</strong></span></div>${myBid.status === 'Accepted' ? lifecycleActionsForTasker(taskerBid) : `<p class="mt-3 text-sm">${myBid.status === 'Pending' ? 'Your offer is waiting for the poster.' : myBid.status === 'Rejected' ? 'The poster selected another tasker.' : 'This bid is no longer active.'}</p>`}</section>`;
+  return `<section class="task-role-context"><p class="task-role-eyebrow">Tasker view · ${escapeHtml(task.status)}</p><h3>Your offer</h3><div class="task-role-person"><span>Offer: <strong>${money(myBid.amount)}</strong></span><span>Bid status: <strong>${escapeHtml(displayedBidStatus(taskerBid))}</strong></span></div>${myBid.status === 'Accepted' ? lifecycleActionsForTasker(taskerBid) : `<p class="mt-3 text-sm">${myBid.status === 'Pending' ? 'Your offer is waiting for the poster.' : myBid.status === 'Rejected' ? 'The poster selected another tasker.' : 'This bid is no longer active.'}</p>`}</section>`;
 }
 async function refreshCurrentTaskWorkflow(taskId) {
   const pageId = document.querySelector('.app-page:not(.hidden)')?.id;
