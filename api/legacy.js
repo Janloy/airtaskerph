@@ -30,6 +30,11 @@ const logActivity = async (s, userId, eventType, summary, referenceType = null, 
   const { error } = await s.from('account_activity').insert({ user_id: userId, event_type: eventType, summary: clean(summary, 180), reference_type: referenceType, reference_id: referenceId == null ? null : String(referenceId) });
   if (error) console.error('Account activity log failed:', error.message);
 };
+const taskNotice = async (s, userId, taskId, eventType, title, message, dedupeKey) => {
+  if (!userId || !taskId) return;
+  const { error } = await s.from('task_notifications').upsert({ user_id:userId, task_id:taskId, event_type:eventType, title:clean(title,120), body:clean(message,500), dedupe_key:dedupeKey }, { onConflict:'dedupe_key', ignoreDuplicates:true });
+  if (error) throw fail(error.message,400);
+};
 const rows = async (q) => { const { data, error } = await q; if (error) throw fail(error.message, error.code === '23505' ? 409 : 400); return data; };
 const userFor = async (req, s, trackActivity = false) => {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -45,11 +50,13 @@ const loadMyBids = async (s, profile) => {
   const bids = await rows(s.from('bids').select('*').eq('bidder_id', profile.id).order('created_at', { ascending: false }));
   if (!bids.length) return [];
   const taskIds = [...new Set(bids.map((bid) => bid.task_id))];
-  const [tasks, unreadMessages] = await Promise.all([
+  const [tasks, unreadMessages, reviews] = await Promise.all([
     rows(s.from('tasks').select('id,user_id,title,category,location,status,owner:user_profiles!tasks_user_id_fkey(first_name,last_name)').in('id', taskIds)),
-    rows(s.from('messages').select('task_id,sender_id').in('task_id', taskIds).eq('recipient_id', profile.id).is('read_at', null))
+    rows(s.from('messages').select('task_id,sender_id').in('task_id', taskIds).eq('recipient_id', profile.id).is('read_at', null)),
+    rows(s.from('task_reviews').select('task_id').eq('reviewer_id', profile.id).in('task_id', taskIds))
   ]);
   const taskById = new Map(tasks.map((task) => [Number(task.id), task]));
+  const reviewedTaskIds = new Set(reviews.map((review) => Number(review.task_id)));
   const unreadByTask = new Map();
   for (const message of unreadMessages) {
     const key = `${Number(message.task_id)}:${Number(message.sender_id)}`;
@@ -65,6 +72,7 @@ const loadMyBids = async (s, profile) => {
       owner_name: owner ? `${owner.first_name} ${owner.last_name}`.trim() : '',
       title: task?.title, category: task?.category, location: task?.location,
       task_status: task?.status,
+      has_reviewed: reviewedTaskIds.has(Number(bid.task_id)),
       unread_message_count: unreadByTask.get(`${Number(bid.task_id)}:${Number(task?.user_id)}`) || 0
     };
   });
@@ -100,21 +108,34 @@ const shapeTasks = async (s, tasks, viewer, { mine = false } = {}) => {
   if (!tasks.length) return [];
   const taskIds = tasks.map((t) => t.id);
   if (mine) {
-    const bids = await rows(s.from('bids').select('task_id,bidder_id').in('task_id', taskIds));
+    const [bids, reviews] = await Promise.all([
+      rows(s.from('bids').select('task_id,bidder_id,status').in('task_id', taskIds)),
+      rows(s.from('task_reviews').select('task_id').eq('reviewer_id', viewer.id).in('task_id', taskIds))
+    ]);
     const bidCounts = new Map();
     for (const bid of bids) bidCounts.set(Number(bid.task_id), (bidCounts.get(Number(bid.task_id)) || 0) + 1);
+    const accepted = bids.filter((bid) => bid.status === 'Accepted');
+    const taskerIds = [...new Set(accepted.map((bid) => Number(bid.bidder_id)))];
+    const taskers = taskerIds.length ? await rows(s.from('user_profiles').select('id,first_name,last_name').in('id', taskerIds)) : [];
+    const taskerById = new Map(taskers.map((person) => [Number(person.id), person]));
+    const acceptedByTask = new Map(accepted.map((bid) => [Number(bid.task_id), Number(bid.bidder_id)]));
+    const reviewedTaskIds = new Set(reviews.map((review) => Number(review.task_id)));
     return tasks.map((task) => ({
       ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget),
       owner_name: `${viewer.first_name} ${viewer.last_name}`.trim(), has_bid: false,
-      is_saved: false, bid_count: bidCounts.get(Number(task.id)) || 0, unread_message_count: 0
+      is_saved: false, bid_count: bidCounts.get(Number(task.id)) || 0, unread_message_count: 0,
+      accepted_tasker_id: acceptedByTask.get(Number(task.id)) || null,
+      accepted_tasker_name: taskerById.has(acceptedByTask.get(Number(task.id))) ? `${taskerById.get(acceptedByTask.get(Number(task.id))).first_name} ${taskerById.get(acceptedByTask.get(Number(task.id))).last_name}`.trim() : '',
+      has_reviewed: reviewedTaskIds.has(Number(task.id))
     }));
   }
   const ownerIds = [...new Set(tasks.map((t) => t.user_id))];
-  const [owners, bids, saves, messages] = await Promise.all([
+  const [owners, bids, saves, messages, reviews] = await Promise.all([
     rows(s.from('user_profiles').select('id,first_name,last_name').in('id', ownerIds)),
     rows(s.from('bids').select('task_id,bidder_id').in('task_id', taskIds)),
     viewer ? rows(s.from('saved_tasks').select('task_id').eq('user_id', viewer.id).in('task_id', taskIds)) : Promise.resolve([]),
-    viewer ? rows(s.from('messages').select('task_id').eq('recipient_id', viewer.id).is('read_at', null).in('task_id', taskIds)) : Promise.resolve([])
+    viewer ? rows(s.from('messages').select('task_id').eq('recipient_id', viewer.id).is('read_at', null).in('task_id', taskIds)) : Promise.resolve([]),
+    viewer ? rows(s.from('task_reviews').select('task_id').eq('reviewer_id', viewer.id).in('task_id', taskIds)) : Promise.resolve([])
   ]);
   const ownerById = new Map(owners.map((p) => [Number(p.id), p]));
   const bidsByTask = new Map();
@@ -125,12 +146,13 @@ const shapeTasks = async (s, tasks, viewer, { mine = false } = {}) => {
     bidsByTask.set(Number(bid.task_id), item);
   }
   const savedIds = new Set(saves.map((r) => Number(r.task_id)));
+  const reviewedTaskIds = new Set(reviews.map((review) => Number(review.task_id)));
   const unreadByTask = new Map();
   for (const message of messages) unreadByTask.set(Number(message.task_id), (unreadByTask.get(Number(message.task_id)) || 0) + 1);
   return tasks.map((task) => {
     const owner = ownerById.get(Number(task.user_id));
     const bidData = bidsByTask.get(Number(task.id));
-    return { ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget), owner_name: owner ? `${owner.first_name} ${owner.last_name}`.trim() : 'TaskerPH member', has_bid: Boolean(bidData?.hasBid), is_saved: savedIds.has(Number(task.id)), bid_count: bidData?.count || 0, unread_message_count: unreadByTask.get(Number(task.id)) || 0 };
+    return { ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget), owner_name: owner ? `${owner.first_name} ${owner.last_name}`.trim() : 'TaskerPH member', has_bid: Boolean(bidData?.hasBid), is_saved: savedIds.has(Number(task.id)), bid_count: bidData?.count || 0, unread_message_count: unreadByTask.get(Number(task.id)) || 0, has_reviewed: reviewedTaskIds.has(Number(task.id)) };
   });
 };
 const taskDetail = async (s, id, viewer) => {
@@ -191,8 +213,8 @@ export default async function handler(req, res) {
       try { ({ profile } = await userFor(req, s, false)); } catch {}
       let q = s.from('tasks').select('*').order('created_at', { ascending: false });
       if (query.get('mine') === '1') { if (!profile) throw fail('Please log in to continue.', 401); q = q.eq('user_id', profile.id); }
-      if (['Open','In Progress','Completed'].includes(query.get('status'))) q = q.eq('status', query.get('status'));
-      else if (query.get('mine') !== '1') q = q.neq('status', 'Completed');
+      if (['Open','In Progress','Completed','Awaiting Confirmation','Under Review','Cancelled'].includes(query.get('status'))) q = q.eq('status', query.get('status'));
+      else if (query.get('mine') !== '1') q = q.not('status','in','(Completed,Awaiting Confirmation,Under Review,Cancelled)');
       if (query.get('category')) q = q.eq('category', query.get('category'));
       if (query.get('search')) { const term = query.get('search').replace(/[,%()]/g, ' '); q = q.or(`title.ilike.%${term}%,description.ilike.%${term}%,location.ilike.%${term}%`); }
       const tasks = await rows(q); return res.status(200).json(ok('', { tasks: await shapeTasks(s, tasks, profile, { mine: query.get('mine') === '1' }) }));
@@ -332,13 +354,15 @@ export default async function handler(req, res) {
         if (!Number.isSafeInteger(publicId) || publicId < 1) throw fail('Invalid tasker profile.', 400);
         const publicProfile = await rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,avatar_path,created_at').eq('id', publicId).maybeSingle());
         if (!publicProfile) throw fail('This tasker profile could not be found.', 404);
-        const [listingResult, totalResult, completedResult] = await Promise.all([
+        const [listingResult, totalResult, completedResult, reviewsResult] = await Promise.all([
           s.from('tasks').select('id,user_id,title,category,budget,location,description,status,created_at,image_urls,schedule_date,task_mode,budget_type,materials_included,requirements,checklist').eq('user_id', publicId).order('created_at', { ascending: false }).limit(12),
           s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId),
-          s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId).eq('status', 'Completed')
+          s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId).eq('status', 'Completed'),
+          s.from('task_reviews').select('rating,comment,created_at,reviewer:user_profiles!task_reviews_reviewer_id_fkey(first_name,last_name)').eq('reviewee_id',publicId).order('created_at',{ascending:false}).limit(20)
         ]);
-        if (listingResult.error || totalResult.error || completedResult.error) throw fail((listingResult.error || totalResult.error || completedResult.error).message, 500);
-        return res.status(200).json(ok('', { profile: { id: Number(publicProfile.id), first_name: publicProfile.first_name, middle_initial: publicProfile.middle_initial || '', last_name: publicProfile.last_name, avatar_path: publicAvatarUrl(s, publicProfile.avatar_path), created_at: publicProfile.created_at }, tasks: (listingResult.data || []).map((task) => ({ ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget) })), total_tasks: totalResult.count || 0, completed_tasks: completedResult.count || 0 }));
+        if (listingResult.error || totalResult.error || completedResult.error || reviewsResult.error) throw fail((listingResult.error || totalResult.error || completedResult.error || reviewsResult.error).message, 500);
+        const reviews=(reviewsResult.data||[]).map((review)=>({...review,reviewer_name:review.reviewer?`${review.reviewer.first_name} ${review.reviewer.last_name}`.trim():'TaskerPH member'}));
+        return res.status(200).json(ok('', { profile: { id: Number(publicProfile.id), first_name: publicProfile.first_name, middle_initial: publicProfile.middle_initial || '', last_name: publicProfile.last_name, avatar_path: publicAvatarUrl(s, publicProfile.avatar_path), created_at: publicProfile.created_at }, tasks: (listingResult.data || []).map((task) => ({ ...task, id: Number(task.id), user_id: Number(task.user_id), budget: Number(task.budget) })), reviews, total_tasks: totalResult.count || 0, completed_tasks: completedResult.count || 0 }));
       }
       ({ profile } = await userFor(req, s, action !== 'get'));
       if (action === 'get') return res.status(200).json(ok('',{user:publicUser(profile)}));
@@ -405,7 +429,7 @@ export default async function handler(req, res) {
         if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw fail('Choose a valid task page.',422);
         const search = clean(body.search,80).replace(/[^a-zA-Z0-9@.\- ]/g,' ').replace(/\s+/g,' ').trim();
         const status = clean(body.status,20) || 'all';
-        if (!['all','Open','In Progress','Completed'].includes(status)) throw fail('Choose a valid task status.',422);
+        if (!['all','Open','In Progress','Awaiting Confirmation','Under Review','Completed','Cancelled'].includes(status)) throw fail('Choose a valid task status.',422);
         let ownerIds = [];
         if (search) ownerIds = (await rows(s.from('user_profiles').select('id').or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`).limit(500))).map((user)=>Number(user.id));
         let taskQuery = s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)',{count:'exact'});
@@ -440,9 +464,10 @@ export default async function handler(req, res) {
         ]);
         if (!task) throw fail('Task not found.',404);
         for (const result of [totalBids,acceptedBids,pendingBids,rejectedBids]) if(result.error) throw fail(result.error.message);
+        const disputes=task.status==='Under Review'?await rows(s.from('task_disputes').select('id,opened_by,details,status,created_at,opener:user_profiles!task_disputes_opened_by_fkey(first_name,last_name,email)').eq('task_id',taskId).order('created_at',{ascending:false})):[];
         const taskData = {...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner:task.owner?{...task.owner,id:Number(task.owner.id),avatar_path:publicAvatarUrl(s,task.owner.avatar_path)}:null,owner_name:task.owner?`${task.owner.first_name} ${task.owner.last_name}`.trim():'TaskerPH member'};
         const bidItems = bids.map((bid)=>({...bid,id:Number(bid.id),task_id:Number(bid.task_id),bidder_id:Number(bid.bidder_id),amount:Number(bid.amount)||0,bidder:bid.bidder?{...bid.bidder,id:Number(bid.bidder.id),avatar_path:publicAvatarUrl(s,bid.bidder.avatar_path)}:null}));
-        return res.status(200).json(ok('',{task:taskData,bids:bidItems,stats:{total_bids:totalBids.count||0,accepted_bids:acceptedBids.count||0,pending_bids:pendingBids.count||0,rejected_bids:rejectedBids.count||0}}));
+        return res.status(200).json(ok('',{task:taskData,bids:bidItems,disputes,stats:{total_bids:totalBids.count||0,accepted_bids:acceptedBids.count||0,pending_bids:pendingBids.count||0,rejected_bids:rejectedBids.count||0}}));
       }
       if (action === 'view_user_profile') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view member profiles.',403);
@@ -535,7 +560,9 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('Task removed from the marketplace.'));
       }
       if(action==='update_task') {
-        const patch={title:clean(body.title,180),category:clean(body.category,80),budget:Number(body.budget),location:clean(body.location,160),description:clean(body.description,2000),status:body.status,schedule_date:body.schedule_date||null,task_mode:['on_site','online','hybrid'].includes(body.task_mode)?body.task_mode:'on_site',budget_type:['fixed','negotiable'].includes(body.budget_type)?body.budget_type:'fixed',materials_included:body.materials_included===true||body.materials_included==='on',requirements:clean(body.requirements,1500),checklist:Array.isArray(body.checklist)?body.checklist.slice(0,20).map((value)=>clean(value,180)).filter(Boolean):[]};
+        const allowedTaskStatuses=['Open','In Progress','Awaiting Confirmation','Under Review','Completed','Cancelled'];
+        if (isMod(profile) && body.status && !allowedTaskStatuses.includes(body.status)) throw fail('Choose a valid task status.',422);
+        const patch={title:clean(body.title,180),category:clean(body.category,80),budget:Number(body.budget),location:clean(body.location,160),description:clean(body.description,2000),status:isMod(profile)&&allowedTaskStatuses.includes(body.status)?body.status:t.status,schedule_date:body.schedule_date||null,task_mode:['on_site','online','hybrid'].includes(body.task_mode)?body.task_mode:'on_site',budget_type:['fixed','negotiable'].includes(body.budget_type)?body.budget_type:'fixed',materials_included:body.materials_included===true||body.materials_included==='on',requirements:clean(body.requirements,1500),checklist:Array.isArray(body.checklist)?body.checklist.slice(0,20).map((value)=>clean(value,180)).filter(Boolean):[]};
         if (patch.schedule_date) { const date = new Date(`${patch.schedule_date}T00:00:00Z`); if (!/^\d{4}-\d{2}-\d{2}$/.test(patch.schedule_date) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== patch.schedule_date) throw fail('Choose a valid preferred date.',422); }
         const photos=Array.isArray(body.photos)?body.photos:[];
         const oldUrls=Array.isArray(t.image_urls)?t.image_urls:[];
@@ -579,8 +606,96 @@ export default async function handler(req, res) {
       const bidId=Number(body.bid_id);
       if(action==='update') {const amount=Number(body.amount),message=clean(body.message,1000);if(!Number.isFinite(amount)||amount<0||!message||task.status!=='Open')throw fail('Enter a valid offer and message.',422);const updated=await rows(s.from('bids').update({amount,message}).eq('id',bidId).eq('task_id',taskId).eq('bidder_id',profile.id).eq('status','Pending').select('id'));if(!updated.length)throw fail('Only your pending bid on an open task can be edited.',403);return res.status(200).json(ok('Your bid was updated.')); }
       if(action==='delete') {const bid=await rows(s.from('bids').select('id').eq('id',bidId).eq('task_id',taskId).eq('bidder_id',profile.id).eq('status','Pending').maybeSingle());if(!bid||task.status!=='Open')throw fail('Only your pending bid on an open task can be deleted.',403);await rows(s.from('messages').delete().eq('task_id',taskId).or(`sender_id.eq.${profile.id},recipient_id.eq.${profile.id}`));await rows(s.from('bids').delete().eq('id',bidId).eq('task_id',taskId).eq('bidder_id',profile.id));return res.status(200).json(ok('Your bid was deleted.')); }
-      if(action==='accept') { if(Number(task.user_id)!==Number(profile.id)&&!isMod(profile)) throw fail('Only the task owner or a moderator can accept a bid.',403);const target=await rows(s.from('bids').select('id').eq('id',bidId).eq('task_id',taskId).maybeSingle());if(!target)throw fail('Bid not found for this task.',404); await rows(s.from('bids').update({status:'Rejected'}).eq('task_id',taskId));await rows(s.from('bids').update({status:'Accepted'}).eq('task_id',taskId).eq('id',bidId));await rows(s.from('tasks').update({status:'In Progress'}).eq('id',taskId));return res.status(200).json(ok('Bid accepted. The task is now in progress.')); }
-      if(action==='remove_bid') {if(Number(task.user_id)!==Number(profile.id)&&!isMod(profile)) throw fail('Only the task owner or a moderator can remove a bidder.',403);const reason=clean(body.reason,1000);if(!reason)throw fail('Please provide a reason for removing the bidder.',422);const removed=await rows(s.from('bids').update({status:'Pending',removal_reason:reason}).eq('id',bidId).eq('task_id',taskId).in('status',['Pending','Accepted']).select('id'));if(!removed.length)throw fail('Only pending or accepted bidders can be removed.',409);return res.status(200).json(ok('The bidder was removed and the reason was saved.'));}
+      if(action==='accept') {
+        if(Number(task.user_id)!==Number(profile.id)&&!isMod(profile)) throw fail('Only the task owner or a moderator can accept a bid.',403);
+        const assignment=await rows(s.rpc('accept_task_bid',{p_task_id:taskId,p_bid_id:bidId}));
+        const selected=assignment.find((item)=>item.was_selected);
+        if(!selected) throw fail('This task could not be assigned. Refresh and try again.',409);
+        await taskNotice(s,selected.bidder_id,taskId,'bid_accepted','Your bid was accepted',`You were selected for “${task.title}”. Message the poster to confirm the schedule.`,`task:${taskId}:accepted`);
+        for (const item of assignment.filter((entry)=>!entry.was_selected)) await taskNotice(s,item.bidder_id,taskId,'bid_not_selected','Another tasker was selected',`The poster selected another tasker for “${task.title}”.`,`task:${taskId}:not-selected:${item.bidder_id}`);
+        await logActivity(s,profile.id,'bid_accepted',`Tasker selected for: ${task.title}`,'task',taskId);
+        return res.status(200).json(ok('Bid accepted. The task is now in progress, and both sides have been notified.'));
+      }
+      if(action==='remove_bid') {if(Number(task.user_id)!==Number(profile.id)&&!isMod(profile)) throw fail('Only the task owner or a moderator can remove a bidder.',403);const reason=clean(body.reason,1000);if(!reason)throw fail('Please provide a reason for removing the bidder.',422);const removed=await rows(s.from('bids').update({status:'Pending',removal_reason:reason}).eq('id',bidId).eq('task_id',taskId).eq('status','Pending').select('id'));if(!removed.length)throw fail('Only pending bids can be removed here. Use the task assignment controls to cancel an accepted assignment.',409);return res.status(200).json(ok('The bidder was removed and the reason was saved.'));}
+    }
+    if (route === 'task_lifecycle') {
+      ({ profile } = await userFor(req,s,true));
+      const taskId=Number(body.task_id);
+      const task=await rows(s.from('tasks').select('id,user_id,title,status,completion_requested_at,bids(bidder_id,status)').eq('id',taskId).maybeSingle());
+      if(!task) throw fail('Task not found.',404);
+      const acceptedBid=(task.bids||[]).find((bid)=>bid.status==='Accepted');
+      if(!acceptedBid) throw fail('This task has no accepted tasker.',409);
+      const posterId=Number(task.user_id), taskerId=Number(acceptedBid.bidder_id), isPoster=Number(profile.id)===posterId, isTasker=Number(profile.id)===taskerId;
+      if(action==='mark_done') {
+        if(!isTasker) throw fail('Only the selected tasker can request completion.',403);
+        if(task.status!=='In Progress') throw fail('This task is not ready to be marked done.',409);
+        const now=new Date().toISOString();
+        const changed=await rows(s.from('tasks').update({status:'Awaiting Confirmation',completion_requested_at:now,completion_confirmed_at:null}).eq('id',taskId).eq('status','In Progress').select('id'));
+        if(!changed.length) throw fail('The task status changed. Refresh and try again.',409);
+        await taskNotice(s,posterId,taskId,'completion_requested','Tasker marked the task done',`Please confirm or report a problem with “${task.title}”.`,`task:${taskId}:completion-request:${now}`);
+        await logActivity(s,profile.id,'task_completion_requested',`Tasker marked done: ${task.title}`,'task',taskId);
+        return res.status(200).json(ok('Completion requested. The task poster has been notified.'));
+      }
+      if(action==='confirm_completion') {
+        if(!isPoster) throw fail('Only the task poster can confirm completion.',403);
+        if(task.status!=='Awaiting Confirmation') throw fail('There is no completion request waiting for confirmation.',409);
+        const now=new Date().toISOString();
+        const changed=await rows(s.from('tasks').update({status:'Completed',completion_confirmed_at:now}).eq('id',taskId).eq('status','Awaiting Confirmation').select('id'));
+        if(!changed.length) throw fail('The task status changed. Refresh and try again.',409);
+        await rows(s.from('task_disputes').update({status:'Resolved',resolution:'Poster confirmed completion',resolved_by:profile.id,resolved_at:now}).eq('task_id',taskId).eq('status','Open'));
+        await taskNotice(s,taskerId,taskId,'completion_confirmed','Task completion confirmed',`The poster confirmed “${task.title}”. You can now leave each other a review.`,`task:${taskId}:completion-confirmed`);
+        await logActivity(s,profile.id,'task_completed',`Task completion confirmed: ${task.title}`,'task',taskId);
+        return res.status(200).json(ok('Completion confirmed. The task is complete, and both sides can now leave a review.'));
+      }
+      if(action==='report_problem') {
+        if(!isPoster&&!isTasker) throw fail('Only the task poster or selected tasker can report a problem.',403);
+        if(!['In Progress','Awaiting Confirmation'].includes(task.status)) throw fail('A problem can only be reported while the task is in progress or awaiting confirmation.',409);
+        const details=clean(body.details,2000);
+        if(details.length<10) throw fail('Please describe the problem in at least 10 characters.',422);
+        const paused=await rows(s.from('tasks').update({status:'Under Review'}).eq('id',taskId).in('status',['In Progress','Awaiting Confirmation']).select('id'));
+        if(!paused.length) throw fail('The task status changed. Refresh and try again.',409);
+        try { await rows(s.from('task_disputes').insert({task_id:taskId,opened_by:profile.id,details})); }
+        catch(error) { await rows(s.from('tasks').update({status:task.status}).eq('id',taskId).eq('status','Under Review')).catch(()=>{}); throw error; }
+        const recipient=isPoster?taskerId:posterId;
+        await taskNotice(s,recipient,taskId,'task_problem_reported','A task problem was reported',`A participant reported a problem with “${task.title}”. The task is paused for review.`,`task:${taskId}:problem:${Date.now()}`);
+        await logActivity(s,profile.id,'task_problem_reported',`Problem reported for: ${task.title}`,'task',taskId);
+        return res.status(200).json(ok('Problem reported. The task is paused while the issue is reviewed.'));
+      }
+      if(action==='cancel_assignment') {
+        if(!isPoster&&!isTasker) throw fail('Only the task poster or selected tasker can cancel this assignment.',403);
+        if(!['In Progress','Awaiting Confirmation'].includes(task.status)) throw fail('This assignment cannot be cancelled in its current status.',409);
+        const now=new Date().toISOString(), reason=clean(body.reason,500);
+        const changed=await rows(s.from('tasks').update({status:'Cancelled'}).eq('id',taskId).in('status',['In Progress','Awaiting Confirmation']).select('id'));
+        if(!changed.length) throw fail('The task status changed. Refresh and try again.',409);
+        await rows(s.from('bids').update({status:'Cancelled'}).eq('task_id',taskId).eq('id',acceptedBid.id));
+        await taskNotice(s,isPoster?taskerId:posterId,taskId,'assignment_cancelled','Task assignment cancelled',reason||`The assignment for “${task.title}” was cancelled.`,`task:${taskId}:cancelled`);
+        await logActivity(s,profile.id,'task_cancelled',`Task assignment cancelled: ${task.title}`,'task',taskId);
+        return res.status(200).json(ok('Assignment cancelled. The other participant has been notified.'));
+      }
+      if(action==='review') {
+        if(!isPoster&&!isTasker) throw fail('Only task participants can leave a review.',403);
+        if(task.status!=='Completed') throw fail('Reviews are available after the poster confirms completion.',409);
+        const rating=Number(body.rating), comment=clean(body.comment,1000);
+        if(!Number.isInteger(rating)||rating<1||rating>5) throw fail('Choose a rating from 1 to 5 stars.',422);
+        const revieweeId=isPoster?taskerId:posterId;
+        await rows(s.from('task_reviews').insert({task_id:taskId,reviewer_id:profile.id,reviewee_id:revieweeId,rating,comment}));
+        await taskNotice(s,revieweeId,taskId,'review_received','You received a task review',`A participant left you a ${rating}-star review for “${task.title}”.`,`task:${taskId}:review:${profile.id}`);
+        await logActivity(s,profile.id,'task_reviewed',`Review submitted for: ${task.title}`,'task',taskId);
+        return res.status(200).json(ok('Your review was submitted.'));
+      }
+      if(action==='resolve_dispute') {
+        if(profile.role!=='superadmin') throw fail('Only the Superadmin can resolve a task dispute.',403);
+        const resolutionStatus=body.status;
+        if(!['In Progress','Completed','Cancelled'].includes(resolutionStatus)) throw fail('Choose a valid dispute resolution.',422);
+        if(task.status!=='Under Review') throw fail('This task is not under review.',409);
+        const resolution=clean(body.resolution,1000)||`Superadmin set task status to ${resolutionStatus}.`, now=new Date().toISOString();
+        await rows(s.from('task_disputes').update({status:'Resolved',resolution,resolved_by:profile.id,resolved_at:now}).eq('task_id',taskId).eq('status','Open'));
+        await rows(s.from('tasks').update({status:resolutionStatus,...(resolutionStatus==='Completed'?{completion_confirmed_at:now}:{})}).eq('id',taskId).eq('status','Under Review'));
+        if(resolutionStatus==='Cancelled') await rows(s.from('bids').update({status:'Cancelled'}).eq('task_id',taskId).eq('id',acceptedBid.id));
+        for(const recipient of [posterId,taskerId]) await taskNotice(s,recipient,taskId,'dispute_resolved','Task issue reviewed',`The Superadmin reviewed “${task.title}”. Resolution: ${resolutionStatus}.`,`task:${taskId}:dispute-resolved:${recipient}`);
+        await logActivity(s,profile.id,'task_dispute_resolved',`Task dispute resolved: ${task.title} (${resolutionStatus})`,'task',taskId);
+        return res.status(200).json(ok('Task dispute resolved.'));
+      }
     }
     if (route === 'messages') {
       ({ profile } = await userFor(req,s, action !== 'list')); const taskId=Number(body.task_id||query.get('task_id')), other=Number(body.other_user_id||query.get('other_user_id'));
@@ -606,7 +721,15 @@ export default async function handler(req, res) {
       if(action==='send') {const text=clean(body.body,2000);if(!text)throw fail('Message cannot be empty.',422);const [message]=await rows(s.from('messages').insert({task_id:taskId,sender_id:profile.id,recipient_id:other,body:text}).select('*'));return res.status(200).json(ok('Message sent.',{message}));}
     }
     if (route === 'notifications') {
-      ({ profile } = await userFor(req,s, action !== 'counts' && action !== 'task_messages'));
+      ({ profile } = await userFor(req,s, action !== 'counts' && action !== 'task_messages' && action !== 'task_updates'));
+      if(action==='task_updates') {
+        const cutoff=new Date(Date.now()-24*60*60*1000).toISOString();
+        const overdue=await rows(s.from('tasks').select('id,title,user_id').eq('user_id',profile.id).eq('status','Awaiting Confirmation').lt('completion_requested_at',cutoff));
+        for(const task of overdue) await taskNotice(s,profile.id,task.id,'completion_reminder','Reminder: task needs your confirmation',`Please confirm the tasker’s completion of “${task.title}” or report a problem.`,`task:${task.id}:completion-reminder`);
+        const updates=await rows(s.from('task_notifications').select('id,task_id,event_type,title,body,created_at').eq('user_id',profile.id).eq('is_read',false).order('created_at',{ascending:false}).limit(20));
+        if(updates.length) await rows(s.from('task_notifications').update({is_read:true}).in('id',updates.map((item)=>item.id)).eq('user_id',profile.id));
+        return res.status(200).json(ok('',{updates}));
+      }
       if(action==='counts') {const tasks=await rows(s.from('tasks').select('id').eq('user_id',profile.id));const ownedIds=tasks.map(x=>x.id);const bidderLinks=await rows(s.from('bids').select('task_id').eq('bidder_id',profile.id));const bidderIds=[...new Set(bidderLinks.map(x=>x.task_id))];let pending=0,unread=0;if(ownedIds.length){const bs=await rows(s.from('bids').select('id,task_id').in('task_id',ownedIds).eq('status','Pending'));const reads=await rows(s.from('notification_reads').select('reference_id').eq('user_id',profile.id));const seen=new Set(reads.map(x=>x.reference_id));pending=bs.filter(x=>!seen.has(x.id)).length;}if(bidderIds.length){const [unreadRows,taskOwners]=await Promise.all([rows(s.from('messages').select('task_id,sender_id').in('task_id',bidderIds).eq('recipient_id',profile.id).is('read_at',null)),rows(s.from('tasks').select('id,user_id').in('id',bidderIds))]);const ownerByTask=new Map(taskOwners.map(t=>[Number(t.id),Number(t.user_id)]));unread=unreadRows.filter(m=>ownerByTask.get(Number(m.task_id))===Number(m.sender_id)).length;}return res.status(200).json(ok('',{pending_bids:pending,bidder_unread_messages:unread}));}
       if(action==='read_bids') {const bs=await rows(s.from('bids').select('id').eq('task_id',Number(query.get('task_id'))).eq('status','Pending'));if(bs.length)await rows(s.from('notification_reads').upsert(bs.map(b=>({user_id:profile.id,notification_type:'bid',reference_id:b.id})),{onConflict:'user_id,notification_type,reference_id',ignoreDuplicates:true}));return res.status(200).json(ok());}
       if(action==='task_messages') {const {count}=await s.from('messages').select('id',{count:'exact',head:true}).eq('task_id',Number(query.get('task_id'))).eq('recipient_id',profile.id).is('read_at',null);return res.status(200).json(ok('',{unread_count:count||0}));}

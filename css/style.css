@@ -1153,6 +1153,43 @@ body.superadmin-mode #task-management-page .superadmin-task-card-owner,body.supe
   body.superadmin-mode #task-management-page .superadmin-task-card { padding:.95rem; }
   body.superadmin-mode #task-management-page .superadmin-task-card h3 { font-size:1.12rem; }
 }
+.task-lifecycle-panel { display:grid; gap:.55rem; margin-top:1rem; border:1px solid #d5e5e1; border-radius:1rem; padding:1rem; background:#f2faf8; }
+.task-lifecycle-panel > strong,.task-review-form > div > strong { color:#174b47; font-size:.95rem; font-weight:850; }
+.task-lifecycle-panel > p,.task-review-form > div > small { color:#52616c; font-size:.83rem; line-height:1.5; }
+.task-lifecycle-panel > div:not(.task-review-form) { display:flex; flex-wrap:wrap; gap:.5rem; }
+.task-lifecycle-panel.is-awaiting { border-color:#f0d7a8; background:#fff9ed; }
+.task-lifecycle-panel.is-awaiting > strong { color:#80570d; }
+.task-lifecycle-panel.is-cancelled { border-color:#f0cfcc; background:#fff5f4; }
+.task-lifecycle-panel.is-cancelled > strong { color:#a43530; }
+.task-lifecycle-panel.is-complete { border-color:#bfe4d8; background:#effaf5; }
+.task-lifecycle-panel.is-complete > strong { color:#08745f; }
+.task-review-form { display:grid; gap:.7rem; margin-top:.35rem; border-top:1px solid #dbe8e4; padding-top:.8rem; }
+.task-review-form > div { display:grid; gap:.2rem; }
+.task-review-form label { display:grid; gap:.3rem; color:#334155; font-size:.82rem; font-weight:750; }
+.task-review-form label > span { display:inline; color:#64748b; font-weight:500; }
+.task-review-form .form-control { width:100%; }
+.profile-review { display:grid; gap:.35rem; border:1px solid #dbe7e4; border-radius:.85rem; padding:.9rem 1rem; background:#fff; }
+.profile-review > div { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.5rem; }
+.profile-review > div strong { color:#17202a; font-size:.9rem; }
+.profile-review > div span { color:#8a5b08; font-size:.82rem; font-weight:800; }
+.profile-review > small { color:#52616c; font-size:.75rem; }
+.profile-review > p { color:#334155; font-size:.88rem; line-height:1.55; white-space:pre-wrap; }
+body.dark-mode .profile-review { border-color:#334155; background:#172334; }
+body.dark-mode .profile-review > div strong,body.dark-mode .profile-review > p { color:#e2e8f0; }
+body.dark-mode .profile-review > div span { color:#ffdfa0; }
+body.dark-mode .profile-review > small { color:#cbd5e1; }
+body.dark-mode .task-lifecycle-panel { border-color:#334155; background:#172b37; }
+body.dark-mode .task-lifecycle-panel > strong,body.dark-mode .task-review-form > div > strong { color:#e2f4ef; }
+body.dark-mode .task-lifecycle-panel > p,body.dark-mode .task-review-form > div > small { color:#cbd5e1; }
+body.dark-mode .task-lifecycle-panel.is-awaiting { border-color:#65532e; background:#342c1c; }
+body.dark-mode .task-lifecycle-panel.is-awaiting > strong { color:#ffe0a3; }
+body.dark-mode .task-lifecycle-panel.is-cancelled { border-color:#663c42; background:#3b242b; }
+body.dark-mode .task-lifecycle-panel.is-cancelled > strong { color:#ffbab3; }
+body.dark-mode .task-lifecycle-panel.is-complete { border-color:#285847; background:#17372f; }
+body.dark-mode .task-lifecycle-panel.is-complete > strong { color:#a7efd4; }
+body.dark-mode .task-review-form { border-color:#334155; }
+body.dark-mode .task-review-form label { color:#e2e8f0; }
+@media(max-width:600px) { .task-lifecycle-panel > div:not(.task-review-form) { display:grid; grid-template-columns:1fr; } .task-lifecycle-panel > div > button { width:100%; } }
 /* Replace low-contrast slate-500 text throughout Superadmin pages in light mode. */
 body.superadmin-mode:not(.dark-mode) .text-slate-500,
 body.superadmin-mode:not(.dark-mode) .superadmin-sidebar button,
