@@ -797,6 +797,7 @@ function applyGlassOpacity(value, { persist = false } = {}) {
   const level = transparency / 100;
   state.glassOpacity = transparency;
   const root = document.documentElement;
+  root.style.setProperty('--admin-glass-opacity', (1 - level * 0.28).toFixed(2));
   // 0% means a fully opaque surface; the glass effect only activates by choice.
   root.style.setProperty('--glass-opacity', (1 - level * 0.55).toFixed(2));
   root.style.setProperty('--glass-blur', `${(level * 24).toFixed(1)}px`);
