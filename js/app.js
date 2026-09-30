@@ -393,7 +393,123 @@ function initializeTaskPhotoInputs() {
     });
   });
 }
+function initializeTaskPostingFields() {
+  ['task-form', 'create-task-form', 'edit-form'].forEach((formId) => {
+    const form = $(`#${formId}`);
+    if (!form || form.querySelector('[data-task-extra-fields]')) return;
+    const edit = formId === 'edit-form';
+    const prefix = edit ? 'edit-' : `${formId}-`;
+    const fields = document.createElement('div');
+    fields.className = 'task-extra-fields';
+    fields.dataset.taskExtraFields = '';
+    fields.innerHTML = `<input type="hidden" name="draft_id"><label class="block text-sm font-bold">Preferred date <span class="font-normal text-slate-500">(optional)</span><input type="date" name="schedule_date" id="${prefix}schedule_date" class="form-control mt-2"></label><div class="grid gap-4 sm:grid-cols-2"><label class="block text-sm font-bold">Task location type<select name="task_mode" id="${prefix}task_mode" class="form-control mt-2"><option value="on_site">On-site</option><option value="online">Online</option><option value="hybrid">Hybrid</option></select></label><label class="block text-sm font-bold">Budget type<select name="budget_type" id="${prefix}budget_type" class="form-control mt-2"><option value="fixed">Fixed budget</option><option value="negotiable">Negotiable</option></select></label></div><label class="task-materials-field"><input type="checkbox" name="materials_included" id="${prefix}materials_included"><span><strong>Budget includes materials</strong><small>Turn this on if the listed budget covers supplies or parts.</small></span></label><label class="block text-sm font-bold">Skills or requirements <span class="font-normal text-slate-500">(optional)</span><textarea name="requirements" id="${prefix}requirements" rows="3" maxlength="1500" class="form-control mt-2" placeholder="List skills, tools, or experience the tasker should have."></textarea></label><label class="block text-sm font-bold">Task checklist <span class="font-normal text-slate-500">(optional, one item per line)</span><textarea name="checklist" id="${prefix}checklist" rows="3" maxlength="2000" class="form-control mt-2" placeholder="Measure the area\nBring the required tools\nClean up after the work"></textarea></label><div class="task-writing-guide"><strong><i class="fa-solid fa-lightbulb" aria-hidden="true"></i> Helpful writing tip</strong><span>Describe the result you want, mention access or timing limits, and list anything the tasker should bring.</span></div>`;
+    const locationLabel = form.querySelector('[name="location"]')?.closest('label');
+    const description = form.querySelector('[name="description"]')?.closest('label');
+    (locationLabel || description)?.insertAdjacentElement(locationLabel ? 'afterend' : 'beforebegin', fields);
+    const locationInput = form.elements.namedItem('location');
+    const modeInput = form.elements.namedItem('task_mode');
+    if (locationInput && modeInput) {
+      const updateLocationHint = () => {
+        const online = modeInput.value === 'online';
+        locationInput.placeholder = online ? 'Online (or add a meeting preference)' : 'City or barangay';
+        if (online && !locationInput.value.trim()) locationInput.value = 'Online';
+        if (!online && locationInput.value.trim() === 'Online') locationInput.value = '';
+      };
+      modeInput.addEventListener('change', updateLocationHint);
+    }
+    const submit = form.querySelector('button[type="submit"], button:not([type])');
+    if (submit && !edit) {
+      const actions = document.createElement('div');
+      actions.className = 'task-posting-actions';
+      actions.innerHTML = '<button type="button" data-task-preview class="touch-target task-draft-secondary"><i class="fa-regular fa-eye" aria-hidden="true"></i> Preview</button><button type="button" data-save-task-draft class="touch-target task-draft-secondary"><i class="fa-regular fa-floppy-disk" aria-hidden="true"></i> Save draft</button>';
+      submit.insertAdjacentElement('beforebegin', actions);
+    }
+    if (!edit) {
+      const titleLabel = form.querySelector('[name="title"]')?.closest('label');
+      if (titleLabel) {
+        const duplicate = document.createElement('p');
+        duplicate.className = 'task-duplicate-note hidden';
+        duplicate.setAttribute('role', 'status');
+        duplicate.textContent = 'You have already posted an active task with this title. You can still confirm if this is a separate request.';
+        titleLabel.insertAdjacentElement('afterend', duplicate);
+      }
+    }
+  });
+  if (!$('#task-preview-modal')) {
+    const modal = document.createElement('div');
+    modal.id = 'task-preview-modal';
+    modal.className = 'modal-backdrop fixed inset-0 z-[120] hidden items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm';
+    modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'task-preview-title');
+    modal.innerHTML = '<div class="modal-panel task-preview-panel"><div class="task-preview-heading"><div><p>Listing preview</p><h2 id="task-preview-title">Your task as taskers will see it</h2></div><button type="button" data-close="task-preview-modal" aria-label="Close preview"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div><div id="task-preview-content"></div><button type="button" data-close="task-preview-modal" class="touch-target task-preview-done">Back to editing</button></div>';
+    document.body.appendChild(modal);
+  }
+}
+initializeTaskPostingFields();
 initializeTaskPhotoInputs();
+document.addEventListener('focusout', async (event) => {
+  const title = event.target;
+  const form = title.closest('form');
+  if (title.name !== 'title' || !['task-form', 'create-task-form'].includes(form?.id) || !title.value.trim()) return;
+  try {
+    const payload = await api('api/create_task?action=check_duplicate', { method: 'POST', body: JSON.stringify({ title: title.value }) });
+    const note = form.querySelector('.task-duplicate-note');
+    if (note) note.classList.toggle('hidden', !payload.duplicate);
+  } catch { /* Publishing repeats the duplicate check and reports any issue. */ }
+}, true);
+async function taskFormPreviewMarkup(form) {
+  const value = (name) => String(form.elements.namedItem(name)?.value || '').trim();
+  const title = value('title') || 'Untitled task';
+  const requirements = value('requirements');
+  const checklist = value('checklist').split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 20);
+  const mode = form.elements.namedItem('task_mode')?.selectedOptions?.[0]?.textContent || 'On-site';
+  const budgetType = form.elements.namedItem('budget_type')?.value === 'negotiable' ? 'Negotiable' : 'Fixed budget';
+  const date = value('schedule_date');
+  const dateText = date ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'long' }).format(new Date(`${date}T00:00:00`)) : 'Flexible date';
+  const photos = await Promise.all([...(form.querySelector('[data-task-photo-input]')?.files || [])].slice(0, 3).map(compressTaskPhoto));
+  const photoMarkup = photos.length ? `<div class="task-preview-photos">${photos.map((photo, index) => `<img src="${photo}" alt="Task photo ${index + 1}">`).join('')}</div>` : '';
+  return `<article class="task-preview-card"><p class="task-preview-category">${escapeHtml(value('category') || 'Task category')}</p><h3>${escapeHtml(title)}</h3>${photoMarkup}<p class="task-preview-description">${escapeHtml(value('description') || 'Your task description will appear here.')}</p><div class="task-preview-meta"><span><i class="fa-solid fa-peso-sign" aria-hidden="true"></i>${escapeHtml(value('budget') ? money(Number(value('budget')) || 0) : 'Budget not set')} · ${budgetType}</span><span><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${escapeHtml(value('location') || (mode === 'Online' ? 'Online' : 'Location not set'))} · ${escapeHtml(mode)}</span><span><i class="fa-regular fa-calendar" aria-hidden="true"></i>${escapeHtml(dateText)}</span><span><i class="fa-solid fa-box" aria-hidden="true"></i>Materials ${form.elements.namedItem('materials_included')?.checked ? 'included' : 'not included'}</span></div>${requirements ? `<div class="task-preview-section"><strong>Requirements</strong><p>${escapeHtml(requirements)}</p></div>` : ''}${checklist.length ? `<div class="task-preview-section"><strong>Checklist</strong><ul>${checklist.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>` : ''}</article>`;
+}
+async function prefillTaskForm(form, data, draftId = '') {
+  form.reset();
+  Object.entries(data || {}).forEach(([key, value]) => {
+    const input = form.elements.namedItem(key);
+    if (!input || key === 'photos') return;
+    if (input.type === 'checkbox') input.checked = Boolean(value);
+    else input.value = key === 'checklist' && Array.isArray(value) ? value.join('\n') : value ?? '';
+  });
+  const draftInput = form.elements.namedItem('draft_id');
+  if (draftInput) draftInput.value = draftId;
+  form.dataset.keepImageUrls = '[]';
+  const photoInput = form.querySelector('[data-task-photo-input]');
+  if (photoInput) {
+    const transfer = new DataTransfer();
+    for (const [index, dataUrl] of (Array.isArray(data?.photos) ? data.photos : []).entries()) {
+      try { const blob = await fetch(dataUrl).then((response) => response.blob()); transfer.items.add(new File([blob], `draft-photo-${index + 1}.jpg`, { type: 'image/jpeg' })); } catch { /* A draft remains usable if an older saved photo cannot load. */ }
+    }
+    photoInput.files = transfer.files;
+    photoInput.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+async function saveTaskDraft(form) {
+  const button = form.querySelector('[data-save-task-draft]');
+  if (button) setButtonBusy(button, true, 'Saving draft...');
+  try {
+    const snapshot = await taskFormPayload(form);
+    const draftId = form.elements.namedItem('draft_id')?.value || '';
+    const payload = await api('api/create_task?action=draft_save', { method: 'POST', body: JSON.stringify({ draft_id: draftId, data: snapshot }) });
+    form.elements.namedItem('draft_id').value = String(payload.draft.id);
+    notify('Your task draft has been saved.');
+  } catch (error) { notify(error.message, 'error'); }
+  finally { if (button) setButtonBusy(button, false); }
+}
+let currentTaskDrafts = [];
+async function loadMyTaskDrafts() {
+  const payload = await api('api/create_task?action=draft_list', { method: 'POST', body: '{}' });
+  const draftsNode = $('#my-task-drafts');
+  if (!draftsNode) return;
+  const drafts = currentTaskDrafts = payload.drafts || [];
+  draftsNode.innerHTML = drafts.length ? `<section class="task-drafts-section"><div class="task-drafts-heading"><div><p>Your workspace</p><h2>Saved drafts <span>${drafts.length}</span></h2></div><p>Only you can see drafts until you publish them.</p></div><div class="task-drafts-grid">${drafts.map((draft) => `<article class="task-draft-card"><div><p>${escapeHtml(draft.data?.category || 'Task draft')}</p><h3>${escapeHtml(draft.data?.title || 'Untitled task')}</h3><small>Updated ${escapeHtml(formatActivityTimestamp(draft.updated_at))}</small></div><div class="task-draft-actions"><button type="button" data-resume-task-draft="${Number(draft.id)}" class="task-draft-resume"><i class="fa-solid fa-pen" aria-hidden="true"></i> Continue</button><button type="button" data-delete-task-draft="${Number(draft.id)}" class="task-draft-delete" aria-label="Delete draft"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></div></article>`).join('')}</div></section>` : '';
+}
 function renderExistingTaskPhotos(form) {
   const container = form.querySelector('.task-existing-photos');
   if (!container) return;
@@ -505,6 +621,10 @@ async function compressTaskPhoto(file) {
 async function taskFormPayload(form) {
   const payload = Object.fromEntries(new FormData(form));
   delete payload.photos;
+  payload.materials_included = Boolean(form.querySelector('[name="materials_included"]')?.checked);
+  payload.schedule_date = payload.schedule_date || null;
+  payload.checklist = String(payload.checklist || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 20);
+  delete payload.draft_id;
   const files = [...(form.querySelector('[data-task-photo-input]')?.files || [])];
   payload.photos = await Promise.all(files.map(compressTaskPhoto));
   try { payload.keep_image_urls = JSON.parse(form.dataset.keepImageUrls || '[]'); } catch { payload.keep_image_urls = []; }
@@ -1057,7 +1177,12 @@ function startTaskPolling() {
   state.taskRefreshTimer = setInterval(refreshMarketplaceTasks, 10000);
 }
 function fillEditForm(task) {
-  Object.entries(task).forEach(([key, value]) => { const input = $(`#edit-${key}`); if (input) input.value = value; });
+  Object.entries(task).forEach(([key, value]) => {
+    const input = $(`#edit-${key}`);
+    if (!input) return;
+    if (input.type === 'checkbox') input.checked = Boolean(value);
+    else input.value = key === 'checklist' && Array.isArray(value) ? value.join('\n') : value ?? '';
+  });
   const form = $('#edit-form');
   form.dataset.keepImageUrls = JSON.stringify(Array.isArray(task.image_urls) ? task.image_urls.slice(0, 3) : []);
   const photoInput = form.querySelector('[data-task-photo-input]');
@@ -1065,6 +1190,12 @@ function fillEditForm(task) {
   form.querySelector('.task-photo-previews')?.replaceChildren();
   renderExistingTaskPhotos(form);
   openModal('#edit-modal');
+}
+function taskDetailExtras(task) {
+  const mode = { on_site: 'On-site', online: 'Online', hybrid: 'Hybrid' }[task.task_mode] || 'On-site';
+  const date = task.schedule_date ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'long' }).format(new Date(`${task.schedule_date}T00:00:00`)) : 'Flexible date';
+  const checklist = Array.isArray(task.checklist) ? task.checklist.filter(Boolean) : [];
+  return `<div class="task-detail-facts"><span><i class="fa-regular fa-calendar" aria-hidden="true"></i><strong>Preferred date</strong>${escapeHtml(date)}</span><span><i class="fa-solid fa-laptop-house" aria-hidden="true"></i><strong>Work type</strong>${escapeHtml(mode)}</span><span><i class="fa-solid fa-peso-sign" aria-hidden="true"></i><strong>Budget</strong>${task.budget_type === 'negotiable' ? 'Negotiable' : 'Fixed'}${task.materials_included ? ' · materials included' : ''}</span></div>${task.requirements ? `<section class="task-detail-extra"><h3>Requirements</h3><p>${escapeHtml(task.requirements)}</p></section>` : ''}${checklist.length ? `<section class="task-detail-extra"><h3>Task checklist</h3><ul>${checklist.map((item) => `<li><i class="fa-regular fa-circle-check" aria-hidden="true"></i>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}`;
 }
 async function openTask(task) {
   const currentPage = document.querySelector('.app-page:not(.hidden)')?.id;
@@ -1074,7 +1205,7 @@ async function openTask(task) {
   state.activeTask = task;
   const isOwner = state.user && Number(state.user.id) === Number(task.user_id);
   updateTaskMessageCount(isOwner ? task.unread_message_count : 0);
-  $('#task-detail-content').innerHTML = `<p class="text-sm font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h2 class="mt-1 text-2xl font-bold">${escapeHtml(task.title)}</h2>${taskPhotoMarkup(task)}<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-[#f5f7f8] p-4 text-sm"><div><p class="text-xs text-[#68727c]">Budget</p><p class="mt-1 font-bold">${money(task.budget)}</p></div><div><p class="text-xs text-[#68727c]">Location</p><p class="mt-1 font-bold">${escapeHtml(task.location)}</p></div></div><p class="mt-5 whitespace-pre-wrap text-sm leading-6 text-[#4c5962]">${escapeHtml(task.description)}</p><div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dbe3e7] bg-white p-4"><div><p class="text-xs font-semibold uppercase tracking-wider text-[#68727c]">Posted by</p>${isOwner ? `<p class="mt-1 inline-flex items-center gap-2 font-bold text-slate-700"><i class="fa-regular fa-user" aria-hidden="true"></i>${escapeHtml(task.owner_name)} <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold">You</span></p>` : `<button type="button" data-public-profile="${Number(task.user_id)}" data-profile-task="${Number(task.id)}" class="mt-1 inline-flex items-center gap-2 font-bold text-[#006f70] hover:underline"><i class="fa-regular fa-user" aria-hidden="true"></i>${escapeHtml(task.owner_name)}<i class="fa-solid fa-arrow-up-right-from-square text-xs" aria-hidden="true"></i></button>`}</div>${!isOwner ? `<button type="button" data-public-profile="${Number(task.user_id)}" data-profile-task="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">View tasker profile</button>` : ''}</div>${!state.user && task.status === 'Open' ? `<div class="mt-5 flex flex-wrap gap-3"><button type="button" data-guest-bid="${Number(task.id)}" class="touch-target rounded-lg bg-[#006f70] px-5 font-bold text-white">Submit bid</button><button type="button" data-contact-tasker="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Contact Tasker</button></div>` : ''}`;
+  $('#task-detail-content').innerHTML = `<p class="text-sm font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h2 class="mt-1 text-2xl font-bold">${escapeHtml(task.title)}</h2>${taskPhotoMarkup(task)}<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-[#f5f7f8] p-4 text-sm"><div><p class="text-xs text-[#68727c]">Budget</p><p class="mt-1 font-bold">${money(task.budget)}</p></div><div><p class="text-xs text-[#68727c]">Location</p><p class="mt-1 font-bold">${escapeHtml(task.location)}</p></div></div><p class="mt-5 whitespace-pre-wrap text-sm leading-6 text-[#4c5962]">${escapeHtml(task.description)}</p>${taskDetailExtras(task)}<div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dbe3e7] bg-white p-4"><div><p class="text-xs font-semibold uppercase tracking-wider text-[#68727c]">Posted by</p>${isOwner ? `<p class="mt-1 inline-flex items-center gap-2 font-bold text-slate-700"><i class="fa-regular fa-user" aria-hidden="true"></i>${escapeHtml(task.owner_name)} <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold">You</span></p>` : `<button type="button" data-public-profile="${Number(task.user_id)}" data-profile-task="${Number(task.id)}" class="mt-1 inline-flex items-center gap-2 font-bold text-[#006f70] hover:underline"><i class="fa-regular fa-user" aria-hidden="true"></i>${escapeHtml(task.owner_name)}<i class="fa-solid fa-arrow-up-right-from-square text-xs" aria-hidden="true"></i></button>`}</div>${!isOwner ? `<button type="button" data-public-profile="${Number(task.user_id)}" data-profile-task="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">View tasker profile</button>` : ''}</div>${!state.user && task.status === 'Open' ? `<div class="mt-5 flex flex-wrap gap-3"><button type="button" data-guest-bid="${Number(task.id)}" class="touch-target rounded-lg bg-[#006f70] px-5 font-bold text-white">Submit bid</button><button type="button" data-contact-tasker="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Contact Tasker</button></div>` : ''}`;
   const canManage = state.user && (state.user.role === 'admin' || state.user.role === 'superadmin' || (state.user.role === 'user' && Number(state.user.id) === Number(task.user_id)));
   if (state.user && !isOwner && !['admin', 'superadmin'].includes(state.user.role)) $('#task-detail-content').insertAdjacentHTML('beforeend', `<div class="mt-5 border-t border-[#edf0f1] pt-4"><button type="button" data-report-task="${Number(task.id)}" disabled class="touch-target rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-bold text-slate-500" aria-label="Checking whether you already reported this task"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Checking report status...</button></div>`);
   if (canManage) $('#task-detail-content').insertAdjacentHTML('beforeend', `<div class="mt-6 flex flex-wrap gap-3 border-t border-[#edf0f1] pt-5"><button data-edit="${task.id}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]"><i class="fa-solid fa-pen-to-square mr-2"></i>Edit task</button><button data-delete="${task.id}" class="touch-target rounded-lg border border-red-200 px-4 text-sm font-bold text-red-600"><i class="fa-solid fa-trash mr-2"></i>Delete task</button></div>`);
@@ -1139,7 +1270,7 @@ async function openSuperadminTask(task) {
       return `<article class="superadmin-bid-row"><div class="superadmin-bid-person"><span class="superadmin-bid-avatar">${bidder.avatar_path ? `<img src="${escapeHtml(bidder.avatar_path)}" alt="">` : `<i class="fa-solid fa-user" aria-hidden="true"></i>`}</span><div class="min-w-0"><button type="button" data-superadmin-view-profile="${Number(bid.bidder_id)}" class="superadmin-bid-profile">${escapeHtml(bidderName)} <i class="fa-solid fa-arrow-up-right-from-square text-xs" aria-hidden="true"></i></button><small>${escapeHtml(bidder.email || '')}</small></div></div><div class="superadmin-bid-offer"><span>Bid offer</span><strong>${money(bid.amount)}</strong></div><span class="superadmin-bid-status ${statusClass}">${escapeHtml(bid.status)}</span><div class="superadmin-bid-message"><p>${escapeHtml(bid.message || 'No message provided.')}</p>${bid.removal_reason ? `<small>Removal reason: ${escapeHtml(bid.removal_reason)}</small>` : ''}<small>Submitted ${escapeHtml(formatActivityTimestamp(bid.created_at))}</small></div></article>`;
     }).join('') || '<p class="superadmin-profile-empty">No bids have been submitted for this task.</p>';
     const stats = payload.stats || {};
-    content.innerHTML = `<div class="superadmin-review-summary"><div><span class="superadmin-review-label">Listing status</span><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span></div><div><span class="superadmin-review-label">Task ID</span><strong>#${Number(task.id)}</strong></div><div><span class="superadmin-review-label">Posted</span><strong>${escapeHtml(formatActivityTimestamp(task.created_at))}</strong></div></div><div class="superadmin-bid-count-grid"><article><span>Total bids</span><strong>${Number(stats.total_bids) || 0}</strong></article><article><span>Accepted</span><strong>${Number(stats.accepted_bids) || 0}</strong></article><article><span>Pending</span><strong>${Number(stats.pending_bids) || 0}</strong></article><article><span>Not accepted</span><strong>${Number(stats.rejected_bids) || 0}</strong></article></div><div class="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,.8fr)]"><article class="superadmin-review-card"><p class="text-xs font-bold uppercase tracking-[.15em] text-[#008f8c]">${escapeHtml(task.category || 'Uncategorized')}</p><h2 class="mt-2 text-2xl font-extrabold">${escapeHtml(task.title)}</h2>${photos}<div class="mt-5 grid gap-3 sm:grid-cols-2"><div class="superadmin-review-field"><span>Budget</span><strong>${money(task.budget)}</strong></div><div class="superadmin-review-field"><span>Location</span><strong>${escapeHtml(task.location || 'Not provided')}</strong></div></div><div class="superadmin-review-description"><h3>Task description</h3><p>${escapeHtml(task.description || 'No description provided.')}</p></div></article><aside class="superadmin-review-card h-fit"><div class="superadmin-review-owner-profile">${ownerAvatar}</div><p class="superadmin-review-label">Posted by</p><button type="button" data-superadmin-view-profile="${Number(task.user_id)}" class="mt-1 text-left text-xl font-bold text-[#006f70] hover:underline">${escapeHtml(fullName)} <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-xs" aria-hidden="true"></i></button><p class="mt-1 break-all text-sm text-slate-500">${escapeHtml(owner.email || '')}</p><div class="mt-5 border-t border-slate-200 pt-4"><p class="superadmin-review-label">Moderation</p><p class="mt-2 text-sm leading-6 text-slate-600">Remove this listing if it violates marketplace rules or contains unsafe content.</p><button type="button" data-delete="${Number(task.id)}" class="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 px-4 font-bold text-rose-600 hover:bg-rose-50"><i class="fa-solid fa-trash" aria-hidden="true"></i>Remove listing</button></div></aside></div><section class="superadmin-review-card"><div class="mb-4"><p class="superadmin-review-label">Bid activity</p><h3 class="mt-1 text-xl font-bold">Submitted bids</h3><p class="mt-1 text-sm text-slate-500">${Number(stats.total_bids) || 0} bids received · latest ${(payload.bids || []).length}</p></div><div class="space-y-3">${bidsHtml}</div></section>`;
+    content.innerHTML = `<div class="superadmin-review-summary"><div><span class="superadmin-review-label">Listing status</span><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span></div><div><span class="superadmin-review-label">Task ID</span><strong>#${Number(task.id)}</strong></div><div><span class="superadmin-review-label">Posted</span><strong>${escapeHtml(formatActivityTimestamp(task.created_at))}</strong></div></div><div class="superadmin-bid-count-grid"><article><span>Total bids</span><strong>${Number(stats.total_bids) || 0}</strong></article><article><span>Accepted</span><strong>${Number(stats.accepted_bids) || 0}</strong></article><article><span>Pending</span><strong>${Number(stats.pending_bids) || 0}</strong></article><article><span>Not accepted</span><strong>${Number(stats.rejected_bids) || 0}</strong></article></div><div class="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,.8fr)]"><article class="superadmin-review-card"><p class="text-xs font-bold uppercase tracking-[.15em] text-[#008f8c]">${escapeHtml(task.category || 'Uncategorized')}</p><h2 class="mt-2 text-2xl font-extrabold">${escapeHtml(task.title)}</h2>${photos}<div class="mt-5 grid gap-3 sm:grid-cols-2"><div class="superadmin-review-field"><span>Budget</span><strong>${money(task.budget)}</strong></div><div class="superadmin-review-field"><span>Location</span><strong>${escapeHtml(task.location || 'Not provided')}</strong></div></div><div class="superadmin-review-description"><h3>Task description</h3><p>${escapeHtml(task.description || 'No description provided.')}</p></div>${taskDetailExtras(task)}</article><aside class="superadmin-review-card h-fit"><div class="superadmin-review-owner-profile">${ownerAvatar}</div><p class="superadmin-review-label">Posted by</p><button type="button" data-superadmin-view-profile="${Number(task.user_id)}" class="mt-1 text-left text-xl font-bold text-[#006f70] hover:underline">${escapeHtml(fullName)} <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-xs" aria-hidden="true"></i></button><p class="mt-1 break-all text-sm text-slate-500">${escapeHtml(owner.email || '')}</p><div class="mt-5 border-t border-slate-200 pt-4"><p class="superadmin-review-label">Moderation</p><p class="mt-2 text-sm leading-6 text-slate-600">Remove this listing if it violates marketplace rules or contains unsafe content.</p><button type="button" data-delete="${Number(task.id)}" class="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 px-4 font-bold text-rose-600 hover:bg-rose-50"><i class="fa-solid fa-trash" aria-hidden="true"></i>Remove listing</button></div></aside></div><section class="superadmin-review-card"><div class="mb-4"><p class="superadmin-review-label">Bid activity</p><h3 class="mt-1 text-xl font-bold">Submitted bids</h3><p class="mt-1 text-sm text-slate-500">${Number(stats.total_bids) || 0} bids received · latest ${(payload.bids || []).length}</p></div><div class="space-y-3">${bidsHtml}</div></section>`;
   } catch (error) {
     content.innerHTML = `<div class="superadmin-review-card p-8 text-center"><p class="font-bold">Could not load task moderation details.</p><p class="mt-2 text-sm text-slate-500">${escapeHtml(error.message)}</p></div>`;
   }
@@ -1201,10 +1332,10 @@ function returnFromPublicProfile() {
 }
 function renderBids(bids, task) { const isOwner = state.user && Number(state.user.id) === Number(task.user_id); const isModerator = ['admin', 'superadmin'].includes(state.user?.role); $('#bids-section h3').textContent = `Bids (${bids.length})`; $('#bids-list').innerHTML = bids.length ? bids.map((bid) => `<div class="bid-row rounded-lg border border-[#dbe3e7] p-4"><div class="bid-row-heading"><div class="bid-person"><button type="button" data-public-profile="${Number(bid.bidder_id)}" data-profile-task="${Number(task.id)}" class="bidder-profile-link">${bid.bidder_avatar_path ? `<img src="${escapeHtml(bid.bidder_avatar_path)}" alt="" class="bidder-profile-avatar bidder-profile-photo">` : `<span class="bidder-profile-avatar"><i class="fa-regular fa-user" aria-hidden="true"></i></span>`}<span class="bidder-profile-copy"><strong>${escapeHtml(bid.bidder_name)}</strong><small>View bidder profile <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></small></span></button>${bid.unread_message_count ? `<span data-bid-message-count="${task.id}-${bid.bidder_id}" class="task-message-count"><i class="fa-solid fa-message"></i> ${bid.unread_message_count} new</span>` : ''}<p class="text-xs text-[#68727c]">Offer: ${money(bid.amount)} &middot; ${escapeHtml(bid.status)}</p></div></div><p class="mt-3 text-sm leading-6 text-[#4c5962]">${escapeHtml(bid.message)}</p>${bid.removal_reason ? `<p class="bid-removal-reason"><strong>Removal reason:</strong> ${escapeHtml(bid.removal_reason)}</p>` : ''}<div class="bid-row-actions">${isOwner || isModerator ? `<button data-message-task="${task.id}" data-message-user="${bid.bidder_id}" class="touch-target rounded-lg border border-[#c9d4d9] px-3 text-xs font-bold text-[#006f70]">Message</button>` : ''}${(isOwner || isModerator) && ['Pending', 'Accepted'].includes(bid.status) ? `${bid.status === 'Pending' ? `<button data-accept-bid="${bid.id}" data-accept-task="${task.id}" class="touch-target rounded-lg bg-[#006f70] px-3 text-xs font-bold text-white">Accept</button>` : ''}<button data-remove-bid="${bid.id}" data-remove-bid-task="${task.id}" class="touch-target rounded-lg border border-red-200 px-3 text-xs font-bold text-red-600">Remove</button>` : ''}</div></div>`).join('') : '<p class="text-sm text-[#68727c]">No bids yet.</p>'; }
 async function loadMyBids() { if (!state.user) { requestAuthGate('bids'); return; } showPage('my-bids-page'); $('#my-bids-page-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your bids...</p>'; try { const payload = await api('api/bid_actions?action=my_bids'); renderEditableMyBids(payload.bids); } catch (error) { notify(error.message, 'error'); } }
-async function loadMyTasks() { if (!state.user) { requestAuthGate('tasks'); return; } showPage('my-tasks-modal'); $('#my-tasks-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your tasks...</p>'; try { const payload = await api('api/get_tasks?mine=1'); state.myTasks = payload.tasks; renderMyTasks(state.myTasks); } catch (error) { notify(error.message, 'error'); } }
+async function loadMyTasks() { if (!state.user) { requestAuthGate('tasks'); return; } currentTaskDrafts = []; $('#my-task-drafts')?.replaceChildren(); showPage('my-tasks-modal'); $('#my-tasks-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your tasks...</p>'; try { const payload = await api('api/get_tasks?mine=1'); state.myTasks = payload.tasks; renderMyTasks(state.myTasks); if (!$('#my-task-drafts')) $('#my-tasks-list').insertAdjacentHTML('beforebegin', '<div id="my-task-drafts"></div>'); await loadMyTaskDrafts(); } catch (error) { notify(error.message, 'error'); } }
 function renderEditableMyBids(bids) { const html = bids.length ? bids.map((bid) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(bid.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(bid.title)}</h3><p class="mt-1 text-xs text-[#68727c]">Task owner: ${escapeHtml(bid.owner_name)} &middot; ${escapeHtml(bid.location)}</p></div><div class="flex items-center gap-2"><span class="badge ${bid.status === 'Accepted' ? 'badge-open' : bid.status === 'Rejected' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(bid.status)}</span>${bid.unread_message_count ? `<span data-bid-message-count="${bid.task_id}" class="task-message-count"><i class="fa-solid fa-message"></i> ${bid.unread_message_count} new</span>` : ''}</div></div>${bid.removal_reason ? `<p class="bid-removal-reason"><strong>Removed by owner:</strong> ${escapeHtml(bid.removal_reason)}</p>` : ''}<div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#edf0f1] pt-3 text-sm"><span>Your offer: <strong>${money(bid.amount)}</strong></span><span class="text-[#68727c]">Task: ${escapeHtml(bid.task_status)}</span><div class="flex gap-2">${bid.status === 'Pending' && bid.task_status === 'Open' ? `<button data-edit-bid="${bid.id}" class="touch-target rounded-lg border border-[#c9d4d9] px-3 text-xs font-bold text-[#006f70]">Edit bid</button><button data-delete-bid="${bid.id}" data-delete-bid-task="${bid.task_id}" class="touch-target rounded-lg border border-red-200 px-3 text-xs font-bold text-red-600">Delete bid</button>` : ''}<button data-message-task="${bid.task_id}" data-message-user="${bid.owner_id}" class="touch-target rounded-lg border border-[#008f8c] px-3 text-xs font-bold text-[#006f70]">Message owner</button></div></div><form data-bid-edit-form="${bid.id}" class="bid-edit-form hidden mt-4 grid gap-3 rounded-lg bg-[#f5f7f8] p-3"><label class="block text-sm font-bold">Offer amount<input name="amount" type="number" min="0" step="0.01" value="${bid.amount}" required class="form-control mt-2"></label><label class="block text-sm font-bold">Offer message<textarea name="message" rows="4" required maxlength="1000" class="form-control min-h-[100px] w-full resize-y overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-600">${escapeHtml(bid.message)}</textarea></label><div class="mt-3 flex justify-end gap-2"><button type="submit" data-save-bid="${bid.id}" class="touch-target rounded-lg bg-[#006f70] px-3 text-xs font-bold text-white">Save</button><button type="button" data-cancel-bid="${bid.id}" class="touch-target rounded-lg border border-[#c9d4d9] px-3 text-xs font-bold">Cancel</button></div></form><p class="mt-2 text-sm text-[#4c5962]">${escapeHtml(bid.message)}</p></article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><i class="fa-solid fa-gavel mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not placed any bids yet.</p><p class="mt-1 text-sm text-[#68727c]">Open a task from the marketplace to make your first offer.</p></div>'; $('#my-bids-page-list').innerHTML = html; }
 function renderMyBids(bids) { const html = bids.length ? bids.map((bid) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(bid.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(bid.title)}</h3><p class="mt-1 text-xs text-[#68727c]">Task owner: ${escapeHtml(bid.owner_name)} &middot; ${escapeHtml(bid.location)}</p></div><span class="badge ${bid.status === 'Accepted' ? 'badge-open' : bid.status === 'Rejected' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(bid.status)}</span></div><div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#edf0f1] pt-3 text-sm"><span>Your offer: <strong>${money(bid.amount)}</strong></span><span class="text-[#68727c]">Task: ${escapeHtml(bid.task_status)}</span><button data-message-task="${bid.task_id}" data-message-user="${bid.owner_id}" class="touch-target rounded-lg border border-[#008f8c] px-3 text-xs font-bold text-[#006f70]">Message owner</button></div><p class="mt-2 text-sm text-[#4c5962]">${escapeHtml(bid.message)}</p></article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><i class="fa-solid fa-gavel mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not placed any bids yet.</p><p class="mt-1 text-sm text-[#68727c]">Open a task from the marketplace to make your first offer.</p></div>'; $('#my-bids-page-list').innerHTML = html; }
-function renderMyTasks(tasks) { $('#my-tasks-list').innerHTML = tasks.length ? tasks.map((task) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(task.title)}</h3><p class="mt-1 text-xs text-[#68727c]">${escapeHtml(task.location)} &middot; ${money(task.budget)}</p></div><span class="badge ${task.status === 'Open' ? 'badge-open' : task.status === 'Completed' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(task.status)}</span></div><div class="mt-3 flex items-center justify-between gap-3 border-t border-[#edf0f1] pt-3"><span class="text-sm text-[#68727c]">${escapeHtml(task.description.slice(0, 90))}${task.description.length > 90 ? '...' : ''}</span><div class="flex flex-wrap items-center justify-end gap-3"><span class="task-bid-count"><i class="fa-solid fa-gavel"></i> ${task.bid_count} ${task.bid_count === 1 ? 'bid' : 'bids'}</span><button data-open-my-task="${task.id}" class="touch-target rounded-lg px-3 text-xs font-bold text-[#006f70]">Open</button></div></div></article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><i class="fa-solid fa-clipboard-list mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not posted a task yet.</p><p class="mt-1 text-sm text-[#68727c]">Post a task and it will appear here.</p></div>'; }
+function renderMyTasks(tasks) { $('#my-tasks-list').innerHTML = tasks.length ? tasks.map((task) => `<article class="activity-row rounded-lg border border-[#dbe3e7] p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h3 class="mt-1 font-bold">${escapeHtml(task.title)}</h3><p class="mt-1 text-xs text-[#68727c]">${escapeHtml(task.location)} &middot; ${money(task.budget)}${task.schedule_date ? ` &middot; ${escapeHtml(task.schedule_date)}` : ''}</p></div><span class="badge ${task.status === 'Open' ? 'badge-open' : task.status === 'Completed' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(task.status)}</span></div><div class="mt-3 flex items-center justify-between gap-3 border-t border-[#edf0f1] pt-3"><span class="text-sm text-[#68727c]">${escapeHtml(task.description.slice(0, 90))}${task.description.length > 90 ? '...' : ''}</span><div class="flex flex-wrap items-center justify-end gap-3"><span class="task-bid-count"><i class="fa-solid fa-gavel"></i> ${task.bid_count} ${task.bid_count === 1 ? 'bid' : 'bids'}</span><button data-open-my-task="${task.id}" class="touch-target rounded-lg px-3 text-xs font-bold text-[#006f70]">Open</button>${task.status === 'Completed' ? `<button type="button" data-repost-task="${Number(task.id)}" class="touch-target rounded-lg border border-[#b8ded8] px-3 text-xs font-bold text-[#076c64]"><i class="fa-solid fa-rotate-right mr-1" aria-hidden="true"></i>Repost</button>` : ''}</div></div></article>`).join('') : '<div class="empty-state rounded-lg border border-dashed border-[#c9d4d4] px-5 py-10 text-center"><i class="fa-solid fa-clipboard-list mb-3 text-2xl text-[#008f8c]"></i><p class="font-bold">You have not posted a task yet.</p><p class="mt-1 text-sm text-[#68727c]">Post a task and it will appear here.</p></div>'; }
 function formatMessageTime(value) { const date = new Date(String(value).replace(' ', 'T')); return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
 async function refreshConversation() {
   const taskId = Number($('#conversation-task-id')?.value);
@@ -1504,6 +1635,40 @@ async function resumeAuthIntent(intent) {
   }
 }
 document.addEventListener('click', async (event) => {
+  const previewButton = event.target.closest('[data-task-preview]');
+  if (previewButton) {
+    const form = previewButton.closest('form');
+    if (form) $('#task-preview-content').innerHTML = await taskFormPreviewMarkup(form);
+    openModal('#task-preview-modal');
+    return;
+  }
+  const saveDraftButton = event.target.closest('[data-save-task-draft]');
+  if (saveDraftButton) { const form = saveDraftButton.closest('form'); if (form) await saveTaskDraft(form); return; }
+  const resumeDraftButton = event.target.closest('[data-resume-task-draft]');
+  if (resumeDraftButton) {
+    const draft = currentTaskDrafts.find((item) => Number(item.id) === Number(resumeDraftButton.dataset.resumeTaskDraft));
+    if (!draft) { notify('Draft not found. Refresh My Tasks and try again.', 'error'); return; }
+    const form = $('#create-task-form');
+    await prefillTaskForm(form, draft.data, draft.id);
+    showPage('create-task-page');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  const deleteDraftButton = event.target.closest('[data-delete-task-draft]');
+  if (deleteDraftButton) {
+    try { await api('api/create_task?action=draft_delete', { method: 'POST', body: JSON.stringify({ draft_id: deleteDraftButton.dataset.deleteTaskDraft }) }); await loadMyTaskDrafts(); notify('Draft deleted.'); }
+    catch (error) { notify(error.message, 'error'); }
+    return;
+  }
+  const repostButton = event.target.closest('[data-repost-task]');
+  if (repostButton) {
+    if (!window.confirm('Create a new open listing using this completed task’s details?')) return;
+    setButtonBusy(repostButton, true, 'Reposting...');
+    try { const payload = await api('api/create_task?action=repost', { method: 'POST', body: JSON.stringify({ task_id: repostButton.dataset.repostTask }) }); notify(payload.message); await loadTasks(); await loadMyTasks(); }
+    catch (error) { notify(error.message, 'error'); }
+    finally { setButtonBusy(repostButton, false); }
+    return;
+  }
   const userPageButton = event.target.closest('[data-superadmin-user-page]');
   if (userPageButton) { superadminUserPage = Number(userPageButton.dataset.superadminUserPage) || 1; renderSuperadminUsers(); return; }
   if (event.target.closest('#superadmin-task-load-more')) { await loadMoreSuperadminTasks(); return; }
@@ -1728,8 +1893,29 @@ $('#refresh-tasks-button').addEventListener('click', async (event) => {
     label.textContent = 'Refresh tasks';
   }
 });
-$('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task...'); try { await api('api/create_task', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); closeModal('task-modal'); setBusy(event.target, false); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#create-task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task...'); try { await api('api/create_task', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); setBusy(event.target, false); showPage('marketplace-page'); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+async function publishTaskForm(form) {
+  if (!form.reportValidity()) return;
+  setBusy(form, true, 'Publishing task...');
+  try {
+    const snapshot = await taskFormPayload(form);
+    const duplicate = await api('api/create_task?action=check_duplicate', { method: 'POST', body: JSON.stringify({ title: snapshot.title }) });
+    if (duplicate.duplicate && !window.confirm('You already have an active task with this title. Do you want to publish another copy?')) return;
+    const draftId = form.elements.namedItem('draft_id')?.value;
+    const payload = await api('api/create_task', { method: 'POST', body: JSON.stringify({ ...snapshot, allow_duplicate: Boolean(duplicate.duplicate) }) });
+    if (draftId) api('api/create_task?action=draft_delete', { method: 'POST', body: JSON.stringify({ draft_id: draftId }) }).catch(() => {});
+    form.reset();
+    form.elements.namedItem('draft_id').value = '';
+    form.querySelector('.task-photo-previews')?.replaceChildren();
+    form.dataset.keepImageUrls = '[]';
+    if (form.id === 'task-form') closeModal('task-modal');
+    else showPage('marketplace-page');
+    notify(payload.message || 'Your task is live.');
+    await loadTasks();
+  } catch (error) { notify(error.message, 'error'); }
+  finally { setBusy(form, false); }
+}
+$('#task-form').addEventListener('submit', (event) => { event.preventDefault(); void publishTaskForm(event.currentTarget); });
+$('#create-task-form').addEventListener('submit', (event) => { event.preventDefault(); void publishTaskForm(event.currentTarget); });
 $('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in...'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; if (state.user.role !== "superadmin") await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage(state.user.role === 'superadmin' ? 'account-activity-modal' : 'marketplace-page'); if (state.user.role !== "superadmin") await loadTasks(); if (state.user.role === 'superadmin') await openAccountActivity(); startNotificationPolling(); notify(payload.message); if (state.user.role !== "superadmin") await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-profile-form').addEventListener('submit', (event) => {
@@ -1809,7 +1995,7 @@ $('#admin-global-search')?.addEventListener('keydown', (event) => {
 });
 $('#refresh-account-activity')?.addEventListener('click', async (event) => { const button = event.currentTarget; button.disabled = true; try { await loadAccountActivity(); } finally { button.disabled = false; } });
 $('#report-task-form').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; const taskId = Number($('#report-task-id').value); setBusy(form, true, 'Sending report...'); try { await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'submit_report', task_id: taskId, reason: form.elements.reason.value, details: form.elements.details.value }) }); closeModal('report-task-modal'); form.reset(); setTaskReportButtonState(taskId, true); notify('Thank you for your report. Our team will review it shortly.'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); } });
-$('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task...'); try { const form = event.target; const formData = new FormData(form); const photoPayload = await taskFormPayload(form); const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...Object.fromEntries(formData), photos: photoPayload.photos, keep_image_urls: photoPayload.keep_image_urls }) }); const taskId = Number(formData.get('task_id')); closeModal('edit-modal'); setBusy(form, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#edit-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Saving task...'); try { const form = event.target; const photoPayload = await taskFormPayload(form); const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'update_task', ...photoPayload }) }); const taskId = Number(form.elements.namedItem('task_id').value); closeModal('edit-modal'); setBusy(form, false); notify(payload.message); await loadTasks(); const updatedTask = state.tasks.find((task) => Number(task.id) === taskId); if (updatedTask) await openTask(updatedTask); if (state.myTasks.length) { state.myTasks = state.myTasks.map((task) => Number(task.id) === taskId ? { ...task, ...updatedTask } : task); renderMyTasks(state.myTasks); } } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#bid-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!state.user) { requestBidAuthGate(Number($('#task-detail-id').value), event.submitter || event.target.querySelector('[type="submit"]')); return; } setBusy(event.target, true); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'place', task_id: $('#task-detail-id').value, ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#task-detail-id').value)) || state.activeTask; if (task) openTask(task); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#conversation-form').addEventListener('submit', async (event) => {
   event.preventDefault();

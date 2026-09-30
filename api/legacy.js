@@ -199,8 +199,94 @@ export default async function handler(req, res) {
     }
     if (route === 'create_task') {
       ({ profile } = await userFor(req, s, true));
-      const item = { user_id: profile.id, title: clean(body.title,180), category: clean(body.category,80), budget: Number(body.budget), location: clean(body.location,160), description: clean(body.description,2000) };
+      if (action === 'draft_list') {
+        const drafts = await rows(s.from('task_drafts').select('id,data,created_at,updated_at').eq('user_id', profile.id).order('updated_at', { ascending: false }));
+        return res.status(200).json(ok('', { drafts }));
+      }
+      if (action === 'draft_delete') {
+        const draftId = Number(body.draft_id);
+        if (!Number.isSafeInteger(draftId) || draftId < 1) throw fail('Choose a valid draft.', 422);
+        await rows(s.from('task_drafts').delete().eq('id', draftId).eq('user_id', profile.id));
+        return res.status(200).json(ok('Draft deleted.'));
+      }
+      if (action === 'draft_save') {
+        const draftId = Number(body.draft_id) || 0;
+        const source = body.data && typeof body.data === 'object' ? body.data : {};
+        const photos = Array.isArray(source.photos) ? source.photos : [];
+        if (photos.length > 3 || photos.some((photo) => typeof photo !== 'string' || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo) || Buffer.from(photo.slice(photo.indexOf(',') + 1), 'base64').length > 450 * 1024)) throw fail('Draft photos must be up to 3 compressed JPG images.', 422);
+        const data = {
+          title: clean(source.title, 180), category: clean(source.category, 80), budget: clean(source.budget, 20),
+          location: clean(source.location, 160), description: clean(source.description, 2000), schedule_date: clean(source.schedule_date, 10),
+          task_mode: ['on_site', 'online', 'hybrid'].includes(source.task_mode) ? source.task_mode : 'on_site',
+          budget_type: ['fixed', 'negotiable'].includes(source.budget_type) ? source.budget_type : 'fixed',
+          materials_included: source.materials_included === true || source.materials_included === 'on', requirements: clean(source.requirements, 1500),
+          checklist: Array.isArray(source.checklist) ? source.checklist.slice(0, 20).map((item) => clean(item, 180)).filter(Boolean) : [], photos
+        };
+        const draftRows = draftId
+          ? await rows(s.from('task_drafts').update({ data, updated_at: new Date().toISOString() }).eq('id', draftId).eq('user_id', profile.id).select('id,data,created_at,updated_at'))
+          : await rows(s.from('task_drafts').insert({ user_id: profile.id, data }).select('id,data,created_at,updated_at'));
+        if (!draftRows.length) throw fail('Draft not found.', 404);
+        return res.status(200).json(ok('Draft saved.', { draft: draftRows[0] }));
+      }
+      if (action === 'check_duplicate') {
+        const title = clean(body.title, 180).toLocaleLowerCase();
+        if (!title) return res.status(200).json(ok('', { duplicate: false }));
+        const activeTasks = await rows(s.from('tasks').select('id,title').eq('user_id', profile.id).in('status', ['Open', 'In Progress']));
+        const match = activeTasks.find((task) => clean(task.title, 180).toLocaleLowerCase() === title);
+        return res.status(200).json(ok('', { duplicate: Boolean(match), task_id: match ? Number(match.id) : null }));
+      }
+      if (action === 'repost') {
+        const sourceId = Number(body.task_id);
+        if (!Number.isSafeInteger(sourceId) || sourceId < 1) throw fail('Choose a valid task to repost.', 422);
+        const source = await rows(s.from('tasks').select('*').eq('id', sourceId).eq('user_id', profile.id).maybeSingle());
+        if (!source) throw fail('Task not found in your account.', 404);
+        if (source.status !== 'Completed') throw fail('Only completed tasks can be reposted.', 409);
+        const [created] = await rows(s.from('tasks').insert({
+          user_id: profile.id, title: source.title, category: source.category, budget: source.budget, location: source.location,
+          description: source.description, status: 'Open', schedule_date: source.schedule_date, task_mode: source.task_mode || 'on_site',
+          budget_type: source.budget_type || 'fixed', materials_included: Boolean(source.materials_included), requirements: source.requirements || '',
+          checklist: Array.isArray(source.checklist) ? source.checklist : []
+        }).select('id'));
+        const copiedUrls = [], copiedPaths = [];
+        const bucketPrefix = `${url.replace(/\/$/, '')}/storage/v1/object/public/task-photos/`;
+        try {
+          for (const photoUrl of (Array.isArray(source.image_urls) ? source.image_urls : [])) {
+            if (!photoUrl.startsWith(bucketPrefix)) { copiedUrls.push(photoUrl); continue; }
+            const oldPath = decodeURIComponent(photoUrl.slice(bucketPrefix.length).split('?')[0]);
+            const { data: file, error: downloadError } = await s.storage.from('task-photos').download(oldPath);
+            if (downloadError) throw fail('Could not copy a task photo while reposting.', 500);
+            const newPath = `${profile.id}/${created.id}/${randomUUID()}.jpg`;
+            const { error: uploadError } = await s.storage.from('task-photos').upload(newPath, Buffer.from(await file.arrayBuffer()), { contentType: 'image/jpeg', upsert: false });
+            if (uploadError) throw fail('Could not copy a task photo while reposting.', 500);
+            copiedPaths.push(newPath);
+            copiedUrls.push(s.storage.from('task-photos').getPublicUrl(newPath).data.publicUrl);
+          }
+          if (copiedUrls.length) await rows(s.from('tasks').update({ image_urls: copiedUrls }).eq('id', created.id));
+        } catch (error) {
+          if (copiedPaths.length) await s.storage.from('task-photos').remove(copiedPaths).catch(() => {});
+          await s.from('tasks').delete().eq('id', created.id).catch(() => {});
+          throw error;
+        }
+        return res.status(200).json(ok('Task reposted as a new open listing.', { task_id: Number(created.id) }));
+      }
+      const item = {
+        user_id: profile.id, title: clean(body.title,180), category: clean(body.category,80), budget: Number(body.budget),
+        location: clean(body.location,160), description: clean(body.description,2000),
+        schedule_date: body.schedule_date || null,
+        task_mode: ['on_site', 'online', 'hybrid'].includes(body.task_mode) ? body.task_mode : 'on_site',
+        budget_type: ['fixed', 'negotiable'].includes(body.budget_type) ? body.budget_type : 'fixed',
+        materials_included: body.materials_included === true || body.materials_included === 'on', requirements: clean(body.requirements,1500),
+        checklist: Array.isArray(body.checklist) ? body.checklist.slice(0,20).map((value) => clean(value,180)).filter(Boolean) : []
+      };
       if (!item.title || !item.category || !item.location || !item.description || !Number.isFinite(item.budget) || item.budget < 0) throw fail('Complete every field with valid values.',422);
+      if (body.schedule_date) {
+        const scheduleDate = new Date(`${body.schedule_date}T00:00:00Z`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(body.schedule_date) || !Number.isFinite(scheduleDate.getTime()) || scheduleDate.toISOString().slice(0, 10) !== body.schedule_date) throw fail('Choose a valid preferred date.', 422);
+      }
+      if (!body.allow_duplicate) {
+        const activeTasks = await rows(s.from('tasks').select('id,title').eq('user_id', profile.id).in('status', ['Open', 'In Progress']));
+        if (activeTasks.some((task) => clean(task.title,180).toLocaleLowerCase() === item.title.toLocaleLowerCase())) throw fail('You already have an active task with this title. Confirm if you want to post another copy.', 409);
+      }
       const photos = Array.isArray(body.photos) ? body.photos : [];
       if (photos.length > 3) throw fail('You can upload up to 3 task photos.',422);
       if (photos.some((photo) => typeof photo !== 'string' || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo))) throw fail('Task photos must be valid JPG images.',422);
@@ -247,7 +333,7 @@ export default async function handler(req, res) {
         const publicProfile = await rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,avatar_path,created_at').eq('id', publicId).maybeSingle());
         if (!publicProfile) throw fail('This tasker profile could not be found.', 404);
         const [listingResult, totalResult, completedResult] = await Promise.all([
-          s.from('tasks').select('id,user_id,title,category,budget,location,description,status,created_at,image_urls').eq('user_id', publicId).order('created_at', { ascending: false }).limit(12),
+          s.from('tasks').select('id,user_id,title,category,budget,location,description,status,created_at,image_urls,schedule_date,task_mode,budget_type,materials_included,requirements,checklist').eq('user_id', publicId).order('created_at', { ascending: false }).limit(12),
           s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId),
           s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId).eq('status', 'Completed')
         ]);
@@ -345,7 +431,7 @@ export default async function handler(req, res) {
         const taskId = Number(body.task_id);
         if (!Number.isSafeInteger(taskId) || taskId < 1) throw fail('Choose a valid task.',422);
         const [task, bids, totalBids, acceptedBids, pendingBids, rejectedBids] = await Promise.all([
-          rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,owner:user_profiles!tasks_user_id_fkey(id,first_name,middle_initial,last_name,email,avatar_path,role,created_at)').eq('id',taskId).maybeSingle()),
+          rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,schedule_date,task_mode,budget_type,materials_included,requirements,checklist,owner:user_profiles!tasks_user_id_fkey(id,first_name,middle_initial,last_name,email,avatar_path,role,created_at)').eq('id',taskId).maybeSingle()),
           rows(s.from('bids').select('id,task_id,bidder_id,amount,status,message,created_at,removal_reason,bidder:user_profiles!bids_bidder_id_fkey(id,first_name,middle_initial,last_name,email,avatar_path,role,created_at)').eq('task_id',taskId).order('created_at',{ascending:false}).limit(200)),
           s.from('bids').select('id',{count:'exact',head:true}).eq('task_id',taskId),
           s.from('bids').select('id',{count:'exact',head:true}).eq('task_id',taskId).eq('status','Accepted'),
@@ -449,7 +535,8 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('Task removed from the marketplace.'));
       }
       if(action==='update_task') {
-        const patch={title:clean(body.title,180),category:clean(body.category,80),budget:Number(body.budget),location:clean(body.location,160),description:clean(body.description,2000),status:body.status};
+        const patch={title:clean(body.title,180),category:clean(body.category,80),budget:Number(body.budget),location:clean(body.location,160),description:clean(body.description,2000),status:body.status,schedule_date:body.schedule_date||null,task_mode:['on_site','online','hybrid'].includes(body.task_mode)?body.task_mode:'on_site',budget_type:['fixed','negotiable'].includes(body.budget_type)?body.budget_type:'fixed',materials_included:body.materials_included===true||body.materials_included==='on',requirements:clean(body.requirements,1500),checklist:Array.isArray(body.checklist)?body.checklist.slice(0,20).map((value)=>clean(value,180)).filter(Boolean):[]};
+        if (patch.schedule_date) { const date = new Date(`${patch.schedule_date}T00:00:00Z`); if (!/^\d{4}-\d{2}-\d{2}$/.test(patch.schedule_date) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== patch.schedule_date) throw fail('Choose a valid preferred date.',422); }
         const photos=Array.isArray(body.photos)?body.photos:[];
         const oldUrls=Array.isArray(t.image_urls)?t.image_urls:[];
         const keepUrls=body.keep_image_urls===undefined?oldUrls:body.keep_image_urls;

@@ -6,7 +6,7 @@ The Vercel Function is pinned to Seoul (`icn1`) in `vercel.json`, matching the S
 
 ## Setup
 
-1. Create a Supabase project and run `supabase/migrations/202609290001_initial_schema.sql` in its SQL editor. Then run `supabase/migrations/202609290002_task_photos.sql` for task photos, `supabase/migrations/202609300001_account_activity.sql` for account activity, `supabase/migrations/202609300002_query_indexes.sql` for faster task and unread-message lookups, and `supabase/migrations/202609300005_superadmin_events_reports.sql` for the superadmin event feed and task reports. Apply each migration once, in numeric order.
+1. Create a Supabase project and run `supabase/migrations/202609290001_initial_schema.sql` in its SQL editor. Then run `supabase/migrations/202609290002_task_photos.sql` for task photos, `supabase/migrations/202609300001_account_activity.sql` for account activity, `supabase/migrations/202609300002_query_indexes.sql` for faster task and unread-message lookups, `supabase/migrations/202609300005_superadmin_events_reports.sql` for the superadmin event feed and task reports, and `supabase/migrations/202609300006_task_posting_features.sql` for posting details and private drafts. Apply each migration once, in numeric order.
 2. Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` in Vercel project environment variables. Keep the service role key server-side only.
 3. Deploy the repository to Vercel and sign up through the site. Confirm the account email if Supabase email confirmation is enabled.
 4. Grant your account the initial superadmin role in the Supabase SQL editor: `update public.user_profiles set role = 'superadmin' where email = 'bahenajohnlouie3@gmail.com';` Then sign out and back in.
@@ -22,7 +22,7 @@ The superadmin-only area has separate Dashboard, Users, Tasks, Reports, and Audi
 
 ## Deploy code changes through GitHub
 
-1. Run any required Supabase SQL migration in **Supabase Dashboard → SQL Editor** before deploying code that depends on it. For account activity, query performance, and the superadmin dashboard, run migrations `202609300001_account_activity.sql`, `202609300002_query_indexes.sql`, and `202609300005_superadmin_events_reports.sql` once after the initial schema migration.
+1. Run any required Supabase SQL migration in **Supabase Dashboard → SQL Editor** before deploying code that depends on it. For account activity, query performance, the superadmin dashboard, and task posting features, run migrations `202609300001_account_activity.sql`, `202609300002_query_indexes.sql`, `202609300005_superadmin_events_reports.sql`, and `202609300006_task_posting_features.sql` once after the initial schema migration.
 2. Open PowerShell in the project folder and check the current branch and changed files:
 
    ```powershell
