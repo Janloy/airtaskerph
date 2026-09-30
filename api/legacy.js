@@ -21,6 +21,10 @@ const touchPresence = async (s, userId, isLogin = false) => {
   const { error } = await s.rpc('touch_account_presence', { p_user_id: userId, p_is_login: isLogin });
   if (error) console.error('Account presence update failed:', error.message);
 };
+const logActivity = async (s, userId, eventType, summary, referenceType = null, referenceId = null) => {
+  const { error } = await s.from('account_activity').insert({ user_id: userId, event_type: eventType, summary: clean(summary, 180), reference_type: referenceType, reference_id: referenceId == null ? null : String(referenceId) });
+  if (error) console.error('Account activity log failed:', error.message);
+};
 const rows = async (q) => { const { data, error } = await q; if (error) throw fail(error.message, error.code === '23505' ? 409 : 400); return data; };
 const userFor = async (req, s, trackActivity = false) => {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -149,6 +153,7 @@ export default async function handler(req, res) {
         if (!first || !last || !email.includes('@') || password.length < 8) throw fail('Complete the form. Passwords must be at least 8 characters.', 422);
         const { data, error } = await ac.auth.signUp({ email, password, options: { data: { first_name: first, middle_initial: clean(body.middle_initial, 1), last_name: last } } });
         if (error) throw fail(error.message, 409);
+        if (data.user) { const p = await getProfile(s, data.user.id).catch(() => null); if (p) await logActivity(s, p.id, 'user_registered', `New user registered: ${first} ${last}`, 'user', p.id); }
         if (data.user && !data.session) return res.status(200).json(ok('Account created. Check your email to confirm it, then log in.'));
         const p = data.user ? await getProfile(s, data.user.id) : null;
         return res.status(200).json(ok('Account created. You can now log in.', { user: p && publicUser(p), access_token: data.session?.access_token, refresh_token: data.session?.refresh_token }));
@@ -274,7 +279,11 @@ export default async function handler(req, res) {
       ({ profile } = await userFor(req,s, action !== 'activity_dashboard'));
       if (action === 'activity_dashboard') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view account activity.',403);
-        const accounts = await rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at').order('role').order('first_name'));
+        const [accounts, events, reports] = await Promise.all([
+          rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at').order('role').order('first_name')),
+          rows(s.from('account_activity').select('id,event_type,summary,reference_type,reference_id,created_at,user:user_profiles!account_activity_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(40)),
+          rows(s.from('task_reports').select('id,task_id,reason,details,status,created_at,task:tasks!task_reports_task_id_fkey(title),reporter:user_profiles!task_reports_reporter_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(30))
+        ]);
         const ids = accounts.map((account) => account.id);
         const presence = ids.length ? await rows(s.from('account_presence').select('user_id,last_login_at,last_seen_at').in('user_id',ids)) : [];
         const presenceByUser = new Map(presence.map((item) => [Number(item.user_id), item]));
@@ -283,14 +292,30 @@ export default async function handler(req, res) {
           last_name: account.last_name, email: account.email, role: account.role, created_at: account.created_at,
           ...(presenceByUser.get(Number(account.id)) || { last_login_at: null, last_seen_at: null })
         }));
-        return res.status(200).json(ok('',{users}));
+        return res.status(200).json(ok('',{users,events,reports}));
+      }
+      if (action === 'submit_report') {
+        const taskId=Number(body.task_id), reason=clean(body.reason,80), details=clean(body.details,1000);
+        if (!Number.isSafeInteger(taskId) || !['Scam or fraud','Inappropriate content','Misleading information','Other'].includes(reason)) throw fail('Choose a valid report reason.',422);
+        const task=await rows(s.from('tasks').select('id,title').eq('id',taskId).maybeSingle()); if(!task) throw fail('Task not found.',404);
+        const [report]=await rows(s.from('task_reports').insert({task_id:taskId,reporter_id:profile.id,reason,details}).select('id'));
+        await logActivity(s,profile.id,'report_submitted',`Report submitted for: ${task.title}`,'report',report.id);
+        return res.status(200).json(ok('Report sent to the Superadmin for review.'));
+      }
+      if (action === 'review_report') {
+        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can review reports.',403);
+        const id=Number(body.report_id), status=body.status;
+        if (!Number.isSafeInteger(id) || !['Reviewed','Dismissed'].includes(status)) throw fail('Choose a valid report status.',422);
+        await rows(s.from('task_reports').update({status}).eq('id',id));
+        await logActivity(s,profile.id,'report_reviewed',`Report #${id} marked ${status.toLowerCase()}`,'report',id);
+        return res.status(200).json(ok('Report updated.'));
       }
       if (action==='create_admin') {
         if(profile.role!=='superadmin') throw fail('Only the Superadmin can create Admin accounts.',403);
         const {data,error}=await s.auth.admin.createUser({email:clean(body.email,190).toLowerCase(),password:String(body.password||''),email_confirm:true,user_metadata:{first_name:clean(body.first_name,80),middle_initial:clean(body.middle_initial,1),last_name:clean(body.last_name,80)}});
         if(error) throw fail(error.message,400); await rows(s.from('user_profiles').update({role:'admin'}).eq('auth_user_id',data.user.id)); return res.status(200).json(ok('Admin account provisioned.'));
       }
-      const id=Number(body.task_id); const taskColumns=['update_task','delete_task'].includes(action)?'user_id,image_urls':'user_id'; const t=await rows(s.from('tasks').select(taskColumns).eq('id',id).maybeSingle());
+      const id=Number(body.task_id); const taskColumns=['update_task','delete_task'].includes(action)?'user_id,image_urls,status':'user_id'; const t=await rows(s.from('tasks').select(taskColumns).eq('id',id).maybeSingle());
       if(!t || (!isMod(profile)&&Number(t.user_id)!==Number(profile.id))) throw fail('You can only manage your own task postings.',403);
       if(action==='delete_task') {
         await rows(s.from('tasks').delete().eq('id',id));
@@ -323,6 +348,7 @@ export default async function handler(req, res) {
           }
           patch.image_urls=[...uniqueKeepUrls,...newUrls];
           await rows(s.from('tasks').update(patch).eq('id',id));
+          if (patch.status === 'Completed' && t.status !== 'Completed') await logActivity(s,profile.id,'task_completed',`Task completed: ${patch.title}`,'task',id);
         } catch(error) {
           if(uploadedPaths.length) await s.storage.from('task-photos').remove(uploadedPaths).catch(()=>{});
           throw error;

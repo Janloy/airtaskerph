@@ -6,7 +6,7 @@ The Vercel Function is pinned to Seoul (`icn1`) in `vercel.json`, matching the S
 
 ## Setup
 
-1. Create a Supabase project and run `supabase/migrations/202609290001_initial_schema.sql` in its SQL editor. Then run `supabase/migrations/202609290002_task_photos.sql` for task photos, `supabase/migrations/202609300001_account_activity.sql` for account activity, and `supabase/migrations/202609300002_query_indexes.sql` for faster task and unread-message lookups. The index migration is safe to apply to an existing project.
+1. Create a Supabase project and run `supabase/migrations/202609290001_initial_schema.sql` in its SQL editor. Then run `supabase/migrations/202609290002_task_photos.sql` for task photos, `supabase/migrations/202609300001_account_activity.sql` for account activity, `supabase/migrations/202609300002_query_indexes.sql` for faster task and unread-message lookups, and `supabase/migrations/202609300005_superadmin_events_reports.sql` for the superadmin event feed and task reports. Apply each migration once, in numeric order.
 2. Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` in Vercel project environment variables. Keep the service role key server-side only.
 3. Deploy the repository to Vercel and sign up through the site. Confirm the account email if Supabase email confirmation is enabled.
 4. Grant your account the initial superadmin role in the Supabase SQL editor: `update public.user_profiles set role = 'superadmin' where email = 'bahenajohnlouie3@gmail.com';` Then sign out and back in.
@@ -18,11 +18,11 @@ Do not put the service-role key in browser code. The deployed app uses the stati
 
 Task posts can include up to three JPG, PNG, or WEBP images. The browser resizes them to JPEG before upload; the API accepts up to 450 KB per compressed image and stores them in the public `task-photos` Supabase Storage bucket. Public task images are viewable by anyone who can view the task. Task owners can open photos in a full-screen viewer and remove or replace individual photos while editing a task.
 
-The superadmin-only **Account activity** dashboard lists admins and users with their most recent login and authenticated activity times. It does not show a recent actions feed. The account presence migration records login and activity timestamps going forward; older history cannot be reconstructed.
+The superadmin-only dashboard lists admins and users, recent registrations and task completions, and submitted task reports. Superadmins can mark reports reviewed or dismiss them. Members can report a task from its detail view. Activity history is recorded going forward; older events cannot be reconstructed.
 
 ## Deploy code changes through GitHub
 
-1. Run any required Supabase SQL migration in **Supabase Dashboard → SQL Editor** before deploying code that depends on it. For account activity and query performance, run `supabase/migrations/202609300001_account_activity.sql` and `supabase/migrations/202609300002_query_indexes.sql` once after the initial schema migration.
+1. Run any required Supabase SQL migration in **Supabase Dashboard → SQL Editor** before deploying code that depends on it. For account activity, query performance, and the superadmin dashboard, run migrations `202609300001_account_activity.sql`, `202609300002_query_indexes.sql`, and `202609300005_superadmin_events_reports.sql` once after the initial schema migration.
 2. Open PowerShell in the project folder and check the current branch and changed files:
 
    ```powershell

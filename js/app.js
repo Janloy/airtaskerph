@@ -606,7 +606,7 @@ function formatActivityTimestamp(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Not recorded yet' : new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
-let accountActivityData = { users: [] };
+let accountActivityData = { users: [], events: [], reports: [] };
 function renderAccountActivityUsers() {
   const filter = $('#account-activity-filter')?.value || 'all';
   const search = ($('#account-activity-search')?.value || '').trim().toLocaleLowerCase();
@@ -625,15 +625,18 @@ function renderAccountActivityUsers() {
   }).join('') : `<p class="text-sm text-[#68727c]">No ${filter === 'admins' ? 'admins' : filter === 'users' ? 'users' : 'accounts'} found.</p>`;
 }
 function renderAccountActivity(payload) {
-  accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [] };
+  accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [] };
   const users = accountActivityData.users;
   const now = Date.now();
   const active = users.filter((user) => user.last_seen_at && now - new Date(user.last_seen_at).getTime() <= 5 * 60 * 1000).length;
   const admins = users.filter((user) => user.role === 'admin' || user.role === 'superadmin').length;
   const members = users.filter((user) => user.role === 'user').length;
+  $('#account-activity-summary').className = 'grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3';
   $('#account-activity-summary').innerHTML = [
-    ['Admins', admins], ['Users', members], ['Active in last 5 min', active]
+    ['Admins', admins], ['Users', members], ['Open reports', accountActivityData.reports.filter((r) => r.status === 'Open').length], ['Active in last 5 min', active]
   ].map(([label, value]) => `<div class="rounded-lg border border-[#dbe3e7] bg-[#f8fafc] px-3 py-2"><span class="block text-xs text-[#68727c]">${label}</span><strong class="text-lg">${value}</strong></div>`).join('');
+  $('#account-activity-events').innerHTML = accountActivityData.events.length ? accountActivityData.events.map((event) => `<article class="rounded-lg border border-[#dbe3e7] p-3"><strong>${escapeHtml(event.summary)}</strong><p class="mt-1 text-xs text-[#68727c]">${escapeHtml(event.user ? `${event.user.first_name} ${event.user.last_name} · ${event.user.email}` : 'System')} · ${escapeHtml(formatActivityTimestamp(event.created_at))}</p></article>`).join('') : '<p class="text-sm text-[#68727c]">No activity recorded yet.</p>';
+  $('#account-activity-reports').innerHTML = accountActivityData.reports.length ? accountActivityData.reports.map((report) => `<article class="rounded-lg border border-[#dbe3e7] p-3"><div class="flex flex-wrap items-start justify-between gap-2"><div><strong>${escapeHtml(report.task?.title || 'Removed task')}</strong><p class="text-sm">${escapeHtml(report.reason)} · ${escapeHtml(report.status)}</p><p class="text-xs text-[#68727c]">${escapeHtml(report.reporter ? `${report.reporter.first_name} ${report.reporter.last_name}` : 'Member')} · ${escapeHtml(formatActivityTimestamp(report.created_at))}</p>${report.details ? `<p class="mt-2 text-sm">${escapeHtml(report.details)}</p>` : ''}</div>${report.status === 'Open' ? `<div class="flex gap-2"><button data-review-report="${report.id}" data-report-status="Reviewed" class="rounded border px-3 py-1 text-sm">Mark reviewed</button><button data-review-report="${report.id}" data-report-status="Dismissed" class="rounded border px-3 py-1 text-sm">Dismiss</button></div>` : ''}</div></article>`).join('') : '<p class="text-sm text-[#68727c]">No reports submitted.</p>';
   renderAccountActivityUsers();
 }
 async function loadAccountActivity() {
@@ -910,6 +913,7 @@ async function openTask(task) {
   updateTaskMessageCount(isOwner ? task.unread_message_count : 0);
   $('#task-detail-content').innerHTML = `<p class="text-sm font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h2 class="mt-1 text-2xl font-bold">${escapeHtml(task.title)}</h2>${taskPhotoMarkup(task)}<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-[#f5f7f8] p-4 text-sm"><div><p class="text-xs text-[#68727c]">Budget</p><p class="mt-1 font-bold">${money(task.budget)}</p></div><div><p class="text-xs text-[#68727c]">Location</p><p class="mt-1 font-bold">${escapeHtml(task.location)}</p></div></div><p class="mt-5 whitespace-pre-wrap text-sm leading-6 text-[#4c5962]">${escapeHtml(task.description)}</p><div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dbe3e7] bg-white p-4"><div><p class="text-xs font-semibold uppercase tracking-wider text-[#68727c]">Posted by</p><button type="button" data-public-profile="${Number(task.user_id)}" data-profile-task="${Number(task.id)}" class="mt-1 inline-flex items-center gap-2 font-bold text-[#006f70] hover:underline"><i class="fa-regular fa-user" aria-hidden="true"></i>${escapeHtml(task.owner_name)}<i class="fa-solid fa-arrow-up-right-from-square text-xs" aria-hidden="true"></i></button></div><button type="button" data-public-profile="${Number(task.user_id)}" data-profile-task="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">View tasker profile</button></div>${!state.user && task.status === 'Open' ? `<div class="mt-5 flex flex-wrap gap-3"><button type="button" data-guest-bid="${Number(task.id)}" class="touch-target rounded-lg bg-[#006f70] px-5 font-bold text-white">Submit bid</button><button type="button" data-contact-tasker="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Contact Tasker</button></div>` : ''}`;
   const canManage = state.user && (state.user.role === 'admin' || state.user.role === 'superadmin' || (state.user.role === 'user' && Number(state.user.id) === Number(task.user_id)));
+  if (state.user && !isOwner && !['admin', 'superadmin'].includes(state.user.role)) $('#task-detail-content').insertAdjacentHTML('beforeend', `<div class="mt-5 border-t border-[#edf0f1] pt-4"><button type="button" data-report-task="${Number(task.id)}" class="touch-target rounded-lg border border-red-200 px-4 text-sm font-bold text-red-600"><i class="fa-regular fa-flag mr-2"></i>Report this task</button></div>`);
   if (canManage) $('#task-detail-content').insertAdjacentHTML('beforeend', `<div class="mt-6 flex flex-wrap gap-3 border-t border-[#edf0f1] pt-5"><button data-edit="${task.id}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]"><i class="fa-solid fa-pen-to-square mr-2"></i>Edit task</button><button data-delete="${task.id}" class="touch-target rounded-lg border border-red-200 px-4 text-sm font-bold text-red-600"><i class="fa-solid fa-trash mr-2"></i>Delete task</button></div>`);
   $('#task-detail-id').value = task.id;
   if (!$('#bid-submitted-state')) $('#bid-section').insertAdjacentHTML('beforebegin', '<div id="bid-submitted-state" class="submitted-bid-state hidden"><i class="fa-solid fa-circle-check"></i><div><strong>Bid submitted</strong><p>The task owner can review your offer and message you here.</p></div></div>');
@@ -1264,6 +1268,21 @@ async function resumeAuthIntent(intent) {
 document.addEventListener('click', async (event) => {
   const accountActivityButton = event.target.closest('[data-activity-dashboard]');
   if (accountActivityButton) { event.preventDefault(); await openAccountActivity(); return; }
+  const reportButton = event.target.closest('[data-report-task]');
+  if (reportButton) {
+    const reason = window.prompt('Report reason: Scam or fraud, Inappropriate content, Misleading information, or Other');
+    if (!reason) return;
+    const details = window.prompt('Add details (optional):') || '';
+    try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'submit_report', task_id: reportButton.dataset.reportTask, reason, details }) }); notify(payload.message); }
+    catch (error) { notify(error.message, 'error'); }
+    return;
+  }
+  const reviewButton = event.target.closest('[data-review-report]');
+  if (reviewButton) {
+    try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'review_report', report_id: reviewButton.dataset.reviewReport, status: reviewButton.dataset.reportStatus }) }); notify(payload.message); await loadAccountActivity(); }
+    catch (error) { notify(error.message, 'error'); }
+    return;
+  }
   const photoButton = event.target.closest('[data-photo-url]');
   if (photoButton) { event.preventDefault(); event.stopPropagation(); openPhotoViewer(photoButton.dataset.photoUrl, photoButton.dataset.photoAlt); return; }
   const blockedRoute = protectedRouteForElement(event.target);
