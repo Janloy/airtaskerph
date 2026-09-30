@@ -785,6 +785,30 @@ function renderAccountActivityUsers() {
     return `<article class="rounded-lg border border-[#dbe3e7] p-3"><div class="flex flex-wrap items-start justify-between gap-2"><div class="min-w-0"><strong class="block truncate">${escapeHtml(name)}</strong><span class="block truncate text-xs text-[#68727c]">${escapeHtml(user.email)}</span></div><span class="account-activity-role">${escapeHtml(user.role)}</span></div><div class="mt-2 grid gap-1 text-xs text-[#4c5962] sm:grid-cols-2"><p>Last login: <strong>${escapeHtml(formatActivityTimestamp(user.last_login_at))}</strong></p><p>Last activity: <strong>${escapeHtml(recentlyActive ? 'Active in the last 5 min' : formatActivityTimestamp(user.last_seen_at))}</strong></p></div></article>`;
   }).join('') : `<p class="text-sm text-[#68727c]">No ${filter === 'admins' ? 'admins' : filter === 'users' ? 'users' : 'accounts'} found.</p>`;
 }
+function openReportersModal(taskId) {
+  const reports = accountActivityData.reports.filter((report) => Number(report.task_id) === Number(taskId));
+  if (!reports.length) { notify('No reports were found for this task.', 'error'); return; }
+  const task = reports[0].task || {};
+  const owner = task.owner || {};
+  const ownerName = `${owner.first_name || ''} ${owner.last_name || ''}`.trim() || 'Task poster';
+  const reportItems = reports.map((report) => {
+    const reporter = report.reporter || {};
+    const reporterName = `${reporter.first_name || ''} ${reporter.last_name || ''}`.trim() || 'Member';
+    const icon = report.status === 'Open' ? 'fa-circle-exclamation' : report.status === 'Reviewed' ? 'fa-circle-check' : 'fa-circle-minus';
+    return `<article class="superadmin-reporter-detail"><header><div><span class="superadmin-report-person-label"><i class="fa-regular fa-flag" aria-hidden="true"></i> Reported by</span><button type="button" data-superadmin-view-profile="${Number(reporter.id || report.reporter_id) || 0}" class="superadmin-report-profile-link">${escapeHtml(reporterName)} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button><small>${escapeHtml(reporter.email || '')}</small></div><span class="superadmin-report-status" data-status="${escapeHtml(report.status)}"><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(report.status)}</span></header><div class="superadmin-report-reason"><span>Reason</span><strong>${escapeHtml(report.reason || 'Not provided')}</strong></div><div class="superadmin-report-details"><span>Details</span><p>${escapeHtml(report.details || 'No additional details provided.')}</p></div><small class="superadmin-report-date">Submitted ${escapeHtml(formatActivityTimestamp(report.created_at))}</small>${report.status === 'Open' ? `<div class="superadmin-report-submission-actions"><button type="button" data-review-report="${report.id}" data-report-status="Reviewed" class="superadmin-report-button superadmin-report-button-review"><i class="fa-solid fa-check" aria-hidden="true"></i><span>Mark reviewed</span></button><button type="button" data-review-report="${report.id}" data-report-status="Dismissed" class="superadmin-report-button superadmin-report-button-dismiss"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Dismiss</span></button></div>` : ''}</article>`;
+  }).join('');
+  let modal = $('#reporters-detail-modal');
+  if (!modal) {
+    document.body.insertAdjacentHTML('beforeend', '<div id="reporters-detail-modal" class="modal-backdrop fixed inset-0 z-[108] hidden items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="reporters-detail-title"><div class="modal-panel reporters-detail-panel"><header class="reporters-detail-heading"><div><p>Superadmin · Task reports</p><h2 id="reporters-detail-title"></h2><span id="reporters-detail-count"></span></div><button type="button" data-close="reporters-detail-modal" aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header><div id="reporters-detail-poster"></div><div id="reporters-detail-list" class="reporters-detail-list"></div><footer><button type="button" data-close="reporters-detail-modal" class="superadmin-report-button superadmin-report-button-view">Done</button></footer></div></div>');
+    modal = $('#reporters-detail-modal');
+  }
+  $('#reporters-detail-title').textContent = task.title || 'Removed task';
+  $('#reporters-detail-count').textContent = `${reports.length} ${reports.length === 1 ? 'report' : 'reports'}`;
+  $('#reporters-detail-poster').innerHTML = task.user_id ? `<div class="reporters-detail-poster"><span class="superadmin-report-person-label">Task poster</span><button type="button" data-superadmin-view-profile="${Number(task.user_id)}" class="superadmin-report-profile-link">${escapeHtml(ownerName)} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button><small>${escapeHtml(owner.email || '')}</small></div>` : '';
+  $('#reporters-detail-list').innerHTML = reportItems;
+  openModal('#reporters-detail-modal');
+}
+
 function renderAccountActivity(payload) {
   accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [], tasks: Array.isArray(payload.tasks) ? payload.tasks : [], stats: payload.stats || {} };
   superadminHasMoreTasks = Boolean(payload.has_more_tasks);
@@ -819,13 +843,7 @@ function renderAccountActivity(payload) {
     const ownerName = `${owner.first_name || ''} ${owner.last_name || ''}`.trim() || 'Task poster';
     const openCount = reports.filter((report) => report.status === 'Open').length;
     const overallStatus = openCount ? 'Open' : reports.every((report) => report.status === 'Dismissed') ? 'Dismissed' : 'Reviewed';
-    const submissions = reports.map((report) => {
-      const reporter = report.reporter || {};
-      const reporterName = `${reporter.first_name || ''} ${reporter.last_name || ''}`.trim() || 'Member';
-      const statusIcon = report.status === 'Open' ? 'fa-circle-exclamation' : report.status === 'Reviewed' ? 'fa-circle-check' : 'fa-circle-minus';
-      return `<section class="superadmin-report-submission"><div class="superadmin-report-submission-head"><div><span class="superadmin-report-person-label"><i class="fa-regular fa-flag" aria-hidden="true"></i> Report from</span><button type="button" data-superadmin-view-profile="${Number(reporter.id || report.reporter_id) || 0}" class="superadmin-report-profile-link">${escapeHtml(reporterName)} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button><small>${escapeHtml(reporter.email || '')}</small></div><span class="superadmin-report-status" data-status="${escapeHtml(report.status)}"><i class="fa-solid ${statusIcon}" aria-hidden="true"></i>${escapeHtml(report.status)}</span></div><div class="superadmin-report-reason"><span>Reason</span><strong>${escapeHtml(report.reason || 'Not provided')}</strong></div><div class="superadmin-report-details"><span>Details</span><p>${escapeHtml(report.details || 'No additional details provided.')}</p></div><small class="superadmin-report-date">Submitted ${escapeHtml(formatActivityTimestamp(report.created_at))}</small>${report.status === 'Open' ? `<div class="superadmin-report-submission-actions"><button type="button" data-review-report="${report.id}" data-report-status="Reviewed" class="superadmin-report-button superadmin-report-button-review"><i class="fa-solid fa-check" aria-hidden="true"></i><span>Mark reviewed</span></button><button type="button" data-review-report="${report.id}" data-report-status="Dismissed" class="superadmin-report-button superadmin-report-button-dismiss"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Dismiss</span></button></div>` : ''}</section>`;
-    }).join('');
-    return `<article class="superadmin-report-row"><div class="superadmin-report-main"><div class="superadmin-report-heading"><div class="min-w-0"><span class="superadmin-report-kicker">Reported task · ${reports.length} ${reports.length === 1 ? 'report' : 'reports'}</span><strong>${escapeHtml(task.title || 'Removed task')}</strong></div><span class="superadmin-report-status" data-status="${overallStatus}"><i class="fa-solid ${overallStatus === 'Open' ? 'fa-circle-exclamation' : overallStatus === 'Reviewed' ? 'fa-circle-check' : 'fa-circle-minus'}" aria-hidden="true"></i>${openCount ? `${openCount} open` : overallStatus}</span></div>${task.user_id ? `<div class="superadmin-report-people"><div><span class="superadmin-report-person-label"><i class="fa-regular fa-user" aria-hidden="true"></i> Task poster</span><button type="button" data-superadmin-view-profile="${Number(task.user_id)}" class="superadmin-report-profile-link">${escapeHtml(ownerName)} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button><small>${escapeHtml(owner.email || '')}</small></div></div>` : ''}<div class="superadmin-report-submissions">${submissions}</div></div><div class="superadmin-report-actions">${task.id ? `<button type="button" data-superadmin-view-task="${Number(task.id)}" class="superadmin-report-button superadmin-report-button-view"><i class="fa-regular fa-eye" aria-hidden="true"></i><span>View task</span></button>` : '<span class="superadmin-report-removed">Task removed</span>'}</div></article>`;
+    return `<article class="superadmin-report-row"><div class="superadmin-report-main"><div class="superadmin-report-heading"><div class="min-w-0"><span class="superadmin-report-kicker">Reported task</span><strong>${escapeHtml(task.title || 'Removed task')}</strong></div><span class="superadmin-report-status" data-status="${overallStatus}"><i class="fa-solid ${overallStatus === 'Open' ? 'fa-circle-exclamation' : overallStatus === 'Reviewed' ? 'fa-circle-check' : 'fa-circle-minus'}" aria-hidden="true"></i>${openCount ? `${openCount} open` : overallStatus}</span></div><p class="superadmin-report-count">${reports.length} ${reports.length === 1 ? 'user has' : 'users have'} reported this task</p><div class="superadmin-report-people"><button type="button" data-show-reporters="${Number(reports[0].task_id) || 0}" class="superadmin-report-button superadmin-report-button-view"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Who reported? · ${reports.length}</span></button>${task.user_id ? `<div><span class="superadmin-report-person-label"><i class="fa-regular fa-user" aria-hidden="true"></i> Task poster</span><button type="button" data-superadmin-view-profile="${Number(task.user_id)}" class="superadmin-report-profile-link">${escapeHtml(ownerName)} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button><small>${escapeHtml(owner.email || '')}</small></div>` : ''}</div></div><div class="superadmin-report-actions">${task.id ? `<button type="button" data-superadmin-view-task="${Number(task.id)}" class="superadmin-report-button superadmin-report-button-view"><i class="fa-regular fa-eye" aria-hidden="true"></i><span>View task</span></button>` : '<span class="superadmin-report-removed">Task removed</span>'}</div></article>`;
   }).join('') || '<p class="p-4 text-sm text-slate-500">No reports submitted.</p>';
   document.querySelectorAll('#dashboard-reports, #account-activity-reports').forEach((node) => { node.innerHTML = reportsHtml; });
   const totalTasks = Number(accountActivityData.stats.total_tasks) || 0;
@@ -1722,11 +1740,14 @@ document.addEventListener('click', async (event) => {
   if (viewAdminTaskButton) {
     const taskId = Number(viewAdminTaskButton.dataset.superadminViewTask);
     const task = [...(accountActivityData.tasks || []), ...(state.superadminProfileTasks || [])].find((item) => Number(item.id) === taskId) || { id: taskId };
+    if (viewAdminTaskButton.closest('#reporters-detail-modal')) closeModal('reporters-detail-modal');
     openSuperadminTask(task);
     return;
   }
+  const showReportersButton = event.target.closest('[data-show-reporters]');
+  if (showReportersButton) { openReportersModal(showReportersButton.dataset.showReporters); return; }
   const viewAdminProfileButton = event.target.closest('[data-superadmin-view-profile]');
-  if (viewAdminProfileButton) { await openSuperadminUserProfile(viewAdminProfileButton.dataset.superadminViewProfile); return; }
+  if (viewAdminProfileButton) { if (viewAdminProfileButton.closest('#reporters-detail-modal')) closeModal('reporters-detail-modal'); await openSuperadminUserProfile(viewAdminProfileButton.dataset.superadminViewProfile); return; }
   const backFromAdminProfile = event.target.closest('[data-superadmin-profile-back]');
   if (backFromAdminProfile) { showPage(state.superadminProfileReturn || 'user-management-page'); return; }
   const backFromAdminTask = event.target.closest('[data-superadmin-task-back]');
@@ -1767,6 +1788,7 @@ document.addEventListener('click', async (event) => {
   }
   const reviewButton = event.target.closest('[data-review-report]');
   if (reviewButton) {
+    if (reviewButton.closest('#reporters-detail-modal')) closeModal('reporters-detail-modal');
     try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'review_report', report_id: reviewButton.dataset.reviewReport, status: reviewButton.dataset.reportStatus }) }); notify(payload.message); await loadAccountActivity(); }
     catch (error) { notify(error.message, 'error'); }
     return;
