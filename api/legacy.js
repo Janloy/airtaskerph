@@ -612,6 +612,13 @@ export default async function handler(req, res) {
       ({ profile } = await userFor(req,s, action !== 'my_bids' && action !== 'list'));
       if(action==='my_bids') { const bids=await loadMyBids(s,profile); return res.status(200).json(ok('',{bids})); }
       const taskId=Number(body.task_id||query.get('task_id')); const task=await rows(s.from('tasks').select('*').eq('id',taskId).maybeSingle()); if(!task) throw fail('Task not found.',404);
+      if(action==='task_details') {
+        const isOwner=Number(task.user_id)===Number(profile.id);
+        const linkedBid=isOwner||isMod(profile)?true:await rows(s.from('bids').select('id').eq('task_id',taskId).eq('bidder_id',profile.id).maybeSingle());
+        if(!linkedBid) throw fail('Only a participant in this task can view its details.',403);
+        const owner=await rows(s.from('user_profiles').select('first_name,last_name').eq('id',task.user_id).maybeSingle());
+        return res.status(200).json(ok('',{task:{...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:owner?`${owner.first_name} ${owner.last_name}`.trim():'TaskerPH member'}}));
+      }
       if(action==='list') { const bids=await loadTaskBids(s,task,profile); return res.status(200).json(ok('',{bids})); }
       if(action==='place') { if(Number(task.user_id)===Number(profile.id)) throw fail('You cannot bid on your own task.',403); if(task.status!=='Open') throw fail('This task is no longer accepting bids.',409); const accepted=await rows(s.from('bids').select('id').eq('bidder_id',profile.id).eq('status','Accepted').maybeSingle()); if(accepted) throw fail('You already have an accepted bid. Complete that task before bidding on another task.',409); const amount=Number(body.amount),message=clean(body.message,1000);if(!Number.isFinite(amount)||amount<0||!message)throw fail('Enter a valid offer and message.',422); await rows(s.from('bids').upsert({task_id:taskId,bidder_id:profile.id,amount,message,status:'Pending'},{onConflict:'task_id,bidder_id'}));  return res.status(200).json(ok('Your bid has been submitted.')); }
       const bidId=Number(body.bid_id);

@@ -1454,6 +1454,12 @@ function linkMyBidOwnerProfiles(bids) {
     link.className = 'font-bold text-[#006f70] underline decoration-[#8bc9c0] underline-offset-2 hover:text-[#004f50]';
     link.textContent = bid.owner_name || 'View poster';
     ownerLine.replaceChildren(document.createTextNode('Task owner: '), link, document.createTextNode(` · ${bid.location || ''}`));
+    const detailsButton = document.createElement('button');
+    detailsButton.type = 'button';
+    detailsButton.dataset.viewBidTask = String(bid.task_id);
+    detailsButton.className = 'touch-target mt-3 rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70] hover:bg-[#f5f7f8]';
+    detailsButton.innerHTML = '<i class="fa-regular fa-file-lines mr-2" aria-hidden="true"></i>View task details';
+    cards[index]?.append(detailsButton);
   });
 }
 async function loadMyTasks() { if (!state.user) { requestAuthGate('tasks'); return; } currentTaskDrafts = []; $('#my-task-drafts')?.replaceChildren(); showPage('my-tasks-modal'); $('#my-tasks-list').innerHTML = '<p class="py-8 text-center text-sm text-[#68727c]">Loading your tasks...</p>'; try { const payload = await api('api/get_tasks?mine=1'); state.myTasks = payload.tasks; renderMyTasks(state.myTasks); if (!$('#my-task-drafts')) $('#my-tasks-list').insertAdjacentHTML('beforebegin', '<div id="my-task-drafts"></div>'); await loadMyTaskDrafts(); } catch (error) { notify(error.message, 'error'); } }
@@ -1938,6 +1944,16 @@ document.addEventListener('click', async (event) => {
   if (profileFormToggle) { const form = $(`#${profileFormToggle.dataset.profileForm}`); form?.classList.toggle('hidden'); return; }
   if (event.target.closest('[data-appearance-toggle]')) { saveUserAppearance(!document.body.classList.contains('dark-mode')); }
   const myTaskButton = event.target.closest('[data-open-my-task]'); if (myTaskButton) { const task = state.myTasks.find((item) => Number(item.id) === Number(myTaskButton.dataset.openMyTask)); if (task) { closeModal('my-tasks-modal'); openTask(task); } }
+  const bidTaskDetailsButton = event.target.closest('[data-view-bid-task]');
+  if (bidTaskDetailsButton) {
+    bidTaskDetailsButton.disabled = true;
+    try {
+      const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(bidTaskDetailsButton.dataset.viewBidTask)}`);
+      await openTask(payload.task);
+    } catch (error) { notify(error.message, 'error'); }
+    finally { bidTaskDetailsButton.disabled = false; }
+    return;
+  }
   const publicTaskButton = event.target.closest('[data-open-public-task]'); if (publicTaskButton) { const task = state.publicProfileTasks.find((item) => Number(item.id) === Number(publicTaskButton.dataset.openPublicTask)); if (task) openTask({ ...task, owner_name: `${$('#public-profile-content h2')?.textContent || 'TaskerPH member'}`, has_bid: false, is_saved: false, bid_count: 0, unread_message_count: 0 }); return; }
   if (event.target.closest('[data-menu]')) { $('#mobile-drawer').classList.remove('-translate-x-full'); $('#drawer-overlay').classList.remove('hidden'); }
   if (event.target.id === 'drawer-overlay' || event.target.closest('[data-close-drawer]')) closeDrawer();
