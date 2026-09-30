@@ -2,6 +2,7 @@ const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds
 let myBidsData = [];
 let notificationCenterItems = [];
 const seenTaskUpdateToasts = new Set();
+const seenMessageToasts = new Set();
 let taskFetchSequence = 0;
 let taskFetchInFlight = false;
 let taskListLoaded = false;
@@ -153,21 +154,21 @@ function notify(message, type = 'success') {
   document.body.appendChild(element);
   setTimeout(() => dismissToast(element), 4000);
 }
-function notifyReceived(title, message) {
+function notifyReceived(title, message, openAction = () => loadNotificationCenter()) {
   const element = document.createElement('div');
   element.className = 'app-toast app-toast-received fixed right-4 top-20 z-[70] max-w-sm rounded-lg px-4 py-3 shadow-xl';
   element.setAttribute('role', 'button');
   element.setAttribute('tabindex', '0');
-  element.setAttribute('aria-label', `${title || 'New notification'}. Open your notifications.`);
+  element.setAttribute('aria-label', `${title || 'New notification'}. Open to view.`);
   element.setAttribute('aria-live', 'polite');
   element.innerHTML = '<span class="app-toast-icon"><i class="fa-solid fa-bell" aria-hidden="true"></i></span><span class="app-toast-copy"><strong></strong><span></span></span><button class="app-toast-action" type="button">View</button><button class="app-toast-close" type="button" aria-label="Dismiss notification"><i class="fa-solid fa-xmark"></i></button>';
   element.querySelector('.app-toast-copy strong').textContent = title || 'New notification';
   element.querySelector('.app-toast-copy span').textContent = message || 'You have a new update.';
   element.querySelector('.app-toast-close').addEventListener('click', () => dismissToast(element));
-  const openNotifications = async () => { dismissToast(element); await loadNotificationCenter(); };
-  element.querySelector('.app-toast-action').addEventListener('click', openNotifications);
-  element.addEventListener('click', (event) => { if (!event.target.closest('button')) void openNotifications(); });
-  element.addEventListener('keydown', (event) => { if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('button')) { event.preventDefault(); void openNotifications(); } });
+  const openTarget = async () => { dismissToast(element); await openAction(); };
+  element.querySelector('.app-toast-action').addEventListener('click', openTarget);
+  element.addEventListener('click', (event) => { if (!event.target.closest('button')) void openTarget(); });
+  element.addEventListener('keydown', (event) => { if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('button')) { event.preventDefault(); void openTarget(); } });
   document.body.appendChild(element);
   setTimeout(() => dismissToast(element), 7000);
 }
@@ -267,6 +268,13 @@ async function updateNotificationCounts() {
     const center = await api('api/notifications?action=center');
     setNotificationCount('#desktop-notification-count', center.unread_count || 0);
     setNotificationCount('#mobile-notification-count', center.unread_count || 0);
+    (center.items || []).filter((item) => item.type === 'message' && !item.is_read)
+      .slice(0, 3).reverse().forEach((item) => {
+        const toastKey = `${state.user.id}:${item.id}`;
+        if (seenMessageToasts.has(toastKey)) return;
+        seenMessageToasts.add(toastKey);
+        notifyReceived(item.title, item.body, () => openConversation(item.task_id, item.other_user_id));
+      });
   } catch (error) { void error; }
 }
 function startNotificationPolling() {
@@ -1683,6 +1691,7 @@ async function openConversation(taskId, otherUserId) {
   $('#conversation-list').innerHTML = '<p class="text-sm text-[#68727c]">Loading conversation...</p>';
   showPage('conversation-modal');
   await refreshConversation();
+  await updateNotificationCounts();
   state.conversationTimer = setInterval(refreshConversation, 5000);
 }
 document.addEventListener('visibilitychange', () => {
