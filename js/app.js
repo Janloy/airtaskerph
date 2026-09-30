@@ -621,6 +621,9 @@ function formatActivityTimestamp(value) {
 }
 let accountActivityData = { users: [], events: [], reports: [], tasks: [], stats: {} };
 let superadminTaskView = 'list';
+let superadminUserPage = 1;
+let superadminHasMoreTasks = false;
+let superadminLoadingMoreTasks = false;
 try { superadminTaskView = localStorage.getItem('taskerph-superadmin-task-view') === 'cards' ? 'cards' : 'list'; } catch (error) { void error; }
 function renderAccountActivityUsers() {
   const filter = $('#account-activity-filter')?.value || 'all';
@@ -641,6 +644,7 @@ function renderAccountActivityUsers() {
 }
 function renderAccountActivity(payload) {
   accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [], tasks: Array.isArray(payload.tasks) ? payload.tasks : [], stats: payload.stats || {} };
+  superadminHasMoreTasks = Boolean(payload.has_more_tasks);
   const users = accountActivityData.users;
   const active = users.filter((user) => user.last_seen_at && Date.now() - new Date(user.last_seen_at).getTime() <= 5 * 60 * 1000).length;
   const admins = users.filter((user) => user.role === 'admin').length;
@@ -678,7 +682,14 @@ function renderAccountActivity(payload) {
   const term = ($('#superadmin-user-search')?.value || '').trim().toLocaleLowerCase();
   const role = $('#superadmin-user-filter')?.value || 'all';
   const users = accountActivityData.users.filter((user) => user.role !== 'superadmin' && (role === 'all' || user.role === role) && `${user.first_name} ${user.middle_initial || ''} ${user.last_name} ${user.email}`.toLocaleLowerCase().includes(term));
-  body.innerHTML = users.length ? users.map((user) => `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`)}</td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3"><div class="flex items-center gap-2"><button data-superadmin-view-profile="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">View profile</button><button data-edit-user="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">Edit</button><button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button></div></td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
+  const pageSize = 10;
+  const pageCount = Math.max(1,Math.ceil(users.length/pageSize));
+  superadminUserPage = Math.min(superadminUserPage,pageCount);
+  const visibleUsers = users.slice((superadminUserPage-1)*pageSize,superadminUserPage*pageSize);
+  body.innerHTML = visibleUsers.length ? visibleUsers.map((user) => `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`)}</td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3"><div class="flex items-center gap-2"><button data-superadmin-view-profile="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">View profile</button><button data-edit-user="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">Edit</button><button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button></div></td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
+  let pagination = $('#superadmin-user-pagination');
+  if (!pagination) { body.closest('.overflow-x-auto')?.insertAdjacentHTML('afterend','<div id="superadmin-user-pagination" class="superadmin-pagination"></div>'); pagination = $('#superadmin-user-pagination'); }
+  if (pagination) { pagination.hidden = users.length <= pageSize; pagination.innerHTML = users.length > pageSize ? `<span>Showing ${(superadminUserPage-1)*pageSize+1}–${Math.min(superadminUserPage*pageSize,users.length)} of ${users.length} users</span><div><button type="button" data-superadmin-user-page="${superadminUserPage-1}" ${superadminUserPage===1?'disabled':''} aria-label="Previous user page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button><strong>Page ${superadminUserPage} of ${pageCount}</strong><button type="button" data-superadmin-user-page="${superadminUserPage+1}" ${superadminUserPage===pageCount?'disabled':''} aria-label="Next user page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>` : ''; }
 }
 function renderSuperadminTasks() {
   const container = $('#account-activity-tasks');
@@ -693,7 +704,8 @@ function renderSuperadminTasks() {
     const searchable = `${task.id} ${task.title} ${task.category} ${task.status} ${task.location} ${task.description} ${task.budget} ${owner.first_name} ${owner.last_name} ${owner.email}`;
     return searchable.toLocaleLowerCase().includes(term);
   });
-  if ($('#superadmin-task-result-count')) $('#superadmin-task-result-count').textContent = `Showing ${tasks.length} of ${allTasks.length} tasks`;
+  const totalPlatformTasks = Number(accountActivityData.stats?.total_tasks) || allTasks.length;
+  if ($('#superadmin-task-result-count')) $('#superadmin-task-result-count').textContent = `Showing ${tasks.length} matching · ${allTasks.length} loaded of ${totalPlatformTasks} tasks`;
   container.className = superadminTaskView === 'cards' ? 'superadmin-task-cards' : 'superadmin-task-list';
   const content = tasks.map((task) => {
     const owner = task.owner || {};
@@ -709,6 +721,20 @@ function renderSuperadminTasks() {
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-pressed', String(active));
   });
+  let loadMoreButton = $('#superadmin-task-load-more');
+  if (!loadMoreButton) { container.insertAdjacentHTML('afterend','<div class="superadmin-load-more-wrap"><button type="button" id="superadmin-task-load-more" class="superadmin-load-more-button"></button></div>'); loadMoreButton = $('#superadmin-task-load-more'); }
+  if (loadMoreButton) { loadMoreButton.hidden = !superadminHasMoreTasks; loadMoreButton.disabled = superadminLoadingMoreTasks; loadMoreButton.innerHTML = superadminLoadingMoreTasks ? '<i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading...' : '<i class="fa-solid fa-chevron-down mr-2" aria-hidden="true"></i>Load more tasks'; }
+}
+async function loadMoreSuperadminTasks() {
+  if (superadminLoadingMoreTasks || !superadminHasMoreTasks) return;
+  superadminLoadingMoreTasks = true;
+  renderSuperadminTasks();
+  try {
+    const payload = await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'more_tasks',offset:accountActivityData.tasks.length})});
+    accountActivityData.tasks.push(...(payload.tasks||[]));
+    superadminHasMoreTasks = Boolean(payload.has_more_tasks);
+  } catch (error) { notify(error.message,'error'); }
+  finally { superadminLoadingMoreTasks = false; renderSuperadminTasks(); }
 }
 async function loadAccountActivity() {
   if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can view account activity.', 'error'); return; }
@@ -1421,6 +1447,9 @@ async function resumeAuthIntent(intent) {
   }
 }
 document.addEventListener('click', async (event) => {
+  const userPageButton = event.target.closest('[data-superadmin-user-page]');
+  if (userPageButton) { superadminUserPage = Number(userPageButton.dataset.superadminUserPage) || 1; renderSuperadminUsers(); return; }
+  if (event.target.closest('#superadmin-task-load-more')) { await loadMoreSuperadminTasks(); return; }
   const taskViewButton = event.target.closest('[data-admin-task-view]');
   if (taskViewButton) {
     event.preventDefault();
@@ -1711,8 +1740,8 @@ $('#profile-picture-input').addEventListener('change', async (event) => { const 
 $('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#account-activity-filter')?.addEventListener('change', renderAccountActivityUsers);
 $('#account-activity-search')?.addEventListener('input', renderAccountActivityUsers);
-$('#superadmin-user-filter')?.addEventListener('change', renderSuperadminUsers);
-$('#superadmin-user-search')?.addEventListener('input', renderSuperadminUsers);
+$('#superadmin-user-filter')?.addEventListener('change', () => { superadminUserPage = 1; renderSuperadminUsers(); });
+$('#superadmin-user-search')?.addEventListener('input', () => { superadminUserPage = 1; renderSuperadminUsers(); });
 $('#superadmin-task-search')?.addEventListener('input', renderSuperadminTasks);
 $('#superadmin-task-status-filter')?.addEventListener('change', renderSuperadminTasks);
 $('#admin-global-search')?.addEventListener('keydown', (event) => {

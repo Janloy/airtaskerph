@@ -859,6 +859,16 @@ body.dark-mode .superadmin-bid-message p,body.dark-mode .superadmin-profile-bid 
 .superadmin-task-search:focus-within { border-color:#7cc9bc; box-shadow:0 0 0 3px rgba(8,126,120,.1); }
 .superadmin-task-search input { width:100%; border:0; outline:0; color:#1e293b; background:transparent; font-size:.86rem; }
 .superadmin-task-search input::placeholder { color:#94a3b8; }
+.superadmin-pagination { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1rem; border-top:1px solid #e2e8f0; padding:1rem .25rem 0; color:#64748b; font-size:.8rem; }
+.superadmin-pagination[hidden] { display:none; }
+.superadmin-pagination > div { display:flex; align-items:center; gap:.65rem; }
+.superadmin-pagination strong { color:#334155; font-size:.78rem; }
+.superadmin-pagination button { display:grid; width:2.25rem; height:2.25rem; place-items:center; border:1px solid #dbe3e7; border-radius:.65rem; color:#087f78; background:#fff; }
+.superadmin-pagination button:disabled { cursor:not-allowed; opacity:.4; }
+.superadmin-load-more-wrap { display:flex; justify-content:center; padding:1.25rem .5rem .25rem; }
+.superadmin-load-more-button { min-height:2.8rem; border:1px solid #b9ddd7; border-radius:.8rem; padding:0 1.2rem; color:#076c64; background:#f0faf8; font-size:.85rem; font-weight:800; transition:background .15s ease,transform .15s ease; }
+.superadmin-load-more-button:hover:not(:disabled) { transform:translateY(-1px); background:#e2f5f1; }
+.superadmin-load-more-button:disabled { cursor:wait; opacity:.7; }
 .superadmin-task-view-toggle { display:inline-flex; gap:.25rem; border:1px solid #dbe3e7; border-radius:.8rem; padding:.25rem; background:#f8fafc; }
 .superadmin-task-view-toggle button { display:inline-flex; min-height:2.35rem; align-items:center; gap:.45rem; border:1px solid transparent; border-radius:.6rem; padding:0 .8rem; color:#64748b; font-size:.8rem; font-weight:750; }
 .superadmin-task-view-toggle button.is-active { border-color:#c9e8e2; color:#075e59; background:#e4f4f1; box-shadow:0 1px 3px rgba(15,23,42,.07); }
@@ -888,6 +898,11 @@ body.dark-mode.superadmin-mode .superadmin-task-view-toggle button.is-active { b
 body.dark-mode.superadmin-mode .superadmin-task-count { color:#a8b5c7; }
 body.dark-mode.superadmin-mode .superadmin-task-search { border-color:#334155; color:#94a3b8; background:#172334; }
 body.dark-mode.superadmin-mode .superadmin-task-search input { color:#e2e8f0; }
+body.dark-mode.superadmin-mode .superadmin-pagination { border-color:#334155; color:#a8b5c7; }
+body.dark-mode.superadmin-mode .superadmin-pagination strong { color:#e2e8f0; }
+body.dark-mode.superadmin-mode .superadmin-pagination button { border-color:#334155; color:#8ce0d2; background:#172334; }
+body.dark-mode.superadmin-mode .superadmin-load-more-button { border-color:#285652; color:#c3fff2; background:#173b3b; }
+body.dark-mode.superadmin-mode .superadmin-load-more-button:hover:not(:disabled) { background:#20504c; }
 body.dark-mode.superadmin-mode .superadmin-task-status { color:#a8b5c7; }
 body.dark-mode.superadmin-mode .superadmin-task-status select { border-color:#334155; color:#e2e8f0; background:#172334; }
 body.dark-mode.superadmin-mode .superadmin-task-list .superadmin-task-row,body.dark-mode.superadmin-mode .superadmin-task-card { border-color:#334155; background:#172334; }
