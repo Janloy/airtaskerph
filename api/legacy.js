@@ -315,6 +315,27 @@ export default async function handler(req, res) {
         await logActivity(s,profile.id,'report_reviewed',`Report #${id} marked ${status.toLowerCase()}`,'report',id);
         return res.status(200).json(ok('Report updated.'));
       }
+      if (action === 'update_user') {
+        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can edit user accounts.',403);
+        const targetId = Number(body.user_id);
+        if (!Number.isSafeInteger(targetId) || targetId < 1 || targetId === Number(profile.id)) throw fail('Choose a valid account to edit.',422);
+        const target = await rows(s.from('user_profiles').select('id,auth_user_id,first_name,middle_initial,last_name,email,role').eq('id',targetId).maybeSingle());
+        if (!target) throw fail('Account not found.',404);
+        if (target.role === 'superadmin') throw fail('Superadmin accounts cannot be edited from User Management.',403);
+        const first_name = clean(body.first_name,80), middle_initial = clean(body.middle_initial,1), last_name = clean(body.last_name,80);
+        const email = clean(body.email,190).toLowerCase(), role = clean(body.role,20);
+        if (!first_name || !last_name) throw fail('Enter the user’s first and last name.',422);
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail('Enter a valid email address.',422);
+        if (!['user','admin'].includes(role)) throw fail('Choose either User or Admin as the role.',422);
+        if (email !== String(target.email).toLowerCase()) {
+          const { error } = await s.auth.admin.updateUserById(target.auth_user_id,{email,email_confirm:true});
+          if (error) throw fail(error.message,400);
+        }
+        const [updated] = await rows(s.from('user_profiles').update({first_name,middle_initial,last_name,email,role}).eq('id',targetId).select('id,first_name,middle_initial,last_name,email,role,created_at').limit(1));
+        if (!updated) throw fail('The account could not be updated.',500);
+        await logActivity(s,profile.id,'user_updated',`Updated account: ${first_name} ${last_name} (${role})`,'user',targetId);
+        return res.status(200).json(ok('User account updated.',{user:{...updated,id:Number(updated.id)}}));
+      }
       if (action === 'delete_user') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can delete accounts.',403);
         const targetId=Number(body.user_id);

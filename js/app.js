@@ -676,7 +676,7 @@ function renderAccountActivity(payload) {
   const term = ($('#superadmin-user-search')?.value || '').trim().toLocaleLowerCase();
   const role = $('#superadmin-user-filter')?.value || 'all';
   const users = accountActivityData.users.filter((user) => user.role !== 'superadmin' && (role === 'all' || user.role === role) && `${user.first_name} ${user.middle_initial || ''} ${user.last_name} ${user.email}`.toLocaleLowerCase().includes(term));
-  body.innerHTML = users.length ? users.map((user) => `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`)}</td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3"><button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button></td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
+  body.innerHTML = users.length ? users.map((user) => `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`)}</td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3"><div class="flex items-center gap-2"><button data-edit-user="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">Edit</button><button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button></div></td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
 }
 async function loadAccountActivity() {
   if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can view account activity.', 'error'); return; }
@@ -1340,6 +1340,20 @@ document.addEventListener('click', async (event) => {
   const adminPageButton = event.target.closest('[data-admin-page]');
   if (adminPageButton) { event.preventDefault(); event.stopImmediatePropagation(); const targetPage = document.getElementById(adminPageButton.dataset.adminPage); if (!targetPage) { notify('This Superadmin page could not be found. Refresh the page and try again.', 'error'); return; } showPage(targetPage.id); return; }
   const deleteUserButton = event.target.closest('[data-delete-user]');
+  const editUserButton = event.target.closest('[data-edit-user]');
+  if (editUserButton) {
+    const user = accountActivityData.users.find((item) => Number(item.id) === Number(editUserButton.dataset.editUser));
+    if (!user || user.role === 'superadmin') return;
+    const form = $('#admin-edit-user-form');
+    form.elements.user_id.value = String(user.id);
+    form.elements.first_name.value = user.first_name || '';
+    form.elements.middle_initial.value = user.middle_initial || '';
+    form.elements.last_name.value = user.last_name || '';
+    form.elements.email.value = user.email || '';
+    form.elements.role.value = user.role;
+    openModal('#admin-edit-user-modal');
+    return;
+  }
   if (deleteUserButton) {
     const user = accountActivityData.users.find((item) => Number(item.id) === Number(deleteUserButton.dataset.deleteUser));
     if (!user || user.role === 'superadmin' || !window.confirm(`Permanently delete ${user.first_name} ${user.last_name} and their related profile content? This cannot be undone.`)) return;
@@ -1564,6 +1578,13 @@ $('#profile-confirm-form').addEventListener('submit', async (event) => {
 });
 $('#change-email-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating email...'); try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'update_email', ...Object.fromEntries(new FormData(event.target)) }) }); state.user = payload.user; event.target.elements.current_password.value = ''; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#change-password-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Updating password...'); try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'change_password', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#admin-edit-user-form')?.addEventListener('submit', async (event) => {
+  event.preventDefault(); const form = event.currentTarget; setBusy(form, true, 'Saving account...');
+  try {
+    const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'update_user', ...Object.fromEntries(new FormData(form)) }) });
+    closeModal('admin-edit-user-modal'); notify(payload.message); await loadAccountActivity();
+  } catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); }
+});
 $('#admin-edit-profile')?.addEventListener('submit', async (event) => {
   event.preventDefault(); const form = event.currentTarget; setBusy(form, true, 'Saving profile...');
   try { const payload = await api('api/profile_actions', { method: 'POST', body: JSON.stringify({ action: 'update_profile', ...Object.fromEntries(new FormData(form)) }) }); state.user = payload.user; renderAuth(); renderSuperadminAccountSettings(); form.elements.current_password.value = ''; notify(payload.message); }

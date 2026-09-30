@@ -769,3 +769,7 @@ body.dark-mode.superadmin-mode .superadmin-sidebar button.is-active,
 body.dark-mode.superadmin-mode .superadmin-sidebar button[aria-current="page"] { border-color: #285652 !important; background: #173b3b !important; color: #c3fff2 !important; box-shadow: inset 3px 0 #47c7b1; }
 body.dark-mode.superadmin-mode .superadmin-sidebar button.is-active::before,
 body.dark-mode.superadmin-mode .superadmin-sidebar button[aria-current="page"]::before { color: #a4f2e2 !important; }
+body.superadmin-mode #user-management-page .superadmin-user-edit { border-color: #d6e0e9; background: #fff; color: #334155; }
+body.superadmin-mode #user-management-page .superadmin-user-edit:hover { border-color: #9ecfc8; background: #eff8f6; color: #075e59; }
+body.dark-mode.superadmin-mode #user-management-page .superadmin-user-edit { border-color: #43536a; background: #1a2634; color: #e2e8f0; }
+body.dark-mode.superadmin-mode #user-management-page .superadmin-user-edit:hover { border-color: #39897e; background: #173b3b; color: #c3fff2; }
