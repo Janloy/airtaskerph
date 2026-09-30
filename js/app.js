@@ -1767,7 +1767,8 @@ document.addEventListener('click', async (event) => {
   }
   const repostButton = event.target.closest('[data-repost-task]');
   if (repostButton) {
-    if (!window.confirm('Create a new open listing using this completed task’s details?')) return;
+    const approved = await decisionModal({ title: 'Repost this task?', message: 'Create a new open listing using this completed task’s details?', confirmLabel: 'Create listing' });
+    if (!approved) return;
     setButtonBusy(repostButton, true, 'Reposting...');
     try { const payload = await api('api/create_task?action=repost', { method: 'POST', body: JSON.stringify({ task_id: repostButton.dataset.repostTask }) }); notify(payload.message); await loadTasks(); await loadMyTasks(); }
     catch (error) { notify(error.message, 'error'); }
@@ -1935,7 +1936,10 @@ document.addEventListener('click', async (event) => {
       cancelDetails = await decisionModal({ title: 'Cancel this assignment?', message: 'This will stop the active task and notify the other participant.', confirmLabel: 'Cancel assignment', danger: true, withReason: true });
       if (!cancelDetails) return;
     }
-    if(lifecycleAction==='confirm_completion'&&!window.confirm('Confirm that the task is complete? This will close the task and allow both of you to leave reviews.')) return;
+    if(lifecycleAction==='confirm_completion') {
+      const approved = await decisionModal({ title: 'Confirm task completion?', message: 'This will close the task and allow both participants to leave reviews.', confirmLabel: 'Confirm completion' });
+      if (!approved) return;
+    }
     lifecycleButton.disabled=true;
     try { const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:lifecycleAction,task_id:taskId,...(cancelDetails?{reason:cancelDetails.reason}:{})})}); notify(payload.message); if(document.querySelector('.app-page:not(.hidden)')?.id==='my-bids-page') await loadMyBids(); else await loadMyTasks(); void updateNotificationCounts(); }
     catch(error){notify(error.message,'error');lifecycleButton.disabled=false;}
@@ -2043,7 +2047,10 @@ async function publishTaskForm(form) {
   try {
     const snapshot = await taskFormPayload(form);
     const duplicate = await api('api/create_task?action=check_duplicate', { method: 'POST', body: JSON.stringify({ title: snapshot.title }) });
-    if (duplicate.duplicate && !window.confirm('You already have an active task with this title. Do you want to publish another copy?')) return;
+    if (duplicate.duplicate) {
+      const approved = await decisionModal({ title: 'Publish a duplicate task?', message: 'You already have an active task with this title. Do you want to publish another copy?', confirmLabel: 'Publish another' });
+      if (!approved) return;
+    }
     const draftId = form.elements.namedItem('draft_id')?.value;
     const payload = await api('api/create_task', { method: 'POST', body: JSON.stringify({ ...snapshot, allow_duplicate: Boolean(duplicate.duplicate) }) });
     if (draftId) api('api/create_task?action=draft_delete', { method: 'POST', body: JSON.stringify({ draft_id: draftId }) }).catch(() => {});
