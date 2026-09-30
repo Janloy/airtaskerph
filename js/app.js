@@ -223,37 +223,38 @@ function openModal(id) {
   document.body.classList.add('overflow-hidden');
 }
 function closeModal(id) {
-  const modal = $(id);
+  const modalId = id.startsWith('#') ? id.slice(1) : id;
+  const modal = $(`#${modalId}`);
   if (modal) {
     modal.classList.add('hidden');
     modal.classList.remove('modal-active');
   }
-  if (id === 'profile-confirm-modal') {
+  if (modalId === 'profile-confirm-modal') {
     $('#profile-confirm-form')?.reset();
     $('#profile-confirm-error')?.classList.add('hidden');
     $('#profile-confirm-error')?.replaceChildren();
   }
-  if (id === 'conversation-modal' && state.conversationTimer) { clearInterval(state.conversationTimer); state.conversationTimer = null; }
-  if (id === 'account-activity-modal' && accountActivityTimer) { clearInterval(accountActivityTimer); accountActivityTimer = null; }
+  if (modalId === 'conversation-modal' && state.conversationTimer) { clearInterval(state.conversationTimer); state.conversationTimer = null; }
+  if (modalId === 'account-activity-modal' && accountActivityTimer) { clearInterval(accountActivityTimer); accountActivityTimer = null; }
   if (!document.querySelector('.modal-backdrop:not(.hidden)')) {
     document.body.classList.remove('overflow-hidden');
     document.documentElement.classList.remove('overflow-hidden');
     document.body.style.removeProperty('overflow');
     document.documentElement.style.removeProperty('overflow');
   }
-  if (id === 'logout-confirm-modal' && state.logoutTrigger) {
+  if (modalId === 'logout-confirm-modal' && state.logoutTrigger) {
     const trigger = state.logoutTrigger;
     state.logoutTrigger = null;
     requestAnimationFrame(() => { if (trigger.isConnected) trigger.focus({ preventScroll: true }); });
   }
-  if (id === 'auth-required-modal') {
+  if (modalId === 'auth-required-modal') {
     state.authPromptOpen = false;
     state.authReturnIntent = null;
     const trigger = state.authPromptTrigger;
     state.authPromptTrigger = null;
     requestAnimationFrame(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }); });
   }
-  if (id === 'bid-auth-modal') {
+  if (modalId === 'bid-auth-modal') {
     state.authPromptOpen = false;
     state.authReturnIntent = null;
     const trigger = state.authPromptTrigger;
