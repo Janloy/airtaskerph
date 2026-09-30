@@ -546,6 +546,7 @@ function protectedRouteForElement(target) {
 function showPage(pageId) {
   const protectedIntent = { 'create-task-page': 'post', 'my-tasks-modal': 'tasks', 'my-bids-page': 'bids', 'profile-page': 'profile', 'saved-tasks-page': 'saved', 'conversation-modal': 'messages' }[pageId];
   if (protectedIntent && requestAuthGate(protectedIntent)) return false;
+  if (pageId === 'account-activity-modal' && state.user?.role !== 'superadmin') { notify('Only the Superadmin can open this dashboard.', 'error'); return false; }
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
   $('main')?.classList.toggle('hidden', pageId && pageId !== 'marketplace-page');
   const mobileNav = document.querySelector('.mobile-bottom-nav');
@@ -606,7 +607,7 @@ function formatActivityTimestamp(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Not recorded yet' : new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
-let accountActivityData = { users: [], events: [], reports: [] };
+let accountActivityData = { users: [], events: [], reports: [], tasks: [], stats: {} };
 function renderAccountActivityUsers() {
   const filter = $('#account-activity-filter')?.value || 'all';
   const search = ($('#account-activity-search')?.value || '').trim().toLocaleLowerCase();
@@ -625,7 +626,7 @@ function renderAccountActivityUsers() {
   }).join('') : `<p class="text-sm text-[#68727c]">No ${filter === 'admins' ? 'admins' : filter === 'users' ? 'users' : 'accounts'} found.</p>`;
 }
 function renderAccountActivity(payload) {
-  accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [] };
+  accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [], tasks: Array.isArray(payload.tasks) ? payload.tasks : [], stats: payload.stats || {} };
   const users = accountActivityData.users;
   const now = Date.now();
   const active = users.filter((user) => user.last_seen_at && now - new Date(user.last_seen_at).getTime() <= 5 * 60 * 1000).length;
@@ -633,10 +634,11 @@ function renderAccountActivity(payload) {
   const members = users.filter((user) => user.role === 'user').length;
   $('#account-activity-summary').className = 'grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3';
   $('#account-activity-summary').innerHTML = [
-    ['Admins', admins], ['Users', members], ['Open reports', accountActivityData.reports.filter((r) => r.status === 'Open').length], ['Active in last 5 min', active]
+    ['Users', members], ['Admins', admins], ['All tasks', accountActivityData.stats.total_tasks || 0], ['Open tasks', accountActivityData.stats.open_tasks || 0], ['Completed', accountActivityData.stats.completed_tasks || 0], ['Open reports', accountActivityData.reports.filter((r) => r.status === 'Open').length], ['Active now', active]
   ].map(([label, value]) => `<div class="rounded-lg border border-[#dbe3e7] bg-[#f8fafc] px-3 py-2"><span class="block text-xs text-[#68727c]">${label}</span><strong class="text-lg">${value}</strong></div>`).join('');
   $('#account-activity-events').innerHTML = accountActivityData.events.length ? accountActivityData.events.map((event) => `<article class="rounded-lg border border-[#dbe3e7] p-3"><strong>${escapeHtml(event.summary)}</strong><p class="mt-1 text-xs text-[#68727c]">${escapeHtml(event.user ? `${event.user.first_name} ${event.user.last_name} · ${event.user.email}` : 'System')} · ${escapeHtml(formatActivityTimestamp(event.created_at))}</p></article>`).join('') : '<p class="text-sm text-[#68727c]">No activity recorded yet.</p>';
   $('#account-activity-reports').innerHTML = accountActivityData.reports.length ? accountActivityData.reports.map((report) => `<article class="rounded-lg border border-[#dbe3e7] p-3"><div class="flex flex-wrap items-start justify-between gap-2"><div><strong>${escapeHtml(report.task?.title || 'Removed task')}</strong><p class="text-sm">${escapeHtml(report.reason)} · ${escapeHtml(report.status)}</p><p class="text-xs text-[#68727c]">${escapeHtml(report.reporter ? `${report.reporter.first_name} ${report.reporter.last_name}` : 'Member')} · ${escapeHtml(formatActivityTimestamp(report.created_at))}</p>${report.details ? `<p class="mt-2 text-sm">${escapeHtml(report.details)}</p>` : ''}</div>${report.status === 'Open' ? `<div class="flex gap-2"><button data-review-report="${report.id}" data-report-status="Reviewed" class="rounded border px-3 py-1 text-sm">Mark reviewed</button><button data-review-report="${report.id}" data-report-status="Dismissed" class="rounded border px-3 py-1 text-sm">Dismiss</button></div>` : ''}</div></article>`).join('') : '<p class="text-sm text-[#68727c]">No reports submitted.</p>';
+  $('#account-activity-tasks').innerHTML = accountActivityData.tasks.length ? accountActivityData.tasks.map((task) => `<article class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#dbe3e7] p-3"><div><strong>${escapeHtml(task.title)}</strong><p class="text-xs text-[#68727c]">${escapeHtml(task.category)} · ${escapeHtml(task.status)} · ₱${escapeHtml(Number(task.budget).toLocaleString('en-PH'))}</p><p class="text-xs text-[#68727c]">${escapeHtml(task.owner ? `${task.owner.first_name} ${task.owner.last_name} · ${task.owner.email}` : '')}</p></div><button data-delete="${Number(task.id)}" class="rounded border border-red-200 px-3 py-1 text-sm font-bold text-red-600">Remove task</button></article>`).join('') : '<p class="text-sm text-[#68727c]">No tasks posted yet.</p>';
   renderAccountActivityUsers();
 }
 async function loadAccountActivity() {
@@ -653,7 +655,7 @@ async function loadAccountActivity() {
 async function openAccountActivity() {
   if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can view account activity.', 'error'); return; }
   closeDrawer();
-  openModal('#account-activity-modal');
+  showPage('account-activity-modal');
   await loadAccountActivity();
   if (accountActivityTimer) clearInterval(accountActivityTimer);
   accountActivityTimer = setInterval(() => {
@@ -1123,6 +1125,7 @@ async function init() {
   if (state.user) initialLoads.push(refreshSavedTaskData().catch((error) => notify(error.message, 'error')));
   await Promise.all(initialLoads);
   if (state.user) renderTasks();
+  if (state.user?.role === 'superadmin') { showPage('account-activity-modal'); await openAccountActivity(); }
   startNotificationPolling(); startTaskPolling(); await finishMobileSplash(mobileSplash); maybeShowInstallGuide();
 }
 window.addEventListener('storage', async (event) => {
@@ -1154,6 +1157,7 @@ window.addEventListener('storage', async (event) => {
     renderAuth();
     renderTasks();
     if (state.user && (!wasLoggedIn || Number(previousUserId) !== Number(state.user.id))) await loadTasks();
+    if (state.user?.role === 'superadmin' && (!wasLoggedIn || Number(previousUserId) !== Number(state.user.id))) await openAccountActivity();
     await updateNotificationCounts();
   } catch (error) { notify(error.message, 'error'); }
 });
@@ -1421,7 +1425,7 @@ $('#refresh-tasks-button').addEventListener('click', async (event) => {
 });
 $('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); closeModal('task-modal'); setBusy(event.target, false); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#create-task-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Posting task…'); try { await api('api/create_task', { method: 'POST', body: JSON.stringify(await taskFormPayload(event.target)) }); event.target.reset(); event.target.querySelector('.task-photo-previews')?.replaceChildren(); setBusy(event.target, false); showPage('marketplace-page'); notify('Your task is live.'); loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
-$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in…'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage('marketplace-page'); await loadTasks(); startNotificationPolling(); notify(payload.message); await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in…'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage(state.user.role === 'superadmin' ? 'account-activity-modal' : 'marketplace-page'); await loadTasks(); if (state.user.role === 'superadmin') await openAccountActivity(); startNotificationPolling(); notify(payload.message); await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-profile-form').addEventListener('submit', (event) => {
   event.preventDefault();

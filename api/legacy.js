@@ -279,11 +279,16 @@ export default async function handler(req, res) {
       ({ profile } = await userFor(req,s, action !== 'activity_dashboard'));
       if (action === 'activity_dashboard') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view account activity.',403);
-        const [accounts, events, reports] = await Promise.all([
+        const [accounts, events, reports, tasks, totalTasks, completedTasks, openTasks] = await Promise.all([
           rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at').order('role').order('first_name')),
           rows(s.from('account_activity').select('id,event_type,summary,reference_type,reference_id,created_at,user:user_profiles!account_activity_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(40)),
-          rows(s.from('task_reports').select('id,task_id,reason,details,status,created_at,task:tasks!task_reports_task_id_fkey(title),reporter:user_profiles!task_reports_reporter_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(30))
+          rows(s.from('task_reports').select('id,task_id,reason,details,status,created_at,task:tasks!task_reports_task_id_fkey(title),reporter:user_profiles!task_reports_reporter_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(30)),
+          rows(s.from('tasks').select('id,title,category,status,budget,location,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(50)),
+          s.from('tasks').select('id',{count:'exact',head:true}),
+          s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Completed'),
+          s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Open')
         ]);
+        for (const result of [totalTasks,completedTasks,openTasks]) if (result.error) throw fail(result.error.message);
         const ids = accounts.map((account) => account.id);
         const presence = ids.length ? await rows(s.from('account_presence').select('user_id,last_login_at,last_seen_at').in('user_id',ids)) : [];
         const presenceByUser = new Map(presence.map((item) => [Number(item.user_id), item]));
@@ -292,7 +297,7 @@ export default async function handler(req, res) {
           last_name: account.last_name, email: account.email, role: account.role, created_at: account.created_at,
           ...(presenceByUser.get(Number(account.id)) || { last_login_at: null, last_seen_at: null })
         }));
-        return res.status(200).json(ok('',{users,events,reports}));
+        return res.status(200).json(ok('',{users,events,reports,tasks,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0,open_tasks:openTasks.count||0}}));
       }
       if (action === 'submit_report') {
         const taskId=Number(body.task_id), reason=clean(body.reason,80), details=clean(body.details,1000);
