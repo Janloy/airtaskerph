@@ -1688,11 +1688,34 @@ async function openConversation(taskId, otherUserId) {
   state.conversationLastFullSync = 0;
   $('#conversation-task-id').value = taskId;
   $('#conversation-user-id').value = otherUserId;
+  if (!$('#conversation-task-summary')) {
+    $('#conversation-user-id').insertAdjacentHTML('afterend', '<div id="conversation-task-summary" class="card mt-6 flex flex-col justify-between gap-4 border-l-4 border-l-[#008f8c] p-4 sm:flex-row sm:items-center"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">About this task</p><h2 id="conversation-task-title" class="mt-1 text-lg font-bold">Loading task...</h2><p id="conversation-task-meta" class="mt-1 text-sm text-[#52616c]"></p></div><button type="button" data-conversation-task-details class="touch-target shrink-0 rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">View task details</button></div>');
+  }
+  $('#conversation-task-title').textContent = 'Loading task...';
+  $('#conversation-task-meta').textContent = '';
+  const taskDetailsButton = $('[data-conversation-task-details]');
+  if (taskDetailsButton) taskDetailsButton.disabled = false;
   $('#conversation-list').innerHTML = '<p class="text-sm text-[#68727c]">Loading conversation...</p>';
   showPage('conversation-modal');
-  await refreshConversation();
+  await Promise.all([refreshConversation(), loadConversationTaskSummary(taskId)]);
   await updateNotificationCounts();
   state.conversationTimer = setInterval(refreshConversation, 5000);
+}
+async function loadConversationTaskSummary(taskId) {
+  try {
+    const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(taskId)}`);
+    if (Number($('#conversation-task-id')?.value) !== Number(taskId)) return;
+    const task = payload.task;
+    $('#conversation-task-title').textContent = task.title || `Task #${taskId}`;
+    $('#conversation-task-meta').textContent = [task.category, task.status, task.location].filter(Boolean).join(' · ');
+  } catch (error) {
+    if (Number($('#conversation-task-id')?.value) === Number(taskId)) {
+      $('#conversation-task-title').textContent = `Task #${taskId}`;
+      $('#conversation-task-meta').textContent = 'Task details are unavailable.';
+      const button = $('[data-conversation-task-details]');
+      if (button) button.disabled = true;
+    }
+  }
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
@@ -1949,6 +1972,15 @@ async function resumeAuthIntent(intent) {
   }
 }
 document.addEventListener('click', async (event) => {
+  if (event.target.closest('[data-conversation-task-details]')) {
+    const taskId = Number($('#conversation-task-id')?.value);
+    if (!taskId) return;
+    try {
+      const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(taskId)}`);
+      await openTask(payload.task);
+    } catch (error) { notify(error.message, 'error'); }
+    return;
+  }
   if (event.target.closest('[data-notifications]')) { closeDesktopProfileMenu(); closeDrawer(); await loadNotificationCenter(); return; }
   if (event.target.closest('[data-notifications-retry]')) { await loadNotificationCenter(); return; }
   if (event.target.closest('[data-notifications-mark-all]')) {
