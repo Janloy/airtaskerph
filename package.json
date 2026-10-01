@@ -2,7 +2,20 @@
   "name": "taskerph",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "vercel dev" },
-  "dependencies": { "@supabase/supabase-js": "^2.57.0" },
-  "devDependencies": { "vercel": "^48.0.0" }
+  "scripts": {
+    "dev": "vercel dev",
+    "app:sync": "cap sync",
+    "app:android": "cap open android",
+    "app:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
+    "@supabase/supabase-js": "^2.57.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
+    "vercel": "^48.0.0"
+  }
 }

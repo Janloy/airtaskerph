@@ -1,0 +1,18 @@
+{
+  "appId": "ph.airtaskerph.app",
+  "appName": "TaskerPH",
+  "webDir": "mobile-shell",
+  "server": {
+    "url": "https://airtaskerph.vercel.app",
+    "cleartext": false,
+    "allowNavigation": [
+      "airtaskerph.vercel.app"
+    ]
+  },
+  "ios": {
+    "contentInset": "automatic"
+  },
+  "android": {
+    "backgroundColor": "#101827"
+  }
+}
