@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { randomUUID } from 'node:crypto';
+import { createSign, randomUUID } from 'node:crypto';
 
 const url = process.env.SUPABASE_URL;
 const anon = process.env.SUPABASE_ANON_KEY;
@@ -11,6 +11,55 @@ const authClient = () => publicAuthClient || (publicAuthClient = createClient(ur
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const ok = (message = '', data = {}) => ({ success: true, message, ...data });
 const clean = (v, n = 255) => String(v ?? '').trim().slice(0, n);
+let cachedFcmAccessToken = '';
+let cachedFcmAccessTokenExpiresAt = 0;
+const base64url = (value) => Buffer.from(value).toString('base64url');
+async function sendPushToUser(s, userId, title, messageBody, data = {}) {
+  const projectId = process.env.FCM_PROJECT_ID;
+  const clientEmail = process.env.FCM_CLIENT_EMAIL;
+  const privateKey = (process.env.FCM_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  if (!projectId || !clientEmail || !privateKey || !userId) return;
+  const devices = await rows(s.from('push_device_tokens').select('token').eq('user_id', userId));
+  if (!devices.length) return;
+  if (!cachedFcmAccessToken || Date.now() >= cachedFcmAccessTokenExpiresAt - 60_000) {
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const unsigned = `${base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${base64url(JSON.stringify({
+      iss: clientEmail,
+      scope: 'https://www.googleapis.com/auth/firebase.messaging',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: issuedAt,
+      exp: issuedAt + 3600
+    }))}`;
+    const assertion = `${unsigned}.${createSign('RSA-SHA256').update(unsigned).sign(privateKey, 'base64url')}`;
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion })
+    });
+    const credentials = await response.json().catch(() => ({}));
+    if (!response.ok || !credentials.access_token) throw new Error(`Could not authenticate with Firebase: ${credentials.error_description || credentials.error || response.status}`);
+    cachedFcmAccessToken = credentials.access_token;
+    cachedFcmAccessTokenExpiresAt = Date.now() + Number(credentials.expires_in || 3600) * 1000;
+  }
+  const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`;
+  await Promise.all(devices.map(async ({ token }) => {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cachedFcmAccessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: {
+        token,
+        notification: { title: String(title || 'TaskerPH'), body: String(messageBody || '') },
+        data: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value ?? '')])),
+        android: { priority: 'HIGH', notification: { channel_id: 'taskerph_activity', sound: 'default' } }
+      } })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const status = result.error?.details?.find((detail) => detail.errorCode)?.errorCode;
+      if (status === 'UNREGISTERED') await s.from('push_device_tokens').delete().eq('token', token);
+      throw new Error(`Firebase push failed (${response.status}): ${result.error?.message || 'Unknown response'}`);
+    }
+  }));
+}
 const publicUser = (p) => ({ id: Number(p.id), first_name: p.first_name, middle_initial: p.middle_initial || '', last_name: p.last_name, email: p.email, role: p.role, avatar_path: p.avatar_path || null });
 const publicAvatarUrl = (s, path) => {
   if (!path) return null;
@@ -32,8 +81,12 @@ const logActivity = async (s, userId, eventType, summary, referenceType = null, 
 };
 const taskNotice = async (s, userId, taskId, eventType, title, message, dedupeKey) => {
   if (!userId || !taskId) return;
-  const { error } = await s.from('task_notifications').upsert({ user_id:userId, task_id:taskId, event_type:eventType, title:clean(title,120), body:clean(message,500), dedupe_key:dedupeKey }, { onConflict:'dedupe_key', ignoreDuplicates:true });
+  const { data, error } = await s.from('task_notifications').upsert({ user_id:userId, task_id:taskId, event_type:eventType, title:clean(title,120), body:clean(message,500), dedupe_key:dedupeKey }, { onConflict:'dedupe_key', ignoreDuplicates:true }).select('id');
   if (error) throw fail(error.message,400);
+  if (data?.length) {
+    try { await sendPushToUser(s, userId, title, message, { type:'task', task_id:taskId, event_type:eventType }); }
+    catch (pushError) { console.error('Task push notification failed:', pushError.message); }
+  }
 };
 const rows = async (q) => { const { data, error } = await q; if (error) throw fail(error.message, error.code === '23505' ? 409 : 400); return data; };
 const userFor = async (req, s, trackActivity = false) => {
@@ -222,6 +275,23 @@ export default async function handler(req, res) {
       if (query.get('category')) q = q.eq('category', query.get('category'));
       if (query.get('search')) { const term = query.get('search').replace(/[,%()]/g, ' '); q = q.or(`title.ilike.%${term}%,description.ilike.%${term}%,location.ilike.%${term}%`); }
       const tasks = await rows(q); return res.status(200).json(ok('', { tasks: await shapeTasks(s, tasks, profile, { mine: query.get('mine') === '1' }) }));
+    }
+    if (route === 'push_devices') {
+      ({ profile } = await userFor(req, s, true));
+      if (req.method !== 'POST') throw fail('Use POST to update push notification settings.', 405);
+      const token = clean(body.token, 4096);
+      const deviceAction = clean(body.device_action || action, 20);
+      if (!token || token.length < 40) throw fail('A valid device notification token is required.', 422);
+      if (deviceAction === 'register') {
+        const platform = ['android','ios'].includes(body.platform) ? body.platform : 'android';
+        await rows(s.from('push_device_tokens').upsert({ token, user_id:profile.id, platform, updated_at:new Date().toISOString() }, { onConflict:'token' }));
+        return res.status(200).json(ok('Push notifications enabled for this device.'));
+      }
+      if (deviceAction === 'unregister') {
+        await rows(s.from('push_device_tokens').delete().eq('token',token).eq('user_id',profile.id));
+        return res.status(200).json(ok('Push notifications disabled for this device.'));
+      }
+      throw fail('Unknown push device action.', 422);
     }
     if (route === 'create_task') {
       ({ profile } = await userFor(req, s, true));
@@ -738,7 +808,7 @@ export default async function handler(req, res) {
     }
     if (route === 'messages') {
       ({ profile } = await userFor(req,s, action !== 'list')); const taskId=Number(body.task_id||query.get('task_id')), other=Number(body.other_user_id||query.get('other_user_id'));
-      const t=await rows(s.from('tasks').select('user_id,bids(bidder_id)').eq('id',taskId).maybeSingle());
+      const t=await rows(s.from('tasks').select('user_id,title,bids(bidder_id)').eq('id',taskId).maybeSingle());
       const linkedBidders = new Set((t?.bids || []).map((bid) => Number(bid.bidder_id)));
       const myBid = linkedBidders.has(Number(profile.id));
       const otherBid = linkedBidders.has(other);
@@ -757,7 +827,7 @@ export default async function handler(req, res) {
         const messages=ms.map((m)=>({...m,sender_name:m.sender?`${m.sender.first_name} ${m.sender.last_name}`.trim():'TaskerPH member'}));
         return res.status(200).json(ok('',{messages}));
       }
-      if(action==='send') {const text=clean(body.body,2000);if(!text)throw fail('Message cannot be empty.',422);const [message]=await rows(s.from('messages').insert({task_id:taskId,sender_id:profile.id,recipient_id:other,body:text}).select('*'));return res.status(200).json(ok('Message sent.',{message}));}
+      if(action==='send') {const text=clean(body.body,2000);if(!text)throw fail('Message cannot be empty.',422);const [message]=await rows(s.from('messages').insert({task_id:taskId,sender_id:profile.id,recipient_id:other,body:text}).select('*'));try{await sendPushToUser(s,other,`Message from ${profile.first_name} ${profile.last_name}`.trim(),'You have a new message about a task.',{type:'message',task_id:taskId,other_user_id:profile.id});}catch(pushError){console.error('Message push notification failed:',pushError.message);}return res.status(200).json(ok('Message sent.',{message}));}
     }
     if (route === 'notifications') {
       ({ profile } = await userFor(req,s, action !== 'counts' && action !== 'task_messages' && action !== 'task_updates' && action !== 'center'));

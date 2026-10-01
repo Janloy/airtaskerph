@@ -10,6 +10,7 @@
     { "source": "/api/messages", "destination": "/api/legacy?path=messages" },
     { "source": "/api/notifications", "destination": "/api/legacy?path=notifications" },
     { "source": "/api/profile_actions", "destination": "/api/legacy?path=profile_actions" },
+    { "source": "/api/push_devices", "destination": "/api/legacy?path=push_devices" },
     { "source": "/api/saved_tasks", "destination": "/api/legacy?path=saved_tasks" },
     { "source": "/api/task_lifecycle", "destination": "/api/legacy?path=task_lifecycle" }
   ]

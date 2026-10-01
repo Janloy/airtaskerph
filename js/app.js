@@ -3,6 +3,7 @@ let myBidsData = [];
 let notificationCenterItems = [];
 const seenTaskUpdateToasts = new Set();
 const seenMessageToasts = new Set();
+let pendingNativePushOpen = null;
 let taskFetchSequence = 0;
 let taskFetchInFlight = false;
 let taskListLoaded = false;
@@ -102,6 +103,7 @@ async function refreshStoredAuth() {
   finally { authRefreshPromise = null; }
 }
 function handleExpiredAuth() {
+  void window.taskerphPushLogout?.();
   state.user = null;
   clearStoredAuth();
   applySystemAppearance();
@@ -862,6 +864,12 @@ function renderAuth() {
   if ($('#desktop-glass-opacity')) applyGlassOpacity(state.glassOpacity);
   updateSavedTaskCount(state.savedTaskIds.size);
   closeDesktopProfileMenu();
+  window.dispatchEvent(new Event('taskerph:auth-updated'));
+  if (state.user && pendingNativePushOpen) {
+    const pending = pendingNativePushOpen;
+    pendingNativePushOpen = null;
+    void handleNativePushOpen(pending);
+  }
 }
 function formatActivityTimestamp(value) {
   if (!value) return 'Not recorded yet';
@@ -1702,6 +1710,23 @@ async function openConversation(taskId, otherUserId) {
   await updateNotificationCounts();
   state.conversationTimer = setInterval(refreshConversation, 5000);
 }
+async function handleNativePushOpen(data = {}) {
+  if (!state.user) { pendingNativePushOpen = data; return; }
+  const taskId = Number(data.task_id);
+  if (data.type === 'message' && taskId && Number(data.other_user_id)) {
+    await openConversation(taskId, Number(data.other_user_id));
+    return;
+  }
+  if (taskId) {
+    try {
+      const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(taskId)}`);
+      await openTask(payload.task);
+      return;
+    } catch (error) { notify(error.message, 'error'); }
+  }
+  await loadNotificationCenter();
+}
+window.addEventListener('taskerph:push-open', (event) => { void handleNativePushOpen(event.detail || {}); });
 async function loadConversationTaskSummary(taskId) {
   try {
     const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(taskId)}`);
@@ -1868,6 +1893,7 @@ window.addEventListener('storage', async (event) => {
   } catch (error) { notify(error.message, 'error'); }
 });
 async function performLogout() {
+  await window.taskerphPushLogout?.();
   await api('api/auth?action=logout', { method: 'POST' });
   clearStoredAuth();
   state.logoutTrigger = null;

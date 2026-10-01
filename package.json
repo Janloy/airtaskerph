@@ -4,18 +4,21 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "app:sync": "cap sync",
-    "app:android": "cap open android",
-    "app:ios": "cap open ios"
+    "build:push": "node scripts/build-native-push.mjs",
+    "app:sync": "npm run build:push && node scripts/capacitor-cli.mjs sync",
+    "app:android": "npm run app:sync && node scripts/capacitor-cli.mjs open android",
+    "app:ios": "npm run app:sync && node scripts/capacitor-cli.mjs open ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
+    "@capacitor/push-notifications": "^8.1.2",
     "@supabase/supabase-js": "^2.57.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
+    "esbuild": "^0.25.0",
     "vercel": "^48.0.0"
   }
 }

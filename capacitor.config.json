@@ -14,5 +14,10 @@
   },
   "android": {
     "backgroundColor": "#101827"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["alert", "sound"]
+    }
   }
 }
