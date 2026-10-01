@@ -55,6 +55,7 @@ async function requestPushPermissionAndRegister() {
 
 async function initNativePush() {
   if (!Capacitor.isNativePlatform()) return;
+  document.documentElement.classList.add('capacitor-native-app');
   await PushNotifications.addListener('registration', ({ value }) => {
     deviceToken = value;
     lastRegisteredAccessToken = '';

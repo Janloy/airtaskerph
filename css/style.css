@@ -366,6 +366,22 @@ body.dark-mode.superadmin-mode #account-activity-title, body.dark-mode.superadmi
 @media (max-width: 1023px) { .desktop-only { display: none !important; } body { padding-bottom: 0; } main, .app-page { padding-bottom: calc(88px + env(safe-area-inset-bottom)); } input, select, textarea, .form-control { font-size: 16px !important; } .hero-copy h1 { font-size: 2.35rem; line-height: 1.05; } .mobile-drawer { padding-bottom: 88px; } }
 @media (min-width: 1024px) { .mobile-only { display: none !important; } }
 
+/* Keep the native Android header inside narrow WebView viewports without changing browser mobile layout. */
+@media (max-width: 400px) {
+  .capacitor-native-app .main-header > div { width: 100%; min-width: 0; gap: .5rem; padding-right: max(.75rem, env(safe-area-inset-right, 0px)); padding-left: max(.75rem, env(safe-area-inset-left, 0px)); }
+  .capacitor-native-app .main-header .brand { min-width: 0; flex: 0 1 auto; gap: .3rem; font-size: clamp(1rem, 4.7vw, 1.15rem); white-space: nowrap; }
+  .capacitor-native-app .main-header .brand > span { width: 2.2rem; height: 2.2rem; flex: 0 0 2.2rem; }
+  .capacitor-native-app .main-header .mobile-only { min-width: 0; flex: 0 0 auto; gap: .35rem; }
+  .capacitor-native-app .main-header .notification-trigger,
+  .capacitor-native-app .main-header .mobile-saved-button { width: 2.5rem; min-width: 2.5rem; height: 2.5rem; flex: 0 0 2.5rem; padding: 0; }
+}
+@media (max-width: 360px) {
+  .capacitor-native-app .main-header .mobile-only > span { font-size: .55rem; letter-spacing: .02em; }
+  .capacitor-native-app .main-header .brand > span { width: 2rem; height: 2rem; flex-basis: 2rem; }
+  .capacitor-native-app .main-header .notification-trigger,
+  .capacitor-native-app .main-header .mobile-saved-button { width: 2.35rem; min-width: 2.35rem; height: 2.35rem; flex-basis: 2.35rem; }
+}
+
 /* Desktop profile dropdown */
 .desktop-profile-root { z-index: 60; }
 .desktop-profile-trigger { min-width: 12rem; border-color: #e2e8f0; background: #fff; color: #0f172a; }
