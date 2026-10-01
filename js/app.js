@@ -110,6 +110,7 @@ function handleExpiredAuth() {
   state.savedTasks = [];
   state.savedTaskIds.clear();
   updateSavedTaskCount(0);
+  renderTasks();
   if (state.notificationTimer) clearInterval(state.notificationTimer);
   renderAuth();
   broadcastAuthChange();
@@ -1842,6 +1843,9 @@ window.addEventListener('storage', async (event) => {
       applySystemAppearance();
       applyGlassOpacity(0);
       state.myTasks = [];
+      state.savedTasks = [];
+      state.savedTaskIds.clear();
+      updateSavedTaskCount(0);
       if (state.notificationTimer) clearInterval(state.notificationTimer);
       if (wasLoggedIn) {
         closeDrawer();
@@ -1875,8 +1879,10 @@ async function performLogout() {
   state.savedTasks = [];
   state.savedTaskIds.clear();
   state.activeTask = null;
+  myBidsData = [];
   updateSavedTaskCount(0);
   renderSavedTasks();
+  renderTasks();
   broadcastAuthChange();
   renderAuth();
   await updateNotificationCounts();
@@ -2381,7 +2387,7 @@ async function publishTaskForm(form) {
 }
 $('#task-form').addEventListener('submit', (event) => { event.preventDefault(); void publishTaskForm(event.currentTarget); });
 $('#create-task-form').addEventListener('submit', (event) => { event.preventDefault(); void publishTaskForm(event.currentTarget); });
-$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in...'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; if (state.user.role !== "superadmin") await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage(state.user.role === 'superadmin' ? 'account-activity-modal' : 'marketplace-page'); if (state.user.role !== "superadmin") await loadTasks(); if (state.user.role === 'superadmin') await openAccountActivity(); startNotificationPolling(); notify(payload.message); if (state.user.role !== "superadmin") await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in...'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; renderTasks(); if (state.user.role !== "superadmin") await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage(state.user.role === 'superadmin' ? 'account-activity-modal' : 'marketplace-page'); if (state.user.role !== "superadmin") await loadTasks(); if (state.user.role === 'superadmin') await openAccountActivity(); startNotificationPolling(); notify(payload.message); if (state.user.role !== "superadmin") await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-profile-form').addEventListener('submit', (event) => {
   event.preventDefault();
