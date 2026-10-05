@@ -1016,6 +1016,14 @@ function ensureAdminControls() {
     }
     const accountSettings=nav.querySelector('[data-admin-page="superadmin-account-page"]');
     if (operations&&accountSettings&&operations.nextElementSibling!==accountSettings) nav.insertBefore(operations,accountSettings);
+    if (['admin','moderator'].includes(state.user?.role)) {
+      const order=new Map([['dashboard',0],['staff-dashboard-page',0],['user-management-page',1],['task-management-page',2],['report-management-page',3],['audit-log-page',4],['admin-operations-page',5],['superadmin-account-page',6]]);
+      const buttons=[...nav.children].filter((child)=>child.matches('button'));
+      buttons.sort((a,b)=>{
+        const target=(button)=>button.dataset.adminPage||(button.dataset.page==='account-activity-modal'?'dashboard':button.dataset.page)||'';
+        return (order.get(target(a))??99)-(order.get(target(b))??99);
+      }).forEach((button)=>nav.appendChild(button));
+    }
   });
   const summary = $('#account-activity-summary');
   if (summary && !$('#superadmin-trends')) summary.insertAdjacentHTML('afterend','<section id="superadmin-trends" class="superadmin-panel superadmin-trends"><div class="superadmin-panel-heading"><div><h3>Platform trends</h3><p>Daily registrations, task posts, completions, and reports</p></div><button type="button" id="admin-trends-export" class="superadmin-text-link"><i class="fa-solid fa-download mr-1" aria-hidden="true"></i>Download CSV</button></div><div class="admin-workspace-controls superadmin-trend-controls"><label>Period<select id="admin-trend-days"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></label><label>Task category<select id="admin-trend-category"><option value="">All categories</option><option>Home &amp; Repair</option><option>Cleaning Services</option><option>Moving &amp; Transport</option><option>Delivery &amp; Logistics</option><option>IT &amp; Tech Support</option><option>Digital &amp; Creative</option><option>Events &amp; Entertainment</option><option>Errands &amp; Shopping</option><option>Tutoring &amp; Training</option><option>Beauty &amp; Wellness</option><option>Pet Care</option><option>Business Services</option></select></label></div><div id="superadmin-trend-chart"></div></section>');
