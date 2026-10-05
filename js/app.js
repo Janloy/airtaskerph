@@ -243,6 +243,29 @@ async function loadNotificationCenter() {
     $('#notification-center-list').innerHTML = `<div class="empty-state rounded-xl border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><p class="font-bold">Could not load notifications.</p><p class="mt-2 text-sm text-[#52616c]">${escapeHtml(error.message)}</p><button type="button" data-notifications-retry class="touch-target mt-4 rounded-lg border border-[#c9d4d9] px-4 font-bold text-[#006f70]">Try again</button></div>`;
   }
 }
+async function openAnnouncement(item) {
+  if (!item || item.type !== 'announcement' || !Number.isSafeInteger(Number(item.entity_id))) {
+    notify('This announcement could not be opened. Refresh your notifications and try again.', 'error');
+    return;
+  }
+  try {
+    await api('api/notifications?action=read_item',{method:'POST',body:JSON.stringify({type:'announcement',id:Number(item.entity_id)})});
+    item.is_read=true;
+    const notificationButton=[...document.querySelectorAll('[data-open-notification]')]
+      .find((button)=>button.dataset.openNotification===String(item.id));
+    notificationButton?.classList.remove('is-unread');
+    notificationButton?.querySelector('.notification-center-unread')?.remove();
+    if (!$('#announcement-reader-modal')) {
+      document.body.insertAdjacentHTML('beforeend','<div id="announcement-reader-modal" class="modal-backdrop fixed inset-0 z-[120] hidden items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="announcement-reader-title"><article class="modal-panel announcement-reader-panel"><header><span class="announcement-reader-icon"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i></span><button type="button" data-close="announcement-reader-modal" aria-label="Close announcement"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header><p id="announcement-reader-audience" class="announcement-reader-eyebrow"></p><h2 id="announcement-reader-title"></h2><time id="announcement-reader-date"></time><div id="announcement-reader-body"></div><footer><button type="button" data-close="announcement-reader-modal" class="touch-target rounded-lg bg-[#006f70] px-5 font-bold text-white">Done</button></footer></article></div>');
+    }
+    $('#announcement-reader-audience').textContent='TaskerPH announcement';
+    $('#announcement-reader-title').textContent=item.title||'Announcement';
+    $('#announcement-reader-date').textContent=formatActivityTimestamp(item.created_at);
+    $('#announcement-reader-body').textContent=item.body||'';
+    openModal('#announcement-reader-modal');
+    void updateNotificationCounts();
+  } catch(error) { notify(error.message,'error'); }
+}
 function setNotificationCount(selector, count) {
   const element = $(selector);
   if (!element) return;
@@ -949,6 +972,7 @@ function formatActivityTimestamp(value) {
 }
 let accountActivityData = { users: [], events: [], reports: [], tasks: [], under_review_tasks: [], trends: [], stats: {} };
 let staffDashboardData = { recent_reports: [], under_review_tasks: [] };
+let adminNotificationAnnouncements = [];
 let superadminTaskView = 'list';
 let superadminUserPage = 1;
 let superadminUserTotal = 0;
@@ -1362,7 +1386,7 @@ function openReportersModal(taskId) {
   openModal('#reporters-detail-modal');
 }
 
-function openSuperadminNotifications() {
+async function openSuperadminNotifications() {
   const isStaff = ['admin','moderator'].includes(state.user?.role);
   const reports = isStaff ? staffDashboardData.recent_reports : accountActivityData.reports;
   const openReports = reports.filter((report) => report.status === 'Open');
@@ -1378,13 +1402,19 @@ function openSuperadminNotifications() {
   }).join('');
   const reviewTasks = isStaff ? staffDashboardData.under_review_tasks : accountActivityData.under_review_tasks;
   const disputeItems = reviewTasks.map((task) => `<button type="button" data-admin-notification-task="${Number(task.id)}" class="superadmin-notification-item"><span class="superadmin-notification-icon is-dispute"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span><strong>Task paused for review</strong><small>${escapeHtml(task.title)} · ${escapeHtml(task.owner_name || 'Task poster')}</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join('');
+  let announcementItems='';
+  try {
+    const notificationPayload=await api('api/notifications?action=center');
+    adminNotificationAnnouncements=(notificationPayload.items||[]).filter((item)=>item.type==='announcement');
+    announcementItems=adminNotificationAnnouncements.map((item)=>`<button type="button" data-admin-announcement="${escapeHtml(item.id)}" class="superadmin-notification-item"><span class="superadmin-notification-icon is-announcement"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i></span><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.is_read?'Announcement · Read':'Announcement · Click to read')} · ${escapeHtml(formatActivityTimestamp(item.created_at))}</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join('');
+  } catch(error) { notify(`Could not load announcements: ${error.message}`,'error'); }
   let modal = $('#superadmin-notifications-modal');
   if (!modal) {
     document.body.insertAdjacentHTML('beforeend', '<div id="superadmin-notifications-modal" class="modal-backdrop fixed inset-0 z-[108] hidden items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="superadmin-notifications-title"><section class="modal-panel superadmin-notifications-panel"><header><div><p id="admin-notifications-eyebrow" class="superadmin-review-label">Superadmin dashboard</p><h2 id="superadmin-notifications-title">Action notifications</h2><p>Open reports and tasks paused for review.</p></div><button type="button" data-close="superadmin-notifications-modal" aria-label="Close notifications"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header><div id="superadmin-notifications-list" class="superadmin-notifications-list"></div></section></div>');
     modal = $('#superadmin-notifications-modal');
   }
   if ($('#admin-notifications-eyebrow')) $('#admin-notifications-eyebrow').textContent = isStaff ? 'Admin workspace' : 'Superadmin dashboard';
-  const items = `${reportItems}${disputeItems}`;
+  const items = `${reportItems}${disputeItems}${announcementItems}`;
   $('#superadmin-notifications-list').innerHTML = items || '<div class="superadmin-notifications-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><strong>You’re all caught up</strong><span>No open reports or tasks under review.</span></div>';
   openModal('#superadmin-notifications-modal');
 }
@@ -2527,13 +2557,8 @@ document.addEventListener('click', async (event) => {
     const item = notificationCenterItems.find((entry) => String(entry.id) === openNotificationButton.dataset.openNotification);
     if (!item) return;
     if (item.type === 'message') { await openConversation(item.task_id, item.other_user_id); return; }
+    if (item.type === 'announcement') { await openAnnouncement(item); return; }
     try {
-      if(item.type==='announcement'){
-        await api('api/notifications?action=read_item',{method:'POST',body:JSON.stringify({type:'announcement',id:item.entity_id})});
-        await loadNotificationCenter();
-        void updateNotificationCounts();
-        return;
-      }
       if (item.type === 'bid') await api(`api/notifications?action=read_bids&task_id=${encodeURIComponent(item.task_id)}`);
       else await api('api/notifications?action=read_item', { method: 'POST', body: JSON.stringify({ type: 'task', id: item.id }) });
       const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(item.task_id)}`);
@@ -2622,6 +2647,14 @@ document.addEventListener('click', async (event) => {
     return;
   }
   if (event.target.closest('#admin-notification-trigger, #staff-notification-trigger')) { openSuperadminNotifications(); return; }
+  const adminAnnouncementButton=event.target.closest('[data-admin-announcement]');
+  if(adminAnnouncementButton) {
+    const announcement=adminNotificationAnnouncements.find((item)=>String(item.id)===adminAnnouncementButton.dataset.adminAnnouncement);
+    if(!announcement) { notify('This announcement could not be found. Refresh notifications and try again.','error'); return; }
+    closeModal('superadmin-notifications-modal');
+    await openAnnouncement(announcement);
+    return;
+  }
   const adminNotificationReport = event.target.closest('[data-admin-notification-report]');
   if (adminNotificationReport) {
     const taskId = Number(adminNotificationReport.dataset.adminNotificationReport);
