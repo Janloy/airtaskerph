@@ -1018,7 +1018,7 @@ function ensureAdminControls() {
   if (!$('#admin-operations-page')) $('footer')?.insertAdjacentHTML('beforebegin','<section id="admin-operations-page" class="app-page page-shell hidden"><div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div class="card rounded-2xl bg-white p-5 shadow-xl sm:p-7"><div class="flex flex-wrap items-center justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[.16em] text-[#008f8c]">Superadmin · Operations</p><h1 class="mt-1 text-3xl font-bold">Admin operations</h1><p class="mt-2 text-sm text-[#68727c]">Disputes, staff permissions, platform analytics, suspension appeals, announcements, and system status.</p></div><button type="button" data-admin-ops-refresh class="touch-target rounded-lg bg-[#006f70] px-4 font-bold text-white"><i class="fa-solid fa-rotate mr-2" aria-hidden="true"></i>Refresh</button></div><nav class="superadmin-sidebar my-5 flex flex-wrap gap-2" aria-label="Superadmin sections"><button data-page="account-activity-modal" class="rounded-lg border px-4 py-2 text-sm font-bold">Dashboard</button><button data-admin-page="user-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Users</button><button data-admin-page="task-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Tasks</button><button data-admin-page="report-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Reports</button><button data-admin-page="audit-log-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Audit log</button><button data-admin-page="admin-operations-page" class="rounded-lg bg-[#006f70] px-4 py-2 text-sm font-bold text-white">Operations</button><button data-admin-page="superadmin-account-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Account settings</button></nav><div id="admin-operations-state" class="grid gap-5 lg:grid-cols-2" aria-live="polite"></div></div></div></section>');
   document.querySelectorAll('.superadmin-sidebar').forEach((nav)=>{
     if(['admin','moderator'].includes(state.user?.role)&&!nav.querySelector('[data-admin-page="superadmin-account-page"]')){
-      nav.insertAdjacentHTML('beforeend','<button data-admin-page="superadmin-account-page" class="rounded-lg border px-4 py-2 text-sm font-bold"><i class="fa-solid fa-gear mr-2" aria-hidden="true"></i>Account settings</button>');
+      nav.insertAdjacentHTML('beforeend','<button data-admin-page="superadmin-account-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Account settings</button>');
     }
     let operations=nav.querySelector('[data-admin-page="admin-operations-page"]');
     if (!operations) {
@@ -2795,14 +2795,17 @@ document.addEventListener('click', async (event) => {
   const superadminAccountFormButton = event.target.closest('[data-superadmin-account-form]');
   if (superadminAccountFormButton) {
     closeDesktopProfileMenu();
+    const profileForms = {
+      'admin-edit-profile': 'edit-profile-form',
+      'admin-change-email': 'change-email-form',
+      'admin-change-password': 'change-password-form',
+    };
+    const profileForm = profileForms[superadminAccountFormButton.dataset.superadminAccountForm];
     if (state.user?.role !== 'superadmin') {
-      const profileForms = {
-        'admin-edit-profile': 'edit-profile-form',
-        'admin-change-email': 'change-email-form',
-        'admin-change-password': 'change-password-form',
-      };
-      const profileForm = profileForms[superadminAccountFormButton.dataset.superadminAccountForm];
-      if (profileForm) await openProfile(profileForm);
+      if (!profileForm || !['admin','moderator'].includes(state.user?.role)) return;
+      renderSuperadminAccountSettings();
+      showPage('superadmin-account-page');
+      requestAnimationFrame(() => $(`#${profileForm}`)?.querySelector('input')?.focus({ preventScroll: true }));
       return;
     }
     renderSuperadminAccountSettings();
