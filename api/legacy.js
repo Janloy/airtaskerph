@@ -60,7 +60,7 @@ async function sendPushToUser(s, userId, title, messageBody, data = {}) {
     }
   }));
 }
-const publicUser = (p) => ({ id: Number(p.id), first_name: p.first_name, middle_initial: p.middle_initial || '', last_name: p.last_name, email: p.email, role: p.role, avatar_path: p.avatar_path || null });
+const publicUser = (p) => ({ id: Number(p.id), first_name: p.first_name, middle_initial: p.middle_initial || '', last_name: p.last_name, email: p.email, role: p.role, avatar_path: p.avatar_path || null, ...(p.staff_permissions?{staff_permissions:p.staff_permissions}:{}) });
 const publicAvatarUrl = (s, path) => {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
@@ -73,6 +73,24 @@ const getProfile = async (s, authId) => {
 };
 const suspensionIsActive = (profile) => Boolean(profile.is_suspended)
   && (!profile.suspended_until || new Date(profile.suspended_until).getTime() > Date.now());
+const defaultStaffPermissions = (role) => ({
+  can_view_users: ['superadmin','support'].includes(role),
+  can_moderate_tasks: ['superadmin','admin','moderator'].includes(role),
+  can_review_reports: ['superadmin','admin','moderator'].includes(role),
+  can_resolve_disputes: ['superadmin','admin','moderator'].includes(role)
+});
+const getStaffPermissions = async (s, profile) => {
+  const defaults = defaultStaffPermissions(profile.role);
+  if (profile.role === 'superadmin') return defaults;
+  if (!['admin','moderator','support'].includes(profile.role)) return defaults;
+  const override = await rows(s.from('staff_permissions').select('can_view_users,can_moderate_tasks,can_review_reports,can_resolve_disputes').eq('user_id',profile.id).maybeSingle());
+  return override ? {
+    can_view_users: Boolean(override.can_view_users),
+    can_moderate_tasks: Boolean(override.can_moderate_tasks),
+    can_review_reports: Boolean(override.can_review_reports),
+    can_resolve_disputes: Boolean(override.can_resolve_disputes)
+  } : defaults;
+};
 const touchPresence = async (s, userId, isLogin = false) => {
   const { error } = await s.rpc('touch_account_presence', { p_user_id: userId, p_is_login: isLogin });
   if (error) console.error('Account presence update failed:', error.message);
@@ -116,11 +134,15 @@ const userFor = async (req, s, trackActivity = false) => {
     const expiry = profile.suspended_until ? ` until ${new Date(profile.suspended_until).toLocaleString('en-PH')}` : '';
     throw fail(`Your account is suspended${expiry}. Contact support if you believe this is an error.`, 403);
   }
+  profile.staff_permissions = await getStaffPermissions(s,profile);
   if (trackActivity) await touchPresence(s, profile.id);
   return { auth: data.user, profile, token };
 };
-const isMod = (u) => ['admin', 'moderator', 'superadmin'].includes(u.role);
-const canModerate = (u) => ['admin', 'moderator', 'superadmin'].includes(u.role);
+const isMod = (u) => Boolean(u.staff_permissions?.can_moderate_tasks);
+const canModerate = (u) => Boolean(u.staff_permissions?.can_moderate_tasks);
+const canViewUsers = (u) => Boolean(u.staff_permissions?.can_view_users);
+const canReviewReports = (u) => Boolean(u.staff_permissions?.can_review_reports);
+const canResolveDisputes = (u) => Boolean(u.staff_permissions?.can_resolve_disputes);
 const loadMyBids = async (s, profile) => {
   const bids = await rows(s.from('bids').select('*').eq('bidder_id', profile.id).order('created_at', { ascending: false }));
   if (!bids.length) return [];
@@ -271,8 +293,9 @@ export default async function handler(req, res) {
         profile = await getProfile(s, data.user.id);
         if (suspensionIsActive(profile)) {
           const expiry = profile.suspended_until ? ` until ${new Date(profile.suspended_until).toLocaleString('en-PH')}` : '';
-          throw fail(`Your account is suspended${expiry}. Contact support if you believe this is an error.`, 403);
+          return res.status(403).json({success:false,message:`Your account is suspended${expiry}. Submit an appeal if you believe this is an error.`,suspension_appeal_available:true,access_token:data.session.access_token,refresh_token:data.session.refresh_token});
         }
+        profile.staff_permissions=await getStaffPermissions(s,profile);
         await touchPresence(s, profile.id, true);
         return res.status(200).json(ok(`Welcome back, ${profile.first_name}!`, { user: publicUser(profile), access_token: data.session.access_token, refresh_token: data.session.refresh_token }));
       }
@@ -288,6 +311,52 @@ export default async function handler(req, res) {
         catch { return res.status(200).json(ok('', { user: null, expired: false })); }
       }
       if (action === 'logout') { const token=(req.headers.authorization||'').replace(/^Bearer\s+/i,''); if(token) await s.auth.admin.signOut(token).catch(()=>{}); return res.status(200).json(ok('You have been logged out.')); }
+    }
+    if (route === 'suspension_appeals') {
+      if (action === 'submit') {
+        const token=(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
+        if (!token) throw fail('Log in to submit a suspension appeal.',401);
+        const {data,error}=await ac.auth.getUser(token);
+        if (error || !data.user) throw fail('Your session has ended. Please log in again.',401);
+        profile=await getProfile(s,data.user.id);
+        if (!suspensionIsActive(profile)) throw fail('Only suspended accounts can submit a suspension appeal.',403);
+        const reason=clean(body.reason,2000);
+        if (reason.length<20) throw fail('Explain why the suspension should be reviewed (at least 20 characters).',422);
+        const result=await s.from('suspension_appeals').insert({
+          user_id:profile.id,claimant_email:clean(profile.email,190).toLowerCase(),
+          claimant_name:`${profile.first_name} ${profile.last_name}`.trim(),reason
+        }).select('id').single();
+        if (result.error?.code==='23505') throw fail('You already have an open appeal. Wait for it to be reviewed.',409);
+        if (result.error || !result.data) throw fail(result.error?.message||'Your appeal could not be submitted.',500);
+        return res.status(200).json(ok('Your suspension appeal was submitted for review.'));
+      }
+      ({profile}=await userFor(req,s));
+      if (profile.role!=='superadmin') throw fail('Only the Superadmin can review suspension appeals.',403);
+      if (action==='list') {
+        const status=clean(body.status,20)||'Open';
+        if (!['all','Open','Approved','Denied'].includes(status)) throw fail('Choose a valid appeal status.',422);
+        let appealsQuery=s.from('suspension_appeals').select('id,user_id,claimant_email,claimant_name,reason,status,resolution_note,reviewed_by,reviewed_at,created_at,user:user_profiles!suspension_appeals_user_id_fkey(is_suspended,suspension_reason,suspended_until)');
+        if (status!=='all') appealsQuery=appealsQuery.eq('status',status);
+        const {data,error}=await appealsQuery.order('created_at',{ascending:false}).limit(100);
+        if (error) throw fail(error.message);
+        return res.status(200).json(ok('',{appeals:data||[]}));
+      }
+      if (action==='review') {
+        const id=Number(body.appeal_id), status=clean(body.status,20), note=clean(body.note,1000);
+        if (!Number.isSafeInteger(id)||id<1||!['Approved','Denied'].includes(status)||!note) throw fail('Choose a decision and enter a resolution note.',422);
+        const appeal=await rows(s.from('suspension_appeals').select('*').eq('id',id).maybeSingle());
+        if (!appeal) throw fail('Appeal not found.',404);
+        if (appeal.status!=='Open') throw fail('This appeal has already been reviewed.',409);
+        const now=new Date().toISOString();
+        const reviewed=await rows(s.from('suspension_appeals').update({status,resolution_note:note,reviewed_by:profile.id,reviewed_at:now}).eq('id',id).eq('status','Open').select('id'));
+        if (!reviewed.length) throw fail('This appeal was already reviewed. Refresh and try again.',409);
+        if (status==='Approved'&&appeal.user_id) {
+          await rows(s.from('user_profiles').update({is_suspended:false,suspension_reason:null,suspended_until:null}).eq('id',appeal.user_id));
+        }
+        await recordAdminAudit(s,profile,{action:`suspension_appeal_${status.toLowerCase()}`,target_type:'user',target_id:appeal.user_id,target_label:appeal.claimant_name,reason:note,before_state:{appeal_status:'Open'},after_state:{appeal_status:status,account_reactivated:status==='Approved'}});
+        return res.status(200).json(ok(status==='Approved'?'Appeal approved and account reactivated.':'Appeal denied.'));
+      }
+      throw fail('Unknown suspension appeal action.',404);
     }
     if (route === 'get_tasks' && req.method === 'GET') {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -505,6 +574,89 @@ export default async function handler(req, res) {
     }
     if (route === 'admin_actions') {
       ({ profile } = await userFor(req,s, action !== 'activity_dashboard'));
+      if (action === 'list_disputes') {
+        if (!canResolveDisputes(profile)) throw fail('You do not have permission to view disputes.',403);
+        const {data,error}=await s.from('task_disputes').select('id,task_id,opened_by,details,status,resolution,created_at,resolved_at,task:tasks!task_disputes_task_id_fkey(id,title,status,user_id,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email))').order('created_at',{ascending:false}).limit(100);
+        if (error) throw fail(error.message);
+        return res.status(200).json(ok('',{disputes:data||[]}));
+      }
+      if (action === 'list_staff') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can manage staff permissions.',403);
+        const staff=await rows(s.from('user_profiles').select('id,first_name,last_name,email,role').in('role',['admin','moderator','support']).order('first_name'));
+        const permissions=staff.length?await rows(s.from('staff_permissions').select('user_id,can_view_users,can_moderate_tasks,can_review_reports,can_resolve_disputes').in('user_id',staff.map((entry)=>entry.id))):[];
+        const byUser=new Map(permissions.map((entry)=>[Number(entry.user_id),entry]));
+        return res.status(200).json(ok('',{staff:staff.map((entry)=>({...entry,permissions:byUser.get(Number(entry.id))||defaultStaffPermissions(entry.role)}))}));
+      }
+      if (action === 'update_staff_permissions') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can manage staff permissions.',403);
+        const userId=Number(body.user_id), permissionNames=['can_view_users','can_moderate_tasks','can_review_reports','can_resolve_disputes'];
+        const staff=await rows(s.from('user_profiles').select('id,role').eq('id',userId).maybeSingle());
+        if (!staff||!['admin','moderator','support'].includes(staff.role)) throw fail('Choose an existing staff account.',422);
+        const permissions={};
+        for (const key of permissionNames) {
+          if (typeof body[key]!=='boolean') throw fail('Set each staff permission explicitly.',422);
+          permissions[key]=body[key];
+        }
+        await rows(s.from('staff_permissions').upsert({user_id:userId,...permissions,updated_by:profile.id,updated_at:new Date().toISOString()},{onConflict:'user_id'}));
+        await recordAdminAudit(s,profile,{action:'staff_permissions_updated',target_type:'user',target_id:userId,target_label:`${staff.role} #${userId}`,reason:'Staff permission settings updated',after_state:permissions});
+        return res.status(200).json(ok('Staff permissions updated.'));
+      }
+      if (action === 'admin_analytics') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can view platform analytics.',403);
+        const days=Number(body.days||30);
+        if (![7,30,90].includes(days)) throw fail('Choose a valid analytics period.',422);
+        const [summary,categories]=await Promise.all([
+          s.rpc('admin_analytics_summary',{p_days:days}),
+          s.rpc('admin_analytics_categories',{p_days:days})
+        ]);
+        if (summary.error||categories.error) throw fail((summary.error||categories.error).message);
+        return res.status(200).json(ok('',{summary:summary.data?.[0]||{},categories:categories.data||[],days}));
+      }
+      if (action === 'list_announcements') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can manage announcements.',403);
+        const announcements=await rows(s.from('platform_announcements').select('id,title,body,audience,starts_at,expires_at,is_published,created_at,updated_at').order('created_at',{ascending:false}).limit(100));
+        return res.status(200).json(ok('',{announcements}));
+      }
+      if (action === 'save_announcement') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can manage announcements.',403);
+        const title=clean(body.title,120), text=clean(body.body,2000), audience=clean(body.audience,20)||'everyone';
+        const startsAt=body.starts_at?new Date(body.starts_at):new Date();
+        const expiresAt=body.expires_at?new Date(body.expires_at):null;
+        const hasId=body.id!==undefined&&body.id!=='';
+        const id=hasId?Number(body.id):0;
+        if (!title||!text||!['everyone','members','staff'].includes(audience)||typeof body.is_published!=='boolean'||(hasId&&(!Number.isSafeInteger(id)||id<1))||!Number.isFinite(startsAt.getTime())||(expiresAt&&(!Number.isFinite(expiresAt.getTime())||expiresAt<=startsAt))) throw fail('Enter a title, message, audience, publication status, and valid date window.',422);
+        const patch={title,body:text,audience,starts_at:startsAt.toISOString(),expires_at:expiresAt?.toISOString()||null,is_published:body.is_published,updated_at:new Date().toISOString()};
+        const saved=id?await rows(s.from('platform_announcements').update(patch).eq('id',id).select('id')):await rows(s.from('platform_announcements').insert({...patch,created_by:profile.id}).select('id'));
+        if (!saved.length) throw fail('Announcement not found or could not be saved.',404);
+        await recordAdminAudit(s,profile,{action:id?'announcement_updated':'announcement_created',target_type:'announcement',target_id:saved[0].id,target_label:title,after_state:{audience,is_published:patch.is_published}});
+        return res.status(200).json(ok('Announcement saved.'));
+      }
+      if (action === 'delete_announcement') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can manage announcements.',403);
+        const id=Number(body.id);
+        if (!Number.isSafeInteger(id)||id<1) throw fail('Choose a valid announcement.',422);
+        const announcement=await rows(s.from('platform_announcements').select('id,title').eq('id',id).maybeSingle());
+        if (!announcement) throw fail('Announcement not found.',404);
+        await rows(s.from('platform_announcements').delete().eq('id',id));
+        await recordAdminAudit(s,profile,{action:'announcement_deleted',target_type:'announcement',target_id:id,target_label:announcement.title});
+        return res.status(200).json(ok('Announcement deleted.'));
+      }
+      if (action === 'admin_health') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can view system health.',403);
+        const checks=await Promise.all([
+          s.from('user_profiles').select('id',{head:true,count:'exact'}),
+          s.from('tasks').select('id',{head:true,count:'exact'}),
+          s.from('task_reports').select('id',{head:true,count:'exact'})
+        ]);
+        const labels=['Accounts table','Marketplace table','Reports table'];
+        const health=[
+          {name:'API',status:'Operational',checked_at:new Date().toISOString()},
+          {name:'Database',status:checks.some((result)=>result.error)?'Degraded':'Operational',checked_at:new Date().toISOString()},
+          ...checks.map((result,index)=>({name:labels[index],status:result.error?'Unavailable':'Operational',checked_at:new Date().toISOString()}))
+        ];
+        if (checks.some((result)=>result.error)) console.error('Admin health check found a database query failure.');
+        return res.status(200).json(ok('',{health}));
+      }
       if (action === 'has_reported') {
         const taskId = Number(body.task_id);
         if (!Number.isSafeInteger(taskId) || taskId < 1) throw fail('Invalid task.', 422);
@@ -553,7 +705,7 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('',{trends:data||[]}));
       }
       if (action === 'list_users') {
-        if (!['superadmin','support'].includes(profile.role)) throw fail('Only Superadmins or Support staff can view account records.',403);
+        if (!canViewUsers(profile)) throw fail('You do not have permission to view account records.',403);
         const offset = Number(body.offset || 0);
         const search = clean(body.search,80).replace(/[,%()]/g,' ').replace(/\s+/g,' ').trim();
         if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw fail('Choose a valid account page.',422);
@@ -567,7 +719,7 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('',{users:(data||[]).map((user)=>({...user,id:Number(user.id),is_suspended:suspensionIsActive(user)})),total_count:count||0,has_more:offset+(data||[]).length<(count||0)}));
       }
       if (action === 'list_reports') {
-        if (!canModerate(profile)) throw fail('Only moderation staff can review task reports.',403);
+        if (!canReviewReports(profile)) throw fail('You do not have permission to review task reports.',403);
         const offset = Number(body.offset || 0);
         const status = clean(body.status,20) || 'all';
         const reason = clean(body.reason,80) || 'all';
@@ -717,7 +869,7 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('Report sent to the Superadmin for review.'));
       }
       if (action === 'review_report') {
-        if (!canModerate(profile)) throw fail('Only moderation staff can review reports.',403);
+        if (!canReviewReports(profile)) throw fail('You do not have permission to review reports.',403);
         const id=Number(body.report_id), status=body.status, note=clean(body.note,1000);
         if (!Number.isSafeInteger(id) || !['Reviewed','Dismissed'].includes(status)) throw fail('Choose a valid report status.',422);
         if (!note) throw fail('Add a resolution note before closing the report.',422);
@@ -965,7 +1117,7 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('Your review was submitted.'));
       }
       if(action==='resolve_dispute') {
-        if(!canModerate(profile)) throw fail('Only moderation staff can resolve a task dispute.',403);
+        if(!canResolveDisputes(profile)) throw fail('You do not have permission to resolve disputes.',403);
         const resolutionStatus=body.status;
         if(!['In Progress','Completed','Cancelled'].includes(resolutionStatus)) throw fail('Choose a valid dispute resolution.',422);
         if(task.status!=='Under Review') throw fail('This task is not under review.',409);
@@ -1008,11 +1160,17 @@ export default async function handler(req, res) {
     if (route === 'notifications') {
       ({ profile } = await userFor(req,s, action !== 'counts' && action !== 'task_messages' && action !== 'task_updates' && action !== 'center'));
       if(action==='center') {
-        const [taskNotices,messageRows,ownedTasks]=await Promise.all([
+        const now=new Date().toISOString();
+        const audience=profile.role==='user'?'members':'staff';
+        const [taskNotices,messageRows,ownedTasks,announcements,announcementReads]=await Promise.all([
           rows(s.from('task_notifications').select('id,task_id,event_type,title,body,dedupe_key,is_read,created_at').eq('user_id',profile.id).order('created_at',{ascending:false}).limit(50)),
           rows(s.from('messages').select('id,task_id,sender_id,body,read_at,created_at').eq('recipient_id',profile.id).order('created_at',{ascending:false}).limit(50)),
-          rows(s.from('tasks').select('id,title').eq('user_id',profile.id))
+          rows(s.from('tasks').select('id,title').eq('user_id',profile.id)),
+          rows(s.from('platform_announcements').select('id,title,body,audience,starts_at,expires_at').eq('is_published',true).lte('starts_at',now).in('audience',['everyone',audience]).order('starts_at',{ascending:false}).limit(100)),
+          rows(s.from('announcement_reads').select('announcement_id').eq('user_id',profile.id))
         ]);
+        const activeAnnouncements=announcements.filter((item)=>!item.expires_at||new Date(item.expires_at).getTime()>Date.now());
+        const readAnnouncementIds=new Set(announcementReads.map((entry)=>Number(entry.announcement_id)));
         const ownedTaskIds=ownedTasks.map((task)=>Number(task.id));
         const pendingBids=ownedTaskIds.length?await rows(s.from('bids').select('id,task_id,bidder_id,amount,created_at').in('task_id',ownedTaskIds).eq('status','Pending').order('created_at',{ascending:false}).limit(50)):[];
         const pendingBidIds=pendingBids.map((bid)=>Number(bid.id));
@@ -1038,9 +1196,10 @@ export default async function handler(req, res) {
           ...pendingBids.filter((bid)=>!notifiedBidIds.has(Number(bid.id))).map((bid)=>{
             const bidder=userById.get(Number(bid.bidder_id)), task=taskById.get(Number(bid.task_id));
             return {id:`bid-${bid.id}`,type:'bid',event_type:'pending_bid',entity_id:Number(bid.id),task_id:Number(bid.task_id),title:'New bid received',body:`${bidder?`${bidder.first_name} ${bidder.last_name}`.trim():'A tasker'} offered ${new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(Number(bid.amount)||0)} for “${task?.title||'your task'}”.`,created_at:bid.created_at,is_read:seenBidIds.has(Number(bid.id))};
-          })
+          }),
+          ...activeAnnouncements.map((announcement)=>({id:`announcement-${announcement.id}`,type:'announcement',event_type:'announcement',entity_id:Number(announcement.id),title:announcement.title,body:announcement.body,created_at:announcement.starts_at,is_read:readAnnouncementIds.has(Number(announcement.id))}))
         ].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)).slice(0,100);
-        const unreadCount=taskNotices.filter((item)=>!item.is_read).length+(unreadMessageCount.count||0)+pendingBids.filter((item)=>!notifiedBidIds.has(Number(item.id))&&!seenBidIds.has(Number(item.id))).length;
+        const unreadCount=taskNotices.filter((item)=>!item.is_read).length+(unreadMessageCount.count||0)+pendingBids.filter((item)=>!notifiedBidIds.has(Number(item.id))&&!seenBidIds.has(Number(item.id))).length+activeAnnouncements.filter((item)=>!readAnnouncementIds.has(Number(item.id))).length;
         return res.status(200).json(ok('',{items,unread_count:unreadCount}));
       }
       if(action==='mark_all_read') {
@@ -1055,10 +1214,22 @@ export default async function handler(req, res) {
           const pending=await rows(s.from('bids').select('id').in('task_id',ownedTaskIds).eq('status','Pending'));
           if(pending.length) await rows(s.from('notification_reads').upsert(pending.map((bid)=>({user_id:profile.id,notification_type:'bid',reference_id:bid.id})),{onConflict:'user_id,notification_type,reference_id',ignoreDuplicates:true}));
         }
+        const audience=profile.role==='user'?'members':'staff';
+        const announcements=await rows(s.from('platform_announcements').select('id,expires_at').eq('is_published',true).lte('starts_at',now).in('audience',['everyone',audience]).limit(100));
+        const activeAnnouncements=announcements.filter((entry)=>!entry.expires_at||new Date(entry.expires_at).getTime()>Date.now());
+        if(activeAnnouncements.length) await rows(s.from('announcement_reads').upsert(activeAnnouncements.map((entry)=>({user_id:profile.id,announcement_id:entry.id})),{onConflict:'announcement_id,user_id',ignoreDuplicates:true}));
         return res.status(200).json(ok('All notifications marked as read.'));
       }
       if(action==='read_item' && body.type==='task') {
         await rows(s.from('task_notifications').update({is_read:true}).eq('id',Number(body.id)).eq('user_id',profile.id));
+        return res.status(200).json(ok());
+      }
+      if(action==='read_item' && body.type==='announcement') {
+        const id=Number(body.id);
+        if(!Number.isSafeInteger(id)||id<1) throw fail('Choose a valid announcement.',422);
+        const announcement=await rows(s.from('platform_announcements').select('id').eq('id',id).eq('is_published',true).maybeSingle());
+        if(!announcement) throw fail('Announcement not found.',404);
+        await rows(s.from('announcement_reads').upsert({announcement_id:id,user_id:profile.id},{onConflict:'announcement_id,user_id'}));
         return res.status(200).json(ok());
       }
       if(action==='task_updates') {

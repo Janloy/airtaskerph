@@ -130,7 +130,9 @@ const api = async (url, options = {}, hasRetried = false) => {
       handleExpiredAuth();
       payload.message = 'Your session has ended. Please log in again.';
     }
-    throw new Error(payload.message || 'Request failed.');
+    const requestError = new Error(payload.message || 'Request failed.');
+    requestError.suspensionAppealAvailable = Boolean(payload.suspension_appeal_available);
+    throw requestError;
   }
   if (state.user) recordAuthActivity();
   return payload;
@@ -236,7 +238,7 @@ async function loadNotificationCenter() {
     notificationCenterItems = payload.items || [];
     setNotificationCount('#desktop-notification-count', payload.unread_count || 0);
     setNotificationCount('#mobile-notification-count', payload.unread_count || 0);
-    $('#notification-center-list').innerHTML = notificationCenterItems.length ? notificationCenterItems.map((item) => `<button type="button" data-open-notification="${escapeHtml(item.id)}" class="notification-center-item ${item.is_read ? '' : 'is-unread'}"><span class="notification-center-icon"><i class="${item.type === 'message' ? 'fa-regular fa-message' : item.type === 'bid' ? 'fa-solid fa-gavel' : 'fa-regular fa-bell'}" aria-hidden="true"></i></span><span class="notification-center-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.body)}</span><small>${escapeHtml(formatActivityTimestamp(item.created_at))}</small></span>${item.is_read ? '' : '<span class="notification-center-unread" aria-label="Unread"></span>'}</button>`).join('') : '<div class="empty-state rounded-xl border border-dashed border-[#c9d4d9] px-5 py-12 text-center"><i class="fa-regular fa-bell mb-3 text-2xl text-[#008f8c]" aria-hidden="true"></i><p class="font-bold">You’re all caught up.</p><p class="mt-1 text-sm text-[#52616c]">New messages, bids, and task updates will appear here.</p></div>';
+    $('#notification-center-list').innerHTML = notificationCenterItems.length ? notificationCenterItems.map((item) => `<button type="button" data-open-notification="${escapeHtml(item.id)}" class="notification-center-item ${item.is_read ? '' : 'is-unread'}"><span class="notification-center-icon"><i class="${item.type === 'message' ? 'fa-regular fa-message' : item.type === 'bid' ? 'fa-solid fa-gavel' : item.type==='announcement' ? 'fa-solid fa-bullhorn' : 'fa-regular fa-bell'}" aria-hidden="true"></i></span><span class="notification-center-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.body)}</span><small>${escapeHtml(formatActivityTimestamp(item.created_at))}</small></span>${item.is_read ? '' : '<span class="notification-center-unread" aria-label="Unread"></span>'}</button>`).join('') : '<div class="empty-state rounded-xl border border-dashed border-[#c9d4d9] px-5 py-12 text-center"><i class="fa-regular fa-bell mb-3 text-2xl text-[#008f8c]" aria-hidden="true"></i><p class="font-bold">You’re all caught up.</p><p class="mt-1 text-sm text-[#52616c]">New messages, bids, and task updates will appear here.</p></div>';
   } catch (error) {
     $('#notification-center-list').innerHTML = `<div class="empty-state rounded-xl border border-dashed border-[#c9d4d9] px-5 py-10 text-center"><p class="font-bold">Could not load notifications.</p><p class="mt-2 text-sm text-[#52616c]">${escapeHtml(error.message)}</p><button type="button" data-notifications-retry class="touch-target mt-4 rounded-lg border border-[#c9d4d9] px-4 font-bold text-[#006f70]">Try again</button></div>`;
   }
@@ -303,6 +305,29 @@ function openModal(id) {
   modal.classList.remove('hidden');
   modal.classList.add('modal-active');
   document.body.classList.add('overflow-hidden');
+}
+function openSuspensionAppealDialog() {
+  let modal=$('#suspension-appeal-modal');
+  if (!modal) {
+    document.body.insertAdjacentHTML('beforeend','<div id="suspension-appeal-modal" class="modal-backdrop fixed inset-0 z-[130] hidden items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="suspension-appeal-title"><form class="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><p class="text-xs font-bold uppercase tracking-wider text-amber-700">Suspended account</p><h2 id="suspension-appeal-title" class="mt-2 text-2xl font-bold">Request a review</h2><p class="mt-2 text-sm leading-6 text-slate-600">Explain why you believe the suspension should be reconsidered. An administrator will review your appeal.</p><label class="mt-5 block text-sm font-bold">Appeal reason<textarea name="reason" required minlength="20" maxlength="2000" rows="5" class="form-control mt-2" placeholder="Provide at least 20 characters"></textarea></label><div class="mt-5 flex justify-end gap-2"><button type="button" data-appeal-cancel class="touch-target rounded-lg border px-4 font-bold">Cancel</button><button type="submit" class="touch-target rounded-lg bg-[#006f70] px-4 font-bold text-white">Submit appeal</button></div></form></div>');
+    modal=$('#suspension-appeal-modal');
+    modal.querySelector('[data-appeal-cancel]').addEventListener('click',()=>{clearStoredAuth();closeModal('suspension-appeal-modal');});
+    modal.querySelector('form').addEventListener('submit',async(event)=>{
+      event.preventDefault();
+      const form=event.currentTarget;
+      if (!form.reportValidity()) return;
+      setBusy(form,true,'Submitting appeal...');
+      try {
+        const payload=await api('api/suspension_appeals',{method:'POST',body:JSON.stringify({action:'submit',reason:form.elements.reason.value})});
+        clearStoredAuth();
+        form.reset();
+        closeModal('suspension-appeal-modal');
+        notify(payload.message);
+      } catch(error) { notify(error.message,'error'); }
+      finally { setBusy(form,false); }
+    });
+  }
+  openModal('#suspension-appeal-modal');
 }
 function closeModal(id) {
   const modalId = id.startsWith('#') ? id.slice(1) : id;
@@ -797,23 +822,27 @@ function showPage(pageId) {
   const protectedIntent = { 'create-task-page': 'post', 'my-tasks-modal': 'tasks', 'my-bids-page': 'bids', 'profile-page': 'profile', 'saved-tasks-page': 'saved', 'conversation-modal': 'messages' }[pageId];
   if (protectedIntent && requestAuthGate(protectedIntent)) return false;
   const role = state.user?.role;
-  const canModerateAdmin = ['superadmin','admin','moderator'].includes(role);
-  const canViewUsers = ['superadmin','support'].includes(role);
-  const canViewStaffProfiles = ['superadmin','support','admin','moderator'].includes(role);
-  if (['account-activity-modal','audit-log-page','superadmin-account-page'].includes(pageId) && role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
+  const permissions=state.user?.staff_permissions||{};
+  const canModerateAdmin = role==='superadmin'||Boolean(permissions.can_moderate_tasks);
+  const canViewUsers = role==='superadmin'||Boolean(permissions.can_view_users);
+  const canReviewReports = role==='superadmin'||Boolean(permissions.can_review_reports);
+  const canViewStaffProfiles = role==='superadmin'||canViewUsers||canModerateAdmin||canReviewReports;
+  if (['account-activity-modal','audit-log-page','superadmin-account-page','admin-operations-page'].includes(pageId) && role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
   if (pageId === 'user-management-page' && !canViewUsers) { notify('Only Superadmins or Support staff can open user records.', 'error'); return false; }
   if (pageId === 'superadmin-user-profile-page' && !canViewStaffProfiles) { notify('Only staff can view member profiles.', 'error'); return false; }
-  if (['task-management-page','superadmin-task-detail-page','report-management-page'].includes(pageId) && !canModerateAdmin) { notify('Only moderation staff can open this page.', 'error'); return false; }
+  if (['task-management-page','superadmin-task-detail-page'].includes(pageId) && !canModerateAdmin) { notify('You do not have permission to moderate tasks.', 'error'); return false; }
+  if (pageId==='report-management-page'&&!canReviewReports) { notify('You do not have permission to review reports.', 'error'); return false; }
   ensureAdminControls();
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
   if (pageId === 'superadmin-account-page') renderSuperadminAccountSettings();
   const activeAdminPage = ({ 'superadmin-task-detail-page': 'task-management-page', 'superadmin-user-profile-page': 'user-management-page' })[pageId] || pageId;
   document.querySelectorAll('.superadmin-sidebar [data-admin-page], .superadmin-sidebar [data-page]').forEach((button) => {
     const target = button.dataset.adminPage || button.dataset.page;
-    const superadminOnly = ['account-activity-modal','audit-log-page','superadmin-account-page'].includes(target);
+    const superadminOnly = ['account-activity-modal','audit-log-page','superadmin-account-page','admin-operations-page'].includes(target);
     const usersOnly = target === 'user-management-page';
-    const moderationOnly = ['task-management-page','report-management-page','superadmin-task-detail-page'].includes(target);
-    button.hidden = Boolean((superadminOnly && role !== 'superadmin') || (usersOnly && !canViewUsers) || (moderationOnly && !canModerateAdmin));
+    const moderationOnly = ['task-management-page','superadmin-task-detail-page'].includes(target);
+    const reportsOnly = target==='report-management-page';
+    button.hidden = Boolean((superadminOnly && role !== 'superadmin') || (usersOnly && !canViewUsers) || (moderationOnly && !canModerateAdmin) || (reportsOnly&&!canReviewReports));
     const active = target === activeAdminPage;
     button.classList.toggle('is-active', active);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
@@ -842,6 +871,7 @@ function showPage(pageId) {
   if (pageId === 'task-management-page' && canModerateAdmin && role !== 'superadmin') void loadModeratorTasks();
   if (pageId === 'report-management-page') void loadAdminReports(true);
   if (pageId === 'audit-log-page') void loadAdminAudit(true);
+  if (pageId === 'admin-operations-page') void loadAdminOperations();
 }
 
 function renderAuth() {
@@ -908,6 +938,8 @@ let adminAuditRows = [];
 let adminAuditPage = 0;
 let adminAuditHasMore = false;
 let adminAuditTotal = 0;
+let adminOperationsLoading = false;
+let adminOperationsData = { disputes: [], appeals: [], staff: [], announcements: [], analytics: {}, health: [] };
 let adminUserSearchTimer = null;
 let adminReportSearchTimer = null;
 let adminAuditSearchTimer = null;
@@ -953,6 +985,10 @@ function ensureAdminControls() {
   const audit = $('#account-activity-events');
   if (audit && !$('#admin-audit-controls')) audit.insertAdjacentHTML('beforebegin','<div id="admin-audit-controls" class="admin-workspace-controls"><label>Search audit history<input id="admin-audit-search" type="search" placeholder="Administrator, action, target, reason"></label><button type="button" id="admin-audit-export" class="superadmin-load-more-button"><i class="fa-solid fa-download mr-2" aria-hidden="true"></i>Export all as CSV</button></div>');
   if (audit && !$('#admin-audit-pagination')) audit.insertAdjacentHTML('afterend','<div id="admin-audit-pagination" class="superadmin-pagination"></div>');
+  if (!$('#admin-operations-page')) document.body.insertAdjacentHTML('beforeend','<section id="admin-operations-page" class="app-page page-shell hidden"><div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div class="card rounded-2xl bg-white p-5 shadow-xl sm:p-7"><div class="flex flex-wrap items-center justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[.16em] text-[#008f8c]">Superadmin · Operations</p><h1 class="mt-1 text-3xl font-bold">Admin operations</h1><p class="mt-2 text-sm text-[#68727c]">Disputes, staff permissions, platform analytics, suspension appeals, announcements, and system status.</p></div><button type="button" data-admin-ops-refresh class="touch-target rounded-lg bg-[#006f70] px-4 font-bold text-white"><i class="fa-solid fa-rotate mr-2" aria-hidden="true"></i>Refresh</button></div><nav class="superadmin-sidebar my-5 flex flex-wrap gap-2" aria-label="Superadmin sections"><button data-page="account-activity-modal" class="rounded-lg border px-4 py-2 text-sm font-bold">Dashboard</button><button data-admin-page="user-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Users</button><button data-admin-page="task-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Tasks</button><button data-admin-page="report-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Reports</button><button data-admin-page="audit-log-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Audit log</button><button data-admin-page="admin-operations-page" class="rounded-lg bg-[#006f70] px-4 py-2 text-sm font-bold text-white">Operations</button><button data-admin-page="superadmin-account-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Account settings</button></nav><div id="admin-operations-state" class="grid gap-5 lg:grid-cols-2" aria-live="polite"></div></div></div></section>');
+  document.querySelectorAll('.superadmin-sidebar').forEach((nav)=>{
+    if (!nav.querySelector('[data-admin-page="admin-operations-page"]')) nav.insertAdjacentHTML('beforeend','<button data-admin-page="admin-operations-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Operations</button>');
+  });
   const summary = $('#account-activity-summary');
   if (summary && !$('#superadmin-trends')) summary.insertAdjacentHTML('afterend','<section id="superadmin-trends" class="superadmin-panel superadmin-trends"><div class="superadmin-panel-heading"><div><h3>Platform trends</h3><p>Daily registrations, task posts, completions, and reports</p></div><button type="button" id="admin-trends-export" class="superadmin-text-link"><i class="fa-solid fa-download mr-1" aria-hidden="true"></i>Download CSV</button></div><div class="admin-workspace-controls superadmin-trend-controls"><label>Period<select id="admin-trend-days"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></label><label>Task category<select id="admin-trend-category"><option value="">All categories</option><option>Home &amp; Repair</option><option>Cleaning Services</option><option>Moving &amp; Transport</option><option>Delivery &amp; Logistics</option><option>IT &amp; Tech Support</option><option>Digital &amp; Creative</option><option>Events &amp; Entertainment</option><option>Errands &amp; Shopping</option><option>Tutoring &amp; Training</option><option>Beauty &amp; Wellness</option><option>Pet Care</option><option>Business Services</option></select></label></div><div id="superadmin-trend-chart"></div></section>');
   if (!$('#admin-suspension-modal')) document.body.insertAdjacentHTML('beforeend','<div id="admin-suspension-modal" class="modal-backdrop fixed inset-0 z-[108] hidden items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="admin-suspension-title"><section class="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><p class="text-xs font-bold uppercase tracking-wider text-rose-600">Superadmin only</p><h2 id="admin-suspension-title" class="mt-2 text-2xl font-bold">Suspend account</h2><p id="admin-suspension-user" class="mt-1 text-sm text-slate-600"></p><form id="admin-suspension-form" class="mt-5 grid gap-4"><input type="hidden" name="user_id"><label class="grid gap-2 text-sm font-bold">Duration<select name="duration" class="form-control"><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option><option value="permanent">Indefinite</option></select></label><label class="grid gap-2 text-sm font-bold">Reason<textarea name="reason" required maxlength="1000" rows="3" class="form-control" placeholder="Explain the policy or safety reason"></textarea></label><div class="flex justify-end gap-2"><button type="button" data-close="admin-suspension-modal" class="touch-target rounded-lg border px-4 font-bold">Cancel</button><button type="submit" class="touch-target rounded-lg bg-rose-600 px-4 font-bold text-white">Suspend account</button></div></form></section></div>');
@@ -975,6 +1011,124 @@ function ensureAdminControls() {
     });
   }
 }
+function adminOpsCard(title, content, subtitle = '') {
+  return `<section class="superadmin-panel rounded-xl border border-[#dbe3e7] bg-white p-4"><div class="mb-3"><h2 class="text-lg font-bold">${title}</h2>${subtitle?`<p class="mt-1 text-xs text-[#68727c]">${subtitle}</p>`:''}</div>${content}</section>`;
+}
+async function loadAdminOperations() {
+  const container=$('#admin-operations-state');
+  if (!container||state.user?.role!=='superadmin'||adminOperationsLoading) return;
+  adminOperationsLoading=true;
+  container.innerHTML='<p class="text-sm text-slate-500">Loading operations data…</p>';
+  try {
+    const days=Number($('#admin-analytics-days')?.value||30);
+    const [disputes,appeals,staff,announcements,analytics,health]=await Promise.all([
+      api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'list_disputes'})}),
+      api('api/suspension_appeals',{method:'POST',body:JSON.stringify({action:'list',status:'Open'})}),
+      api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'list_staff'})}),
+      api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'list_announcements'})}),
+      api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'admin_analytics',days})}),
+      api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'admin_health'})})
+    ]);
+    adminOperationsData={disputes:disputes.disputes||[],appeals:appeals.appeals||[],staff:staff.staff||[],announcements:announcements.announcements||[],analytics,health:health.health||[]};
+    renderAdminOperations();
+  } catch(error) {
+    container.innerHTML=`<p class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 lg:col-span-2">Could not load admin operations: ${escapeHtml(error.message)}</p>`;
+  } finally { adminOperationsLoading=false; }
+}
+function renderAdminOperations() {
+  const container=$('#admin-operations-state');
+  if (!container) return;
+  const {disputes,appeals,staff,announcements,analytics,health}=adminOperationsData;
+  const disputeHtml=disputes.length?disputes.map((entry)=>`<article class="mb-3 rounded-lg border p-3"><div class="flex flex-wrap justify-between gap-2"><strong>${escapeHtml(entry.task?.title||`Task #${entry.task_id}`)}</strong><span class="superadmin-status-pill" data-status="${escapeHtml(entry.status)}">${escapeHtml(entry.status)}</span></div><p class="mt-2 whitespace-pre-line text-sm text-slate-600">${escapeHtml(entry.details)}</p><p class="mt-2 text-xs text-slate-500">Submitted ${escapeHtml(formatActivityTimestamp(entry.created_at))} · ${escapeHtml(entry.task?.owner?`${entry.task.owner.first_name} ${entry.task.owner.last_name}`:'Member')}</p>${entry.status==='Open'?`<div class="mt-3 grid gap-2 sm:grid-cols-[1fr_2fr_auto]"><select data-dispute-status="${Number(entry.task_id)}" class="form-control"><option>In Progress</option><option>Completed</option><option>Cancelled</option></select><input data-dispute-note="${Number(entry.task_id)}" class="form-control" maxlength="1000" placeholder="Resolution note" aria-label="Resolution note"><button type="button" data-ops-resolve-dispute="${Number(entry.task_id)}" class="rounded-lg bg-[#006f70] px-3 py-2 text-xs font-bold text-white">Resolve</button></div>`:''}</article>`).join(''):'<p class="text-sm text-slate-500">No disputes found.</p>';
+  const appealHtml=appeals.length?appeals.map((entry)=>`<article class="mb-3 rounded-lg border p-3"><strong>${escapeHtml(entry.claimant_name)}</strong><p class="text-xs text-slate-500">${escapeHtml(entry.claimant_email)} · ${escapeHtml(formatActivityTimestamp(entry.created_at))}</p><p class="mt-2 whitespace-pre-line text-sm">${escapeHtml(entry.reason)}</p><div class="mt-3 flex gap-2"><button type="button" data-ops-review-appeal="${Number(entry.id)}" data-appeal-status="Approved" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white">Approve &amp; reactivate</button><button type="button" data-ops-review-appeal="${Number(entry.id)}" data-appeal-status="Denied" class="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700">Deny</button></div></article>`).join(''):'<p class="text-sm text-slate-500">No open suspension appeals.</p>';
+  const staffHtml=staff.length?staff.map((entry)=>`<form data-ops-staff-form="${Number(entry.id)}" class="mb-3 rounded-lg border p-3"><strong>${escapeHtml(`${entry.first_name} ${entry.last_name}`)}</strong><span class="ml-2 account-activity-role">${escapeHtml(entry.role)}</span><p class="mb-2 text-xs text-slate-500">${escapeHtml(entry.email)}</p><div class="grid gap-2 sm:grid-cols-2">${[['can_view_users','View user records'],['can_moderate_tasks','Moderate tasks'],['can_review_reports','Review reports'],['can_resolve_disputes','Resolve disputes']].map(([key,label])=>`<label class="flex items-center gap-2 text-sm"><input type="checkbox" name="${key}" ${entry.permissions[key]?'checked':''}>${label}</label>`).join('')}</div><button class="mt-3 rounded-lg bg-[#006f70] px-3 py-2 text-xs font-bold text-white">Save permissions</button></form>`).join(''):'<p class="text-sm text-slate-500">No staff accounts have been created yet.</p>';
+  const categories=analytics.categories||[];
+  const summary=analytics.summary||{};
+  const analyticsHtml=`<label class="mb-3 inline-flex items-center gap-2 text-sm font-semibold">Period<select id="admin-analytics-days" class="form-control"><option value="7" ${analytics.days===7?'selected':''}>7 days</option><option value="30" ${analytics.days===30?'selected':''}>30 days</option><option value="90" ${analytics.days===90?'selected':''}>90 days</option></select></label><div class="grid grid-cols-2 gap-2 sm:grid-cols-3">${[['Registrations',summary.registrations],['Active now',summary.active_users],['Tasks created',summary.tasks_created],['Completed',summary.tasks_completed],['Cancelled',summary.tasks_cancelled],['Disputes',summary.disputes_opened],['Reports',summary.reports_opened],['Avg. report response (hrs)',summary.avg_report_response_hours??'—'],['Completion rate',`${summary.completion_rate??0}%`],['Cancellation rate',`${summary.cancellation_rate??0}%`],['Dispute rate',`${summary.dispute_rate??0}%`]].map(([label,value])=>`<div class="rounded-lg bg-slate-50 p-3"><small class="block text-xs text-slate-500">${label}</small><strong>${escapeHtml(String(value??0))}</strong></div>`).join('')}</div><h3 class="mb-2 mt-4 font-bold">Task categories</h3>${categories.length?`<div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr><th>Category</th><th>Tasks</th><th>Completed</th><th>Cancelled</th></tr></thead><tbody>${categories.map((row)=>`<tr><td>${escapeHtml(row.category||'Uncategorized')}</td><td>${Number(row.tasks)||0}</td><td>${Number(row.completed)||0}</td><td>${Number(row.cancelled)||0}</td></tr>`).join('')}</tbody></table></div>`:'<p class="text-sm text-slate-500">No tasks in this period.</p>'}`;
+  const healthHtml=health.map((item)=>`<div class="mb-2 flex items-center justify-between gap-3 rounded-lg border p-3"><strong>${escapeHtml(item.name)}</strong><span class="${item.status==='Operational'?'text-emerald-700':'text-rose-700'} text-sm font-bold">${escapeHtml(item.status)}</span><small class="text-xs text-slate-500">${escapeHtml(formatActivityTimestamp(item.checked_at))}</small></div>`).join('')||'<p class="text-sm text-slate-500">No status checks available.</p>';
+  const announcementsHtml=`<form id="admin-announcement-form" class="mb-4 grid gap-3"><input type="hidden" name="id"><label class="text-sm font-semibold">Title<input name="title" required maxlength="120" class="form-control mt-1"></label><label class="text-sm font-semibold">Message<textarea name="body" required maxlength="2000" rows="3" class="form-control mt-1"></textarea></label><div class="grid gap-3 sm:grid-cols-2"><label class="text-sm font-semibold">Audience<select name="audience" class="form-control mt-1"><option value="everyone">Everyone</option><option value="members">Members</option><option value="staff">Staff</option></select></label><label class="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" name="is_published">Publish immediately</label></div><div class="grid gap-3 sm:grid-cols-2"><label class="text-sm font-semibold">Starts at<input type="datetime-local" name="starts_at" class="form-control mt-1"></label><label class="text-sm font-semibold">Expires at (optional)<input type="datetime-local" name="expires_at" class="form-control mt-1"></label></div><button type="submit" class="justify-self-start rounded-lg bg-[#006f70] px-4 py-2 text-sm font-bold text-white">Create announcement</button></form>${announcements.length?announcements.map((item)=>`<article class="mb-2 rounded-lg border p-3"><div class="flex justify-between gap-2"><strong>${escapeHtml(item.title)}</strong><span class="text-xs font-bold ${item.is_published?'text-emerald-700':'text-slate-500'}">${item.is_published?'Published':'Draft'}</span></div><p class="mt-1 text-sm text-slate-600">${escapeHtml(item.body)}</p><small class="text-xs text-slate-500">${escapeHtml(item.audience)} · Starts ${escapeHtml(formatActivityTimestamp(item.starts_at))}</small><div class="mt-2 flex gap-2"><button type="button" data-ops-edit-announcement="${Number(item.id)}" class="rounded-lg border px-3 py-1 text-xs font-bold">Edit</button><button type="button" data-ops-delete-announcement="${Number(item.id)}" class="rounded-lg border border-rose-300 px-3 py-1 text-xs font-bold text-rose-700">Delete</button></div></article>`).join(''):'<p class="text-sm text-slate-500">No announcements created.</p>'}`;
+  container.innerHTML=adminOpsCard('Disputes',disputeHtml,'Open task disputes and their history')+adminOpsCard('Suspension appeals',appealHtml,'Approving an appeal immediately reactivates that account.')+adminOpsCard('Staff permissions',staffHtml,'Explicit permission overrides for Admin, Moderator, and Support accounts.')+adminOpsCard('Platform analytics',analyticsHtml,`Last ${analytics.days||30} days`)+adminOpsCard('Announcements',announcementsHtml,'Published announcements appear in the member notification center.')+adminOpsCard('System health',healthHtml,'Safe service and database availability checks; no credentials are exposed.');
+}
+document.addEventListener('click',async(event)=>{
+  const refresh=event.target.closest('[data-admin-ops-refresh]');
+  if(refresh){await loadAdminOperations();return;}
+  const resolve=event.target.closest('[data-ops-resolve-dispute]');
+  if(resolve){
+    const taskId=Number(resolve.dataset.opsResolveDispute), card=resolve.closest('article');
+    const resolution=card?.querySelector(`[data-dispute-note="${taskId}"]`)?.value.trim();
+    const status=card?.querySelector(`[data-dispute-status="${taskId}"]`)?.value;
+    if(!resolution){notify('Enter a resolution note before closing this dispute.','error');return;}
+    setButtonBusy(resolve,true,'Resolving...');
+    try{const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:'resolve_dispute',task_id:taskId,status,resolution})});notify(payload.message);await loadAdminOperations();}
+    catch(error){notify(error.message,'error');}
+    finally{setButtonBusy(resolve,false);}
+    return;
+  }
+  const review=event.target.closest('[data-ops-review-appeal]');
+  if(review){
+    const status=review.dataset.appealStatus;
+    const decision=await decisionModal({title:`${status} this suspension appeal?`,message:status==='Approved'?'Approving immediately removes the user suspension.':'The user will remain suspended.',confirmLabel:`${status} appeal`,withReason:true,reasonLabel:'Resolution note'});
+    if(!decision)return;
+    if(!decision.reason){notify('A resolution note is required.','error');return;}
+    try{const payload=await api('api/suspension_appeals',{method:'POST',body:JSON.stringify({action:'review',appeal_id:review.dataset.opsReviewAppeal,status,note:decision.reason})});notify(payload.message);await loadAdminOperations();}
+    catch(error){notify(error.message,'error');}
+    return;
+  }
+  const edit=event.target.closest('[data-ops-edit-announcement]');
+  if(edit){
+    const item=adminOperationsData.announcements.find((entry)=>Number(entry.id)===Number(edit.dataset.opsEditAnnouncement));
+    const form=$('#admin-announcement-form');
+    if(!item||!form)return;
+    form.elements.id.value=String(item.id);
+    form.elements.title.value=item.title;
+    form.elements.body.value=item.body;
+    form.elements.audience.value=item.audience;
+    form.elements.is_published.checked=item.is_published;
+    form.elements.starts_at.value=item.starts_at?new Date(item.starts_at).toISOString().slice(0,16):'';
+    form.elements.expires_at.value=item.expires_at?new Date(item.expires_at).toISOString().slice(0,16):'';
+    form.querySelector('button[type="submit"]').textContent='Save announcement';
+    form.scrollIntoView({behavior:'smooth',block:'center'});
+    return;
+  }
+  const remove=event.target.closest('[data-ops-delete-announcement]');
+  if(remove){
+    const confirmed=await decisionModal({title:'Delete this announcement?',message:'This removes the announcement and its read receipts.',confirmLabel:'Delete announcement',danger:true});
+    if(!confirmed)return;
+    try{const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'delete_announcement',id:remove.dataset.opsDeleteAnnouncement})});notify(payload.message);await loadAdminOperations();}
+    catch(error){notify(error.message,'error');}
+  }
+});
+document.addEventListener('submit',async(event)=>{
+  const staffForm=event.target.closest('[data-ops-staff-form]');
+  if(staffForm){
+    event.preventDefault();
+    const form=new FormData(staffForm);
+    const permissionNames=['can_view_users','can_moderate_tasks','can_review_reports','can_resolve_disputes'];
+    const payloadData={action:'update_staff_permissions',user_id:Number(staffForm.dataset.opsStaffForm)};
+    permissionNames.forEach((key)=>{payloadData[key]=form.has(key);});
+    setBusy(staffForm,true,'Saving permissions...');
+    try{const result=await api('api/admin_actions',{method:'POST',body:JSON.stringify(payloadData)});notify(result.message);await loadAdminOperations();}
+    catch(error){notify(error.message,'error');}
+    finally{setBusy(staffForm,false);}
+    return;
+  }
+  const announcementForm=event.target.closest('#admin-announcement-form');
+  if(announcementForm){
+    event.preventDefault();
+    if(!announcementForm.reportValidity())return;
+    const fields=new FormData(announcementForm);
+    const data=Object.fromEntries(fields);
+    data.is_published=fields.has('is_published');
+    for(const key of ['starts_at','expires_at']) if(data[key]) data[key]=new Date(data[key]).toISOString(); else if(key==='expires_at') data[key]=null;
+    setBusy(announcementForm,true,'Saving announcement...');
+    try{const result=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'save_announcement',...data})});notify(result.message);announcementForm.reset();announcementForm.elements.id.value='';announcementForm.querySelector('button[type="submit"]').textContent='Create announcement';await loadAdminOperations();}
+    catch(error){notify(error.message,'error');}
+    finally{setBusy(announcementForm,false);}
+  }
+});
+document.addEventListener('change',(event)=>{
+  if(event.target.matches('#admin-analytics-days')) void loadAdminOperations();
+});
 function renderAdminReportQueue() {
   const container = $('#account-activity-reports');
   if (!container) return;
@@ -2244,6 +2398,12 @@ document.addEventListener('click', async (event) => {
     if (!item) return;
     if (item.type === 'message') { await openConversation(item.task_id, item.other_user_id); return; }
     try {
+      if(item.type==='announcement'){
+        await api('api/notifications?action=read_item',{method:'POST',body:JSON.stringify({type:'announcement',id:item.entity_id})});
+        await loadNotificationCenter();
+        void updateNotificationCounts();
+        return;
+      }
       if (item.type === 'bid') await api(`api/notifications?action=read_bids&task_id=${encodeURIComponent(item.task_id)}`);
       else await api('api/notifications?action=read_item', { method: 'POST', body: JSON.stringify({ type: 'task', id: item.id }) });
       const payload = await api(`api/bid_actions?action=task_details&task_id=${encodeURIComponent(item.task_id)}`);
@@ -2731,7 +2891,7 @@ async function publishTaskForm(form) {
 }
 $('#task-form').addEventListener('submit', (event) => { event.preventDefault(); void publishTaskForm(event.currentTarget); });
 $('#create-task-form').addEventListener('submit', (event) => { event.preventDefault(); void publishTaskForm(event.currentTarget); });
-$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in...'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; renderTasks(); if (state.user.role !== "superadmin") await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage(state.user.role === 'superadmin' ? 'account-activity-modal' : 'marketplace-page'); if (state.user.role !== "superadmin") await loadTasks(); if (state.user.role === 'superadmin') await openAccountActivity(); startNotificationPolling(); notify(payload.message); if (state.user.role !== "superadmin") await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in...'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; renderTasks(); if (state.user.role !== "superadmin") await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage(state.user.role === 'superadmin' ? 'account-activity-modal' : 'marketplace-page'); if (state.user.role !== "superadmin") await loadTasks(); if (state.user.role === 'superadmin') await openAccountActivity(); startNotificationPolling(); notify(payload.message); if (state.user.role !== "superadmin") await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); if (error.suspensionAppealAvailable) openSuspensionAppealDialog(); } finally { setBusy(event.target, false); } });
 $('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-profile-form').addEventListener('submit', (event) => {
   event.preventDefault();
