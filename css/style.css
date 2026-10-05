@@ -247,6 +247,7 @@ body.superadmin-mode .superadmin-sidebar button[data-admin-page="user-management
 body.superadmin-mode .superadmin-sidebar button[data-admin-page="task-management-page"]::before { content: "\f0ae"; }
 body.superadmin-mode .superadmin-sidebar button[data-admin-page="report-management-page"]::before { content: "\f071"; }
 body.superadmin-mode .superadmin-sidebar button[data-admin-page="audit-log-page"]::before { content: "\f1da"; }
+body.superadmin-mode .superadmin-sidebar button[data-admin-page="admin-operations-page"]::before { content: "\f0a1"; }
 body.superadmin-mode .superadmin-sidebar button[data-admin-page="superadmin-account-page"]::before { content: "\f013"; }
 body.superadmin-mode .superadmin-sidebar button:hover { transform: translateX(2px); border-color: #e5efef; background: #f5f9fa; color: #087e78; }
 body.superadmin-mode .superadmin-sidebar button.is-active { border-color: #d7eeeb; background: linear-gradient(100deg,#e8f6f4,#f2f9f8); color: #087e78; box-shadow: inset 3px 0 #07877f; }
