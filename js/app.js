@@ -892,6 +892,7 @@ function showPage(pageId) {
   document.body.classList.toggle('staff-admin-mode',canOpenStaffDashboard&&staffWorkspacePage);
   document.body.classList.toggle('superadmin-mode',role === 'superadmin' || staffConsoleActive);
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
+  updateWorkspacePageLabels(role);
   if (pageId === 'superadmin-account-page') renderSuperadminAccountSettings();
   const activeAdminPage = ({ 'superadmin-task-detail-page': 'task-management-page', 'superadmin-user-profile-page': 'user-management-page' })[pageId] || pageId;
   document.querySelectorAll('.superadmin-sidebar [data-admin-page], .superadmin-sidebar [data-page]').forEach((button) => {
@@ -939,6 +940,16 @@ function showPage(pageId) {
   if (pageId === 'audit-log-page') void loadAdminAudit(true);
   if (pageId === 'admin-operations-page') void loadAdminOperations();
   if (pageId === 'staff-dashboard-page') void loadStaffDashboard();
+}
+
+function updateWorkspacePageLabels(role) {
+  const roleLabel = ({ admin: 'Admin', moderator: 'Moderator', support: 'Support', superadmin: 'Superadmin' })[role] || 'Workspace';
+  document.querySelectorAll('[data-workspace-label]').forEach((label) => {
+    const section = label.closest('.app-page');
+    const title = label.dataset.workspaceLabel;
+    const pageLabel = title === 'users' ? 'Users' : title === 'moderation' ? 'Moderation' : title === 'safety' ? 'Safety' : '';
+    if (section && pageLabel) label.textContent = `${roleLabel} · ${pageLabel}`;
+  });
 }
 
 function renderAuth() {
