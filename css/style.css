@@ -337,6 +337,9 @@ body.dark-mode.staff-admin-mode .superadmin-shortcuts button { color:#8ce0d2; }
 body.dark-mode.staff-admin-mode .superadmin-shortcuts small { color:#aab6c5; }
 html.liquid-glass-active body.staff-admin-mode .page-shell:has(.superadmin-sidebar) > .mx-auto > .card { backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }
 body.staff-admin-mode .superadmin-sidebar { transform:none; transition-property:background-color,border-color,box-shadow; }
+html.liquid-glass-active body.superadmin-mode .page-shell:has(.superadmin-sidebar) > .mx-auto > .card,
+html.liquid-glass-active body.superadmin-mode .admin-operations-shell { backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }
+body.superadmin-mode .superadmin-sidebar { transform:none; transition-property:background-color,border-color,box-shadow; }
 @media (max-width:1023px) {
   body.superadmin-mode .page-shell:has(.superadmin-sidebar) .card { min-height: auto; margin-left: 0; }
   body.superadmin-mode .superadmin-sidebar { top: auto; bottom: auto; left: auto; flex-wrap: nowrap; gap: .25rem; margin: 0 0 1rem; padding: .45rem; }
