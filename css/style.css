@@ -1523,6 +1523,20 @@ body.dark-mode .announcement-reader-panel time { color:#a6b4c6; }
 body.dark-mode .announcement-reader-panel > footer { border-color:#334155; }
 body.dark-mode .announcement-reader-panel > header button { color:#cbd5e1; }
 body.dark-mode .announcement-reader-icon { background:#1d4547; color:#9be5d7; }
+.legal-reader-panel { display:flex; width:min(100%,680px); max-height:min(84vh,780px); flex-direction:column; overflow:hidden; border:1px solid #e2e8f0; border-radius:22px; background:#fff; box-shadow:0 28px 80px rgba(15,23,42,.25); }
+.legal-reader-panel > header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; border-bottom:1px solid #e8edf2; padding:1.25rem 1.5rem; }
+.legal-reader-label { color:#087e78; font-size:.68rem; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+.legal-reader-panel h2 { margin-top:.3rem; color:#172033; font-size:1.4rem; font-weight:850; }
+.legal-reader-panel > header button { display:grid; width:2.4rem; height:2.4rem; flex:none; place-items:center; border-radius:.7rem; color:#64748b; }
+.legal-reader-content { overflow:auto; padding:1.5rem; color:#475569; font-size:.92rem; line-height:1.75; }
+.legal-reader-note { margin-top:1rem; border-radius:.8rem; background:#f4f8fa; padding:.8rem 1rem; color:#718096; font-size:.78rem; }
+.legal-reader-panel > footer { display:flex; justify-content:flex-end; border-top:1px solid #e8edf2; padding:1rem 1.5rem; }
+body.dark-mode .legal-reader-panel { border-color:#334155; background:#172334; }
+body.dark-mode .legal-reader-panel h2 { color:#f1f5f9; }
+body.dark-mode .legal-reader-panel > header,body.dark-mode .legal-reader-panel > footer { border-color:#334155; }
+body.dark-mode .legal-reader-panel > header button { color:#cbd5e1; }
+body.dark-mode .legal-reader-content { color:#cbd5e1; }
+body.dark-mode .legal-reader-note { background:#1e2d3e; color:#aab7c7; }
 
 .admin-operations-workspace { --ops-ink:#172033; --ops-muted:#718096; --ops-border:#e4ebf0; --ops-tint:#f5f9fb; }
 .admin-operations-workspace .admin-operations-shell { overflow:hidden; border:1px solid var(--ops-border); background:linear-gradient(145deg,#fff 0%,#fbfdff 100%); padding:clamp(1rem,2.5vw,2rem); box-shadow:0 24px 65px rgba(25,45,65,.09); }

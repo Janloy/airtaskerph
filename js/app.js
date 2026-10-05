@@ -266,6 +266,29 @@ async function openAnnouncement(item) {
     void updateNotificationCounts();
   } catch(error) { notify(error.message,'error'); }
 }
+function openLegalDocument(documentType) {
+  const documents = {
+    terms: {
+      title: 'Terms of Service',
+      description: 'The TaskerPH Terms of Service have not been published yet. Please check back after the finalized terms are available.'
+    },
+    privacy: {
+      title: 'Privacy Policy',
+      description: 'The TaskerPH Privacy Policy has not been published yet. Please check back after the finalized policy is available.'
+    }
+  };
+  const legalDocument = documents[documentType];
+  if (!legalDocument) {
+    notify('That legal document could not be opened.', 'error');
+    return;
+  }
+  if (!$('#legal-document-modal')) {
+    document.body.insertAdjacentHTML('beforeend', '<div id="legal-document-modal" class="modal-backdrop fixed inset-0 z-[120] hidden items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="legal-document-title"><article class="modal-panel legal-reader-panel"><header><div><p class="legal-reader-label">TaskerPH · Legal</p><h2 id="legal-document-title"></h2></div><button type="button" data-close="legal-document-modal" aria-label="Close legal document"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header><div class="legal-reader-content"><p id="legal-document-description"></p><p class="legal-reader-note">Effective date: To be announced</p></div><footer><button type="button" data-close="legal-document-modal" class="touch-target rounded-lg bg-[#006f70] px-5 font-bold text-white">Done</button></footer></article></div>');
+  }
+  $('#legal-document-title').textContent = legalDocument.title;
+  $('#legal-document-description').textContent = legalDocument.description;
+  openModal('#legal-document-modal');
+}
 function setNotificationCount(selector, count) {
   const element = $(selector);
   if (!element) return;
@@ -2881,6 +2904,8 @@ document.addEventListener('click', async (event) => {
   if (event.target.closest('[data-my-bids]')) { closeDesktopProfileMenu(); resetScrollPosition(); closeDrawer(); loadMyBids(); }
   if (event.target.closest('[data-my-tasks]')) { closeDesktopProfileMenu(); resetScrollPosition(); closeDrawer(); loadMyTasks(); }
   if (event.target.closest('[data-profile-page]')) { closeDesktopProfileMenu(); resetScrollPosition(); void refreshTaskDraftCount(); openProfile(); return; }
+  const legalDocumentButton = event.target.closest('[data-legal-document]');
+  if (legalDocumentButton) { openLegalDocument(legalDocumentButton.dataset.legalDocument); return; }
   const profileFormToggle = event.target.closest('[data-profile-form]');
   if (profileFormToggle) { const form = $(`#${profileFormToggle.dataset.profileForm}`); form?.classList.toggle('hidden'); return; }
   if (event.target.closest('[data-appearance-toggle]')) { saveUserAppearance(!document.body.classList.contains('dark-mode')); }
