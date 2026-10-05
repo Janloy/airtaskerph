@@ -830,12 +830,16 @@ function showPage(pageId) {
   const canOpenStaffDashboard=['admin','moderator'].includes(role);
   if (['account-activity-modal','audit-log-page','superadmin-account-page','admin-operations-page'].includes(pageId) && role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
   if (pageId==='staff-dashboard-page'&&!canOpenStaffDashboard) { notify('Only Admin or Moderator staff can open this dashboard.', 'error'); return false; }
-  if (pageId === 'user-management-page' && !canViewUsers) { notify('Only Superadmins or Support staff can open user records.', 'error'); return false; }
+  if (pageId === 'user-management-page' && !canViewUsers) { notify('You do not have permission to view user records.', 'error'); return false; }
   if (pageId === 'superadmin-user-profile-page' && !canViewStaffProfiles) { notify('Only staff can view member profiles.', 'error'); return false; }
   if (['task-management-page','superadmin-task-detail-page'].includes(pageId) && !canModerateAdmin) { notify('You do not have permission to moderate tasks.', 'error'); return false; }
   if (pageId==='report-management-page'&&!canReviewReports) { notify('You do not have permission to review reports.', 'error'); return false; }
   ensureAdminControls();
-  document.body.classList.toggle('staff-admin-mode',canOpenStaffDashboard&&['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page','user-management-page','superadmin-user-profile-page'].includes(pageId));
+  const staffWorkspacePage = ['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page','user-management-page','superadmin-user-profile-page'].includes(pageId);
+  const staffConsoleRole = ['admin','moderator','support'].includes(role);
+  const staffConsoleActive = staffConsoleRole && (staffWorkspacePage || (pageId === 'profile-page' && ['admin','moderator'].includes(role)));
+  document.body.classList.toggle('staff-admin-mode',canOpenStaffDashboard&&staffWorkspacePage);
+  document.body.classList.toggle('superadmin-mode',role === 'superadmin' || staffConsoleActive);
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
   if (pageId === 'superadmin-account-page') renderSuperadminAccountSettings();
   const activeAdminPage = ({ 'superadmin-task-detail-page': 'task-management-page', 'superadmin-user-profile-page': 'user-management-page' })[pageId] || pageId;
@@ -890,8 +894,13 @@ function renderAuth() {
   ensureNotificationControls();
   $('#desktop-notification-trigger')?.classList.toggle('hidden', !loggedIn);
   $('#mobile-notification-trigger')?.classList.toggle('hidden', !loggedIn);
-  document.body.classList.toggle('superadmin-mode', state.user?.role === 'superadmin');
+  const activePageId = document.querySelector('.app-page:not(.hidden)')?.id;
+  const staffConsolePage = ['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page','user-management-page','superadmin-user-profile-page'].includes(activePageId) || (activePageId === 'profile-page' && ['admin','moderator'].includes(state.user?.role));
+  document.body.classList.toggle('staff-admin-mode', ['admin','moderator'].includes(state.user?.role) && staffConsolePage);
+  document.body.classList.toggle('superadmin-mode', state.user?.role === 'superadmin' || (['admin','moderator','support'].includes(state.user?.role) && staffConsolePage));
   if ($('#admin-topbar-name') && loggedIn) $('#admin-topbar-name').textContent = `${state.user.first_name || ''} ${state.user.last_name || ''}`.trim();
+  const globalProfileRole = $('#superadmin-global-profile .superadmin-profile-copy small');
+  if (globalProfileRole && loggedIn) globalProfileRole.textContent = state.user.role === 'superadmin' ? 'Platform administrator' : `${({admin:'Administrator',moderator:'Moderator',support:'Support'})[state.user.role] || 'Staff'} workspace`;
   $('#mobile-header-login-button')?.classList.toggle('hidden', loggedIn);
   $('.mobile-saved-button')?.classList.toggle('hidden', !loggedIn);
   $('#auth-actions').innerHTML = loggedIn ? `<div class="desktop-profile-root relative hidden lg:block"><button id="desktop-profile-trigger" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="desktop-profile-dropdown" class="desktop-profile-trigger touch-target flex items-center gap-2 rounded-xl border border-slate-200 px-2 py-1.5 text-left hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"><span class="desktop-profile-avatar"><img id="desktop-avatar-image" class="hidden" alt=""><span id="desktop-avatar-fallback">${escapeHtml(initials(state.user))}</span></span><span class="max-w-32"><strong class="block truncate text-sm">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.last_name)}</strong><small class="block truncate text-xs text-slate-500">${escapeHtml(state.user.email)}</small></span><i class="fa-solid fa-chevron-down text-xs text-slate-500" aria-hidden="true"></i></button><div id="desktop-profile-dropdown" class="desktop-profile-dropdown hidden" aria-label="Profile menu"><div class="desktop-profile-menu-user"><span class="desktop-profile-menu-avatar"><img id="desktop-menu-avatar-image" class="hidden" alt=""><span id="desktop-menu-avatar-fallback">${escapeHtml(initials(state.user))}</span></span><span class="min-w-0"><strong class="block truncate">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.middle_initial ? `${state.user.middle_initial}. ` : '')}${escapeHtml(state.user.last_name)}</strong><small class="block truncate">${escapeHtml(state.user.email)}</small><em>${escapeHtml(({superadmin:'Super Admin',admin:'Administrator',moderator:'Moderator',support:'Support'})[state.user.role]||'TaskerPH Member')}</em></span></div><button data-appearance-toggle class="desktop-profile-menu-row"><i class="fa-solid fa-circle-half-stroke"></i><span>Appearance</span><strong id="desktop-appearance-state">Light</strong></button><label class="desktop-glass-row"><span><i class="fa-solid fa-wand-magic-sparkles"></i> Glass transparency</span><strong id="desktop-glass-label">0%</strong><input id="desktop-glass-opacity" type="range" min="0" max="100" step="1" value="0" aria-label="Glass transparency"></label><button data-page="create-task-page" class="desktop-profile-menu-row"><i class="fa-solid fa-plus"></i><span>Post a task</span></button><button data-my-tasks class="desktop-profile-menu-row"><i class="fa-solid fa-clipboard-list"></i><span>My tasks</span></button><button type="button" data-my-task-drafts class="desktop-profile-menu-row"><i class="fa-regular fa-file-lines"></i><span>Saved drafts</span><strong id="desktop-task-draft-count" class="desktop-menu-count">0</strong></button><button data-my-bids class="desktop-profile-menu-row"><i class="fa-solid fa-gavel"></i><span>My bids</span></button><button data-saved-tasks class="desktop-profile-menu-row"><i class="fa-regular fa-bookmark"></i><span>Saved tasks</span><strong id="desktop-saved-task-count" class="desktop-menu-count">0</strong></button><div class="desktop-profile-menu-divider"></div><button data-profile-page class="desktop-profile-menu-row"><i class="fa-solid fa-user"></i><span>View profile</span></button><button data-desktop-profile-form="edit-profile-form" class="desktop-profile-menu-row"><i class="fa-solid fa-user-pen"></i><span>Edit profile</span></button><button data-desktop-profile-form="change-email-form" class="desktop-profile-menu-row"><i class="fa-solid fa-envelope"></i><span>Change email</span></button><button data-desktop-profile-form="change-password-form" class="desktop-profile-menu-row"><i class="fa-solid fa-lock"></i><span>Change password</span></button><button data-modal="support-modal" class="desktop-profile-menu-row"><i class="fa-solid fa-circle-question"></i><span>Help &amp; Support</span></button><button data-action="logout" class="desktop-profile-logout"><i class="fa-solid fa-arrow-right-from-bracket"></i>Log out</button><small class="desktop-profile-version">TaskerPH Â· Version 1.0.0</small></div></div><button data-action="logout" class="mobile-only touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold">Log out</button>` : `<button data-modal="login-modal" class="touch-target rounded-lg px-4 text-sm font-bold text-[#006f70] hover:bg-[#e9f4f2]">Log in</button><button data-modal="register-modal" class="touch-target rounded-lg bg-[#006f70] px-4 text-sm font-bold text-white shadow-sm hover:bg-[#005b5c]">Join TaskerPH</button>`;
@@ -1227,7 +1236,7 @@ async function exportAuditCsv() {
   } catch (error) { notify(error.message,'error'); }
 }
 async function loadAdminUsers(reset = false, page = 1) {
-  if (!['superadmin','support'].includes(state.user?.role)) return;
+  if (state.user?.role !== 'superadmin' && !state.user?.staff_permissions?.can_view_users) return;
   if (reset) page=1;
   superadminUserPage=page;
   try {
@@ -2724,6 +2733,16 @@ document.addEventListener('click', async (event) => {
   const superadminAccountFormButton = event.target.closest('[data-superadmin-account-form]');
   if (superadminAccountFormButton) {
     closeDesktopProfileMenu();
+    if (state.user?.role !== 'superadmin') {
+      const profileForms = {
+        'admin-edit-profile': 'edit-profile-form',
+        'admin-change-email': 'change-email-form',
+        'admin-change-password': 'change-password-form',
+      };
+      const profileForm = profileForms[superadminAccountFormButton.dataset.superadminAccountForm];
+      if (profileForm) await openProfile(profileForm);
+      return;
+    }
     renderSuperadminAccountSettings();
     showPage('superadmin-account-page');
     requestAnimationFrame(() => $(`#${superadminAccountFormButton.dataset.superadminAccountForm}`)?.querySelector('input')?.focus({ preventScroll: true }));
