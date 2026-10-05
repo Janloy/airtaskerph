@@ -296,6 +296,10 @@ async function updateNotificationCounts() {
     const center = await api('api/notifications?action=center');
     setNotificationCount('#desktop-notification-count', center.unread_count || 0);
     setNotificationCount('#mobile-notification-count', center.unread_count || 0);
+    if (['admin','moderator'].includes(state.user?.role)) {
+      staffUnreadAnnouncementCount = Number(center.unread_announcement_count) || 0;
+      setStaffNotificationBadge(staffActionNotificationCount + staffUnreadAnnouncementCount);
+    }
     (center.items || []).filter((item) => item.type === 'message' && !item.is_read)
       .slice(0, 3).reverse().forEach((item) => {
         const toastKey = `${state.user.id}:${item.id}`;
@@ -973,6 +977,8 @@ function formatActivityTimestamp(value) {
 let accountActivityData = { users: [], events: [], reports: [], tasks: [], under_review_tasks: [], trends: [], stats: {} };
 let staffDashboardData = { recent_reports: [], under_review_tasks: [] };
 let adminNotificationAnnouncements = [];
+let staffActionNotificationCount = 0;
+let staffUnreadAnnouncementCount = 0;
 let superadminTaskView = 'list';
 let superadminUserPage = 1;
 let superadminUserTotal = 0;
@@ -1328,8 +1334,8 @@ function renderStaffDashboard(data) {
   };
   const actionCount = (permissions.can_review_reports ? Number(stats.open_reports) || 0 : 0)
     + (permissions.can_moderate_tasks ? Number(stats.under_review_tasks) || 0 : 0);
-  if ($('#staff-notification-badge')) $('#staff-notification-badge').textContent = String(actionCount);
-  $('#staff-notification-trigger')?.setAttribute('aria-label', `${actionCount} admin action notifications`);
+  staffActionNotificationCount = actionCount;
+  setStaffNotificationBadge(actionCount + staffUnreadAnnouncementCount);
   const name=`${state.user?.first_name||''} ${state.user?.last_name||''}`.trim();
   if ($('#staff-dashboard-name')) $('#staff-dashboard-name').textContent=name||'Admin workspace';
   const metrics=[
@@ -1353,6 +1359,11 @@ function renderStaffDashboard(data) {
     ...(permissions.can_view_users?[['user-management-page','fa-users','User records','View member account details']]:[])
   ];
   $('#staff-dashboard-shortcuts').innerHTML=shortcuts.length?shortcuts.map(([page,icon,title,description])=>`<button type="button" data-admin-page="${page}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span><strong>${title}</strong><small>${description}</small></span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>`).join(''):'<p class="superadmin-empty-state">Contact your Superadmin to request an admin workspace permission.</p>';
+}
+function setStaffNotificationBadge(count) {
+  const badge = $('#staff-notification-badge');
+  if (badge) badge.textContent = count > 99 ? '99+' : String(count);
+  $('#staff-notification-trigger')?.setAttribute('aria-label', `${count} admin notifications`);
 }
 async function loadDashboardTrends() {
   if (state.user?.role!=='superadmin') return;

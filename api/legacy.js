@@ -1233,7 +1233,8 @@ export default async function handler(req, res) {
           ...activeAnnouncements.map((announcement)=>({id:`announcement-${announcement.id}`,type:'announcement',event_type:'announcement',entity_id:Number(announcement.id),title:announcement.title,body:announcement.body,created_at:announcement.starts_at,is_read:readAnnouncementIds.has(Number(announcement.id))}))
         ].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)).slice(0,100);
         const unreadCount=taskNotices.filter((item)=>!item.is_read).length+(unreadMessageCount.count||0)+pendingBids.filter((item)=>!notifiedBidIds.has(Number(item.id))&&!seenBidIds.has(Number(item.id))).length+activeAnnouncements.filter((item)=>!readAnnouncementIds.has(Number(item.id))).length;
-        return res.status(200).json(ok('',{items,unread_count:unreadCount}));
+        const unreadAnnouncementCount=activeAnnouncements.filter((item)=>!readAnnouncementIds.has(Number(item.id))).length;
+        return res.status(200).json(ok('',{items,unread_count:unreadCount,unread_announcement_count:unreadAnnouncementCount}));
       }
       if(action==='mark_all_read') {
         const now=new Date().toISOString();
