@@ -1211,8 +1211,14 @@ body.staff-admin-mode .superadmin-sidebar button[data-admin-page="task-managemen
 body.staff-admin-mode .superadmin-sidebar button[data-admin-page="report-management-page"]::before { content:"\f071"; }
 body.staff-admin-mode .superadmin-sidebar button[data-admin-page="user-management-page"]::before { content:"\f0c0"; }
 body.staff-admin-mode .superadmin-sidebar button:hover, body.staff-admin-mode .superadmin-sidebar button.is-active { border-color:#d7eeeb; background:linear-gradient(100deg,#e8f6f4,#f2f9f8); color:#087e78; }
+body.staff-admin-mode .superadmin-sidebar button[hidden] { display:none !important; }
 body.staff-admin-mode #staff-dashboard-page .card { overflow:visible; }
 body.staff-admin-mode #staff-dashboard-page h1 { color:#172033; font-size:clamp(1.65rem,2vw,2.1rem); letter-spacing:-.035em; }
+body.staff-admin-mode #user-management-page .card, body.staff-admin-mode #task-management-page .card, body.staff-admin-mode #report-management-page .card, body.staff-admin-mode #superadmin-user-profile-page .card, body.staff-admin-mode #superadmin-task-detail-page .card { padding:clamp(1.1rem,2vw,2rem); }
+body.staff-admin-mode #user-management-page h1, body.staff-admin-mode #task-management-page h1, body.staff-admin-mode #report-management-page h1, body.staff-admin-mode #superadmin-user-profile-page h1, body.staff-admin-mode #superadmin-task-detail-page h1 { color:#172033; font-size:clamp(1.6rem,2vw,2rem); letter-spacing:-.035em; }
+body.staff-admin-mode #user-management-page thead { position:sticky; top:0; background:#f7f9fb; }
+body.staff-admin-mode #user-management-page th { padding-top:.9rem; padding-bottom:.9rem; color:#7b8798; letter-spacing:.06em; }
+body.staff-admin-mode #user-management-page tbody tr:hover { background:#f7fbfa; }
 body.staff-admin-mode .superadmin-stat { min-height:100px; border-color:#e9edf3; border-radius:15px; box-shadow:0 4px 14px rgba(30,41,59,.025); }
 body.staff-admin-mode .superadmin-panel { border-color:#e9edf3; border-radius:16px; box-shadow:0 5px 18px rgba(30,41,59,.035); }
 body.dark-mode.staff-admin-mode { background:#101720; }
@@ -1222,7 +1228,9 @@ body.dark-mode.staff-admin-mode .superadmin-sidebar::before { border-color:#2c38
 body.dark-mode.staff-admin-mode .superadmin-sidebar button { color:#aab6c5; }
 body.dark-mode.staff-admin-mode .superadmin-sidebar button:hover, body.dark-mode.staff-admin-mode .superadmin-sidebar button.is-active { border-color:#285652; background:#173b3b; color:#8ce0d2; }
 body.dark-mode.staff-admin-mode .superadmin-panel, body.dark-mode.staff-admin-mode .superadmin-stat { border-color:#293647; background:#182330; }
-body.dark-mode.staff-admin-mode #staff-dashboard-page h1, body.dark-mode.staff-admin-mode .superadmin-panel-heading h3, body.dark-mode.staff-admin-mode .superadmin-stat-value { color:#f1f5f9; }
+body.dark-mode.staff-admin-mode #staff-dashboard-page h1, body.dark-mode.staff-admin-mode #user-management-page h1, body.dark-mode.staff-admin-mode #task-management-page h1, body.dark-mode.staff-admin-mode #report-management-page h1, body.dark-mode.staff-admin-mode #superadmin-user-profile-page h1, body.dark-mode.staff-admin-mode #superadmin-task-detail-page h1, body.dark-mode.staff-admin-mode .superadmin-panel-heading h3, body.dark-mode.staff-admin-mode .superadmin-stat-value { color:#f1f5f9; }
+body.dark-mode.staff-admin-mode #user-management-page thead { background:#172334; }
+body.dark-mode.staff-admin-mode #user-management-page tbody tr:hover { background:#1f2b39; }
 @media (max-width:1023px) {
   body.staff-admin-mode .superadmin-sidebar { position:static; width:auto; flex-direction:row; align-items:center; overflow-x:auto; margin:0 0 1rem; }
   body.staff-admin-mode .page-shell:has(.superadmin-sidebar) .card { margin-left:0; }

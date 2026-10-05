@@ -835,11 +835,17 @@ function showPage(pageId) {
   if (['task-management-page','superadmin-task-detail-page'].includes(pageId) && !canModerateAdmin) { notify('You do not have permission to moderate tasks.', 'error'); return false; }
   if (pageId==='report-management-page'&&!canReviewReports) { notify('You do not have permission to review reports.', 'error'); return false; }
   ensureAdminControls();
-  document.body.classList.toggle('staff-admin-mode',canOpenStaffDashboard&&['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page'].includes(pageId));
+  document.body.classList.toggle('staff-admin-mode',canOpenStaffDashboard&&['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page','user-management-page','superadmin-user-profile-page'].includes(pageId));
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
   if (pageId === 'superadmin-account-page') renderSuperadminAccountSettings();
   const activeAdminPage = ({ 'superadmin-task-detail-page': 'task-management-page', 'superadmin-user-profile-page': 'user-management-page' })[pageId] || pageId;
   document.querySelectorAll('.superadmin-sidebar [data-admin-page], .superadmin-sidebar [data-page]').forEach((button) => {
+    if (button.dataset.adminPage==='admin-operations-page'&&role!=='superadmin') {
+      button.hidden=true;
+      return;
+    }
+    if (button.dataset.page==='staff-dashboard-page'&&role==='superadmin') button.dataset.page='account-activity-modal';
+    if (button.dataset.page==='account-activity-modal'&&canOpenStaffDashboard) button.dataset.page='staff-dashboard-page';
     const target = button.dataset.adminPage || button.dataset.page;
     const superadminOnly = ['account-activity-modal','audit-log-page','superadmin-account-page','admin-operations-page'].includes(target);
     const staffDashboardOnly = target==='staff-dashboard-page';
