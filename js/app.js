@@ -1027,7 +1027,7 @@ function ensureAdminControls() {
   });
   const summary = $('#account-activity-summary');
   if (summary && !$('#superadmin-trends')) summary.insertAdjacentHTML('afterend','<section id="superadmin-trends" class="superadmin-panel superadmin-trends"><div class="superadmin-panel-heading"><div><h3>Platform trends</h3><p>Daily registrations, task posts, completions, and reports</p></div><button type="button" id="admin-trends-export" class="superadmin-text-link"><i class="fa-solid fa-download mr-1" aria-hidden="true"></i>Download CSV</button></div><div class="admin-workspace-controls superadmin-trend-controls"><label>Period<select id="admin-trend-days"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></label><label>Task category<select id="admin-trend-category"><option value="">All categories</option><option>Home &amp; Repair</option><option>Cleaning Services</option><option>Moving &amp; Transport</option><option>Delivery &amp; Logistics</option><option>IT &amp; Tech Support</option><option>Digital &amp; Creative</option><option>Events &amp; Entertainment</option><option>Errands &amp; Shopping</option><option>Tutoring &amp; Training</option><option>Beauty &amp; Wellness</option><option>Pet Care</option><option>Business Services</option></select></label></div><div id="superadmin-trend-chart"></div></section>');
-  if (!$('#admin-suspension-modal')) document.body.insertAdjacentHTML('beforeend','<div id="admin-suspension-modal" class="modal-backdrop fixed inset-0 z-[108] hidden items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="admin-suspension-title"><section class="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><p class="text-xs font-bold uppercase tracking-wider text-rose-600">Superadmin only</p><h2 id="admin-suspension-title" class="mt-2 text-2xl font-bold">Suspend account</h2><p id="admin-suspension-user" class="mt-1 text-sm text-slate-600"></p><form id="admin-suspension-form" class="mt-5 grid gap-4"><input type="hidden" name="user_id"><label class="grid gap-2 text-sm font-bold">Duration<select name="duration" class="form-control"><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option><option value="permanent">Indefinite</option></select></label><label class="grid gap-2 text-sm font-bold">Reason<textarea name="reason" required maxlength="1000" rows="3" class="form-control" placeholder="Explain the policy or safety reason"></textarea></label><div class="flex justify-end gap-2"><button type="button" data-close="admin-suspension-modal" class="touch-target rounded-lg border px-4 font-bold">Cancel</button><button type="submit" class="touch-target rounded-lg bg-rose-600 px-4 font-bold text-white">Suspend account</button></div></form></section></div>');
+  if (!$('#admin-suspension-modal')) document.body.insertAdjacentHTML('beforeend','<div id="admin-suspension-modal" class="modal-backdrop fixed inset-0 z-[108] hidden items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="admin-suspension-title"><section class="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><p id="admin-suspension-access-note" class="text-xs font-bold uppercase tracking-wider text-rose-600">Superadmin account controls</p><h2 id="admin-suspension-title" class="mt-2 text-2xl font-bold">Suspend account</h2><p id="admin-suspension-user" class="mt-1 text-sm text-slate-600"></p><form id="admin-suspension-form" class="mt-5 grid gap-4"><input type="hidden" name="user_id"><label class="grid gap-2 text-sm font-bold">Duration<select name="duration" class="form-control"><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option><option value="permanent">Indefinite</option></select></label><label class="grid gap-2 text-sm font-bold">Reason<textarea name="reason" required maxlength="1000" rows="3" class="form-control" placeholder="Explain the policy or safety reason"></textarea></label><div class="flex justify-end gap-2"><button type="button" data-close="admin-suspension-modal" class="touch-target rounded-lg border px-4 font-bold">Cancel</button><button type="submit" class="touch-target rounded-lg bg-rose-600 px-4 font-bold text-white">Suspend account</button></div></form></section></div>');
   const suspensionForm=$('#admin-suspension-form');
   if (suspensionForm && !suspensionForm.dataset.bound) {
     suspensionForm.dataset.bound='true';
@@ -1040,7 +1040,7 @@ function ensureAdminControls() {
         closeModal('admin-suspension-modal');
         form.reset();
         notify(payload.message);
-        await loadAccountActivity();
+        if (state.user?.role==='superadmin') await loadAccountActivity();
         await loadAdminUsers(false,superadminUserPage);
       } catch(error) { notify(error.message,'error'); }
       finally { setBusy(form,false); }
@@ -1467,14 +1467,15 @@ function renderAccountActivity(payload) {
   renderSuperadminUsers();
 }function renderSuperadminUsers() {
   const body = $('#superadmin-users-table'); if (!body) return;
-  const users = accountActivityData.users.filter((user) => user.role !== 'superadmin');
+  const users = accountActivityData.users.filter((user) => user.role !== 'superadmin' && !(state.user?.role === 'admin' && Number(user.id) === Number(state.user.id)));
   const pageSize = 50;
   const pageCount = Math.max(1,Math.ceil(superadminUserTotal/pageSize));
   const isSuperadmin=state.user?.role==='superadmin';
+  const isAdmin=state.user?.role==='admin';
   body.innerHTML = users.length ? users.map((user) => {
     const name=`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`;
     const suspension=user.is_suspended?`<span class="superadmin-status-pill is-suspended">${user.suspended_until&&new Date(user.suspended_until)>new Date()?`Suspended until ${escapeHtml(formatActivityTimestamp(user.suspended_until))}`:'Suspended'}</span>`:'';
-    const actions=`<button data-superadmin-view-profile="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">View profile</button>${isSuperadmin?`<button data-edit-user="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">Edit</button>${user.is_suspended?`<button data-unsuspend-user="${Number(user.id)}" class="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700">Reactivate</button>`:`<button data-suspend-user="${Number(user.id)}" class="rounded-lg border border-amber-200 px-3 py-2 text-xs font-bold text-amber-700">Suspend</button>`}<button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button>`:''}`;
+    const actions=`<button data-superadmin-view-profile="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">View profile</button>${isSuperadmin?`<button data-edit-user="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">Edit</button>${user.is_suspended?`<button data-unsuspend-user="${Number(user.id)}" class="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700">Reactivate</button>`:`<button data-suspend-user="${Number(user.id)}" class="rounded-lg border border-amber-200 px-3 py-2 text-xs font-bold text-amber-700">Suspend</button>`}<button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button>`:isAdmin&&user.role==='user'&&!user.is_suspended?`<button data-suspend-user="${Number(user.id)}" class="rounded-lg border border-amber-200 px-3 py-2 text-xs font-bold text-amber-700">Suspend</button>`:''}`;
     return `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(name)}<div>${suspension}</div></td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3"><div class="flex flex-wrap items-center gap-2">${actions}</div></td></tr>`;
   }).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
   let pagination = $('#superadmin-user-pagination');
@@ -2628,9 +2629,11 @@ document.addEventListener('click', async (event) => {
   const suspendUserButton=event.target.closest('[data-suspend-user]');
   if (suspendUserButton) {
     const user=accountActivityData.users.find((item)=>Number(item.id)===Number(suspendUserButton.dataset.suspendUser));
-    if (!user || state.user?.role!=='superadmin') return;
+    const canSuspendAsAdmin=state.user?.role==='admin'&&Boolean(state.user.staff_permissions?.can_view_users)&&user?.role==='user';
+    if (!user || user.is_suspended || (state.user?.role!=='superadmin'&&!canSuspendAsAdmin)) return;
     const form=$('#admin-suspension-form');
     form.reset();
+    $('#admin-suspension-access-note').textContent=state.user.role==='admin'?'Admin access · Member accounts only':'Superadmin account controls';
     form.elements.user_id.value=String(user.id);
     $('#admin-suspension-user').textContent=`${user.first_name} ${user.last_name} · ${user.email}`;
     openModal('#admin-suspension-modal');

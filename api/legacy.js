@@ -740,6 +740,7 @@ export default async function handler(req, res) {
         const search = clean(body.search,80).replace(/[,%()]/g,' ').replace(/\s+/g,' ').trim();
         if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw fail('Choose a valid account page.',422);
         let query = s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at,is_suspended,suspension_reason,suspended_until',{count:'exact'}).neq('role','superadmin');
+        if (profile.role === 'admin') query = query.neq('id',profile.id);
         const role = clean(body.role,20) || 'all';
         if (!['all','user','admin','moderator','support'].includes(role)) throw fail('Choose a valid account role.',422);
         if (role !== 'all') query = query.eq('role',role);
@@ -911,12 +912,14 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('Report updated.'));
       }
       if (action === 'suspend_user' || action === 'unsuspend_user') {
-        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can manage account suspensions.',403);
+        const isAdminSuspendingMember=profile.role==='admin'&&action==='suspend_user'&&canViewUsers(profile);
+        if (profile.role !== 'superadmin'&&!isAdminSuspendingMember) throw fail('Only the Superadmin can manage account suspensions. Admins may suspend member accounts when they have user-record access.',403);
         const targetId = Number(body.user_id);
         if (!Number.isSafeInteger(targetId) || targetId < 1 || targetId === Number(profile.id)) throw fail('Choose a valid account to manage.',422);
         const target = await rows(s.from('user_profiles').select('id,first_name,last_name,email,role,is_suspended,suspension_reason,suspended_until').eq('id',targetId).maybeSingle());
         if (!target) throw fail('Account not found.',404);
         if (target.role === 'superadmin') throw fail('Superadmin accounts cannot be suspended.',403);
+        if (isAdminSuspendingMember&&target.role!=='user') throw fail('Admins may suspend member accounts only.',403);
         const label = `${target.first_name} ${target.last_name}`.trim();
         if (action === 'unsuspend_user') {
           if (!target.is_suspended) throw fail('This account is not suspended.',409);
