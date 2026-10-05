@@ -827,22 +827,26 @@ function showPage(pageId) {
   const canViewUsers = role==='superadmin'||Boolean(permissions.can_view_users);
   const canReviewReports = role==='superadmin'||Boolean(permissions.can_review_reports);
   const canViewStaffProfiles = role==='superadmin'||canViewUsers||canModerateAdmin||canReviewReports;
+  const canOpenStaffDashboard=['admin','moderator'].includes(role);
   if (['account-activity-modal','audit-log-page','superadmin-account-page','admin-operations-page'].includes(pageId) && role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
+  if (pageId==='staff-dashboard-page'&&!canOpenStaffDashboard) { notify('Only Admin or Moderator staff can open this dashboard.', 'error'); return false; }
   if (pageId === 'user-management-page' && !canViewUsers) { notify('Only Superadmins or Support staff can open user records.', 'error'); return false; }
   if (pageId === 'superadmin-user-profile-page' && !canViewStaffProfiles) { notify('Only staff can view member profiles.', 'error'); return false; }
   if (['task-management-page','superadmin-task-detail-page'].includes(pageId) && !canModerateAdmin) { notify('You do not have permission to moderate tasks.', 'error'); return false; }
   if (pageId==='report-management-page'&&!canReviewReports) { notify('You do not have permission to review reports.', 'error'); return false; }
   ensureAdminControls();
+  document.body.classList.toggle('staff-admin-mode',canOpenStaffDashboard&&['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page'].includes(pageId));
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
   if (pageId === 'superadmin-account-page') renderSuperadminAccountSettings();
   const activeAdminPage = ({ 'superadmin-task-detail-page': 'task-management-page', 'superadmin-user-profile-page': 'user-management-page' })[pageId] || pageId;
   document.querySelectorAll('.superadmin-sidebar [data-admin-page], .superadmin-sidebar [data-page]').forEach((button) => {
     const target = button.dataset.adminPage || button.dataset.page;
     const superadminOnly = ['account-activity-modal','audit-log-page','superadmin-account-page','admin-operations-page'].includes(target);
+    const staffDashboardOnly = target==='staff-dashboard-page';
     const usersOnly = target === 'user-management-page';
     const moderationOnly = ['task-management-page','superadmin-task-detail-page'].includes(target);
     const reportsOnly = target==='report-management-page';
-    button.hidden = Boolean((superadminOnly && role !== 'superadmin') || (usersOnly && !canViewUsers) || (moderationOnly && !canModerateAdmin) || (reportsOnly&&!canReviewReports));
+    button.hidden = Boolean((superadminOnly && role !== 'superadmin') || (staffDashboardOnly&&!canOpenStaffDashboard) || (usersOnly && !canViewUsers) || (moderationOnly && !canModerateAdmin) || (reportsOnly&&!canReviewReports));
     const active = target === activeAdminPage;
     button.classList.toggle('is-active', active);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
@@ -872,6 +876,7 @@ function showPage(pageId) {
   if (pageId === 'report-management-page') void loadAdminReports(true);
   if (pageId === 'audit-log-page') void loadAdminAudit(true);
   if (pageId === 'admin-operations-page') void loadAdminOperations();
+  if (pageId === 'staff-dashboard-page') void loadStaffDashboard();
 }
 
 function renderAuth() {
@@ -889,7 +894,7 @@ function renderAuth() {
     ['#desktop-avatar-fallback', '#desktop-menu-avatar-fallback'].forEach((selector) => $(selector)?.classList.add('hidden'));
   }
   $('#mobile-auth').innerHTML = loggedIn ? `<div class="mb-5 rounded-lg bg-[#e9f4f2] p-4"><p class="font-bold">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.last_name)}</p><p class="text-xs uppercase tracking-wider text-[#68727c]">${escapeHtml(state.user.role)}</p></div><button data-action="logout" class="touch-target w-full rounded-lg border border-[#c9d4d9] px-4 text-left text-sm font-bold">Log out</button>` : `<button data-modal="login-modal" class="touch-target w-full rounded-lg border border-[#c9d4d9] px-4 text-left text-sm font-bold">Log in</button><button data-modal="register-modal" class="touch-target mt-2 w-full rounded-lg bg-[#006f70] px-4 text-left text-sm font-bold text-white">Join TaskerPH</button>`;
-  if (['superadmin','admin','moderator','support'].includes(state.user?.role)) $('#mobile-auth').insertAdjacentHTML('afterbegin', `<button id="mobile-activity-dashboard" data-activity-dashboard class="touch-target mb-3 w-full rounded-lg bg-[#006f70] px-4 text-left text-sm font-bold text-white"><i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>${state.user.role==='superadmin'?'Superadmin dashboard':state.user.role==='support'?'Support workspace':'Moderation workspace'}</button>`);
+  if (['superadmin','admin','moderator','support'].includes(state.user?.role)) $('#mobile-auth').insertAdjacentHTML('afterbegin', `<button id="mobile-activity-dashboard" data-activity-dashboard class="touch-target mb-3 w-full rounded-lg bg-[#006f70] px-4 text-left text-sm font-bold text-white"><i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>${state.user.role==='superadmin'?'Superadmin dashboard':state.user.role==='support'?'Support workspace':'Admin dashboard'}</button>`);
   $('#role-banner').innerHTML = loggedIn ? `<strong>${escapeHtml(state.user.role === 'superadmin' ? 'Superadmin control' : state.user.role === 'support' ? 'Support workspace' : ['admin','moderator'].includes(state.user.role) ? 'Moderation workspace' : 'Your task space')}:</strong> ${state.user.role === 'user' ? 'Post tasks, track your listings, and discover work nearby.' : state.user.role === 'support' ? 'Review member records and help resolve account questions.' : 'Use your moderation tools responsibly to keep the marketplace useful.'}` : '<strong>Welcome to TaskerPH:</strong> Find trusted local help or post your next task in minutes.';
   $('#post-task-button').classList.toggle('hidden', !loggedIn);
   $('#mobile-post').classList.toggle('hidden', !loggedIn);
@@ -905,7 +910,7 @@ function renderAuth() {
   $('#admin-button').classList.toggle('hidden', state.user?.role !== 'superadmin');
   const hasAdminWorkspace=['superadmin','admin','moderator','support'].includes(state.user?.role);
   $('#activity-dashboard-button')?.classList.toggle('hidden', !hasAdminWorkspace);
-  if ($('#activity-dashboard-button') && hasAdminWorkspace) $('#activity-dashboard-button').innerHTML=`<i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>${state.user.role==='superadmin'?'Superadmin dashboard':state.user.role==='support'?'Support workspace':'Moderation workspace'}`;
+  if ($('#activity-dashboard-button') && hasAdminWorkspace) $('#activity-dashboard-button').innerHTML=`<i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>${state.user.role==='superadmin'?'Superadmin dashboard':state.user.role==='support'?'Support workspace':'Admin dashboard'}`;
   $('#mobile-activity-dashboard')?.classList.toggle('hidden', !hasAdminWorkspace);
   document.querySelectorAll('[data-superadmin-return]').forEach((button) => button.classList.toggle('hidden', state.user?.role !== 'superadmin'));
   const desktopAppearanceState = $('#desktop-appearance-state');
@@ -985,6 +990,7 @@ function ensureAdminControls() {
   const audit = $('#account-activity-events');
   if (audit && !$('#admin-audit-controls')) audit.insertAdjacentHTML('beforebegin','<div id="admin-audit-controls" class="admin-workspace-controls"><label>Search audit history<input id="admin-audit-search" type="search" placeholder="Administrator, action, target, reason"></label><button type="button" id="admin-audit-export" class="superadmin-load-more-button"><i class="fa-solid fa-download mr-2" aria-hidden="true"></i>Export all as CSV</button></div>');
   if (audit && !$('#admin-audit-pagination')) audit.insertAdjacentHTML('afterend','<div id="admin-audit-pagination" class="superadmin-pagination"></div>');
+  if (!$('#staff-dashboard-page')) $('footer')?.insertAdjacentHTML('beforebegin','<section id="staff-dashboard-page" class="app-page page-shell hidden"><div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div class="card overflow-hidden rounded-2xl bg-white shadow-xl"><div class="superadmin-topbar"><div class="superadmin-topbar-right"><span class="superadmin-avatar"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><span><strong id="staff-dashboard-name">Admin workspace</strong><small>Marketplace operations</small></span></div><button type="button" data-staff-dashboard-refresh class="touch-target rounded-lg border px-4 py-2 text-sm font-bold text-[#006f70]"><i class="fa-solid fa-rotate mr-2" aria-hidden="true"></i>Refresh</button></div><div class="flex items-start justify-between gap-4 border-b border-[#dbe3e7] p-5 sm:p-6"><div><p class="text-xs font-bold uppercase tracking-[.16em] text-[#008f8c]">TaskerPH · Admin</p><h1 class="mt-1 text-3xl font-bold">Admin dashboard</h1><p class="mt-1 text-sm text-[#68727c]">Review marketplace activity and jump into your authorized workspaces.</p></div></div><div class="space-y-5 p-5 sm:p-6"><nav class="superadmin-sidebar flex flex-wrap gap-2" aria-label="Admin sections"><button data-page="staff-dashboard-page" class="rounded-lg bg-[#006f70] px-4 py-2 text-sm font-bold text-white">Dashboard</button><button data-admin-page="task-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Tasks</button><button data-admin-page="report-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Reports</button><button data-admin-page="user-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Users</button></nav><div id="staff-dashboard-state" class="hidden" role="status" aria-live="polite"></div><div id="staff-dashboard-stats" class="superadmin-stats-grid"></div><div class="superadmin-dashboard-grid"><section class="superadmin-panel"><div class="superadmin-panel-heading"><div><h3>Latest tasks</h3><p>Most recently posted marketplace tasks</p></div><button data-admin-page="task-management-page" class="superadmin-text-link">Manage tasks</button></div><div id="staff-dashboard-tasks" class="superadmin-list"></div></section><section class="superadmin-panel"><div class="superadmin-panel-heading"><div><h3>Reports needing review</h3><p>Open reports assigned to your permissions</p></div><button data-admin-page="report-management-page" class="superadmin-text-link">View reports</button></div><div id="staff-dashboard-reports" class="superadmin-list"></div></section><section class="superadmin-panel superadmin-wide-panel"><div class="superadmin-panel-heading"><div><h3>Quick access</h3><p>Available admin workspaces</p></div></div><div id="staff-dashboard-shortcuts" class="superadmin-shortcuts"></div></section></div></div></div></div></section>');
   if (!$('#admin-operations-page')) $('footer')?.insertAdjacentHTML('beforebegin','<section id="admin-operations-page" class="app-page page-shell hidden"><div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div class="card rounded-2xl bg-white p-5 shadow-xl sm:p-7"><div class="flex flex-wrap items-center justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[.16em] text-[#008f8c]">Superadmin · Operations</p><h1 class="mt-1 text-3xl font-bold">Admin operations</h1><p class="mt-2 text-sm text-[#68727c]">Disputes, staff permissions, platform analytics, suspension appeals, announcements, and system status.</p></div><button type="button" data-admin-ops-refresh class="touch-target rounded-lg bg-[#006f70] px-4 font-bold text-white"><i class="fa-solid fa-rotate mr-2" aria-hidden="true"></i>Refresh</button></div><nav class="superadmin-sidebar my-5 flex flex-wrap gap-2" aria-label="Superadmin sections"><button data-page="account-activity-modal" class="rounded-lg border px-4 py-2 text-sm font-bold">Dashboard</button><button data-admin-page="user-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Users</button><button data-admin-page="task-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Tasks</button><button data-admin-page="report-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Reports</button><button data-admin-page="audit-log-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Audit log</button><button data-admin-page="admin-operations-page" class="rounded-lg bg-[#006f70] px-4 py-2 text-sm font-bold text-white">Operations</button><button data-admin-page="superadmin-account-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Account settings</button></nav><div id="admin-operations-state" class="grid gap-5 lg:grid-cols-2" aria-live="polite"></div></div></div></section>');
   document.querySelectorAll('.superadmin-sidebar').forEach((nav)=>{
     let operations=nav.querySelector('[data-admin-page="admin-operations-page"]');
@@ -1056,6 +1062,7 @@ function renderAdminOperations() {
   container.innerHTML=adminOpsCard('Disputes',disputeHtml,'Open task disputes and their history')+adminOpsCard('Suspension appeals',appealHtml,'Approving an appeal immediately reactivates that account.')+adminOpsCard('Staff permissions',staffHtml,'Explicit permission overrides for Admin, Moderator, and Support accounts.')+adminOpsCard('Platform analytics',analyticsHtml,`Last ${analytics.days||30} days`)+adminOpsCard('Announcements',announcementsHtml,'Published announcements appear in the member notification center.')+adminOpsCard('System health',healthHtml,'Safe service and database availability checks; no credentials are exposed.');
 }
 document.addEventListener('click',async(event)=>{
+  if(event.target.closest('[data-staff-dashboard-refresh]')){await loadStaffDashboard();return;}
   const refresh=event.target.closest('[data-admin-ops-refresh]');
   if(refresh){await loadAdminOperations();return;}
   const resolve=event.target.closest('[data-ops-resolve-dispute]');
@@ -1235,6 +1242,50 @@ async function loadModeratorTasks() {
     superadminTaskQuery={search:'',status:'all'};
     renderSuperadminTasks();
   } catch(error) { notify(error.message,'error'); }
+}
+async function loadStaffDashboard() {
+  if (!['admin','moderator'].includes(state.user?.role)) return;
+  const stateBox=$('#staff-dashboard-state');
+  if (stateBox) {
+    stateBox.textContent='Loading your admin dashboard…';
+    stateBox.className='superadmin-dashboard-state';
+  }
+  try {
+    const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'staff_dashboard'})});
+    renderStaffDashboard(payload);
+    if (stateBox) stateBox.className='hidden';
+  } catch(error) {
+    if (stateBox) {
+      stateBox.textContent=`Dashboard data could not load: ${error.message}`;
+      stateBox.className='superadmin-dashboard-state';
+    }
+  }
+}
+function renderStaffDashboard(data) {
+  const stats=data.stats||{}, permissions=data.permissions||{};
+  const name=`${state.user?.first_name||''} ${state.user?.last_name||''}`.trim();
+  if ($('#staff-dashboard-name')) $('#staff-dashboard-name').textContent=name||'Admin workspace';
+  const metrics=[
+    ...(permissions.can_moderate_tasks?[['Total tasks',stats.tasks,'fa-list-check'],['Open tasks',stats.open_tasks,'fa-briefcase'],['Under review',stats.under_review_tasks,'fa-eye']]:[]),
+    ...(permissions.can_review_reports?[['Open reports',stats.open_reports,'fa-flag']]:[]),
+    ...(permissions.can_resolve_disputes?[['Open disputes',stats.open_disputes,'fa-scale-balanced']]:[]),
+    ...(permissions.can_view_users?[['Member accounts',stats.users,'fa-users']]:[])
+  ];
+  $('#staff-dashboard-stats').innerHTML=metrics.length?metrics.map(([label,value,icon])=>`<article class="superadmin-stat"><span class="superadmin-stat-icon"><i class="fa-solid ${icon}" aria-hidden="true"></i></span><span class="superadmin-stat-label">${label}</span><strong class="superadmin-stat-value">${Number(value)||0}</strong></article>`).join(''):'<p class="text-sm text-slate-500">No dashboard metrics are available for your current permissions.</p>';
+  const tasks=data.recent_tasks||[];
+  $('#staff-dashboard-tasks').innerHTML=permissions.can_moderate_tasks
+    ?tasks.length?tasks.map((task)=>`<article class="superadmin-compact-row"><span class="superadmin-compact-icon"><i class="fa-solid fa-briefcase" aria-hidden="true"></i></span><span class="superadmin-compact-copy"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.category||'Uncategorized')} · ${escapeHtml(task.owner_name)} · ${escapeHtml(formatActivityTimestamp(task.created_at))}</small></span><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span></article>`).join(''):'<p class="superadmin-empty-state">No tasks have been posted yet.</p>'
+    :'<p class="superadmin-empty-state">Task moderation is not enabled for this account.</p>';
+  const reports=data.recent_reports||[];
+  $('#staff-dashboard-reports').innerHTML=permissions.can_review_reports
+    ?reports.length?reports.map((report)=>`<article class="superadmin-compact-row"><span class="superadmin-compact-icon"><i class="fa-solid fa-flag" aria-hidden="true"></i></span><span class="superadmin-compact-copy"><strong>${escapeHtml(report.task?.title||`Task #${report.task_id}`)}</strong><small>${escapeHtml(report.reason)} · ${escapeHtml(formatActivityTimestamp(report.created_at))}</small></span><span class="superadmin-status-pill" data-status="Open">Open</span></article>`).join(''):'<p class="superadmin-empty-state">There are no open reports.</p>'
+    :'<p class="superadmin-empty-state">Report review is not enabled for this account.</p>';
+  const shortcuts=[
+    ...(permissions.can_moderate_tasks?[['task-management-page','fa-list-check','Task moderation','Review and manage marketplace tasks']]:[]),
+    ...(permissions.can_review_reports?[['report-management-page','fa-flag','Report queue','Review reports and record decisions']]:[]),
+    ...(permissions.can_view_users?[['user-management-page','fa-users','User records','View member account details']]:[])
+  ];
+  $('#staff-dashboard-shortcuts').innerHTML=shortcuts.length?shortcuts.map(([page,icon,title,description])=>`<button type="button" data-admin-page="${page}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span><strong>${title}</strong><small>${description}</small></span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>`).join(''):'<p class="superadmin-empty-state">Contact your Superadmin to request an admin workspace permission.</p>';
 }
 async function loadDashboardTrends() {
   if (state.user?.role!=='superadmin') return;
@@ -2597,7 +2648,7 @@ document.addEventListener('click', async (event) => {
     event.preventDefault();
     if (state.user?.role==='superadmin') await openAccountActivity();
     else if (state.user?.role==='support') showPage('user-management-page');
-    else if (['admin','moderator'].includes(state.user?.role)) showPage('task-management-page');
+    else if (['admin','moderator'].includes(state.user?.role)) showPage('staff-dashboard-page');
     return;
   }
   const reportButton = event.target.closest('[data-report-task]');
@@ -2897,7 +2948,41 @@ async function publishTaskForm(form) {
 }
 $('#task-form').addEventListener('submit', (event) => { event.preventDefault(); void publishTaskForm(event.currentTarget); });
 $('#create-task-form').addEventListener('submit', (event) => { event.preventDefault(); void publishTaskForm(event.currentTarget); });
-$('#login-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true, 'Signing in...'); try { const payload = await api('api/auth?action=login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); const returnIntent = state.authReturnIntent; state.authReturnIntent = null; state.authPromptOpen = false; state.authPromptTrigger = null; state.user = payload.user; recordAuthActivity(); applyUserAppearance(state.user); loadUserGlassPreference(state.user); state.myTasks = []; state.activeTask = null; renderTasks(); if (state.user.role !== "superadmin") await refreshSavedTaskData(); broadcastAuthChange(); event.target.reset(); closeDrawer(); closeModal('login-modal'); renderAuth(); showPage(state.user.role === 'superadmin' ? 'account-activity-modal' : 'marketplace-page'); if (state.user.role !== "superadmin") await loadTasks(); if (state.user.role === 'superadmin') await openAccountActivity(); startNotificationPolling(); notify(payload.message); if (state.user.role !== "superadmin") await resumeAuthIntent(returnIntent); } catch (error) { notify(error.message, 'error'); if (error.suspensionAppealAvailable) openSuspensionAppealDialog(); } finally { setBusy(event.target, false); } });
+$('#login-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form=event.currentTarget;
+  setBusy(form,true,'Signing in...');
+  try {
+    const payload=await api('api/auth?action=login',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form)))});
+    const returnIntent=state.authReturnIntent;
+    state.authReturnIntent=null;
+    state.authPromptOpen=false;
+    state.authPromptTrigger=null;
+    state.user=payload.user;
+    recordAuthActivity();
+    applyUserAppearance(state.user);
+    loadUserGlassPreference(state.user);
+    state.myTasks=[];
+    state.activeTask=null;
+    renderTasks();
+    if(state.user.role!=='superadmin') await refreshSavedTaskData();
+    broadcastAuthChange();
+    form.reset();
+    closeDrawer();
+    closeModal('login-modal');
+    renderAuth();
+    const landingPage=state.user.role==='superadmin'?'account-activity-modal':['admin','moderator'].includes(state.user.role)?'staff-dashboard-page':'marketplace-page';
+    showPage(landingPage);
+    if(state.user.role!=='superadmin') await loadTasks();
+    if(state.user.role==='superadmin') await openAccountActivity();
+    startNotificationPolling();
+    notify(payload.message);
+    if(state.user.role!=='superadmin') await resumeAuthIntent(returnIntent);
+  } catch(error) {
+    notify(error.message,'error');
+    if(error.suspensionAppealAvailable) openSuspensionAppealDialog();
+  } finally { setBusy(form,false); }
+});
 $('#register-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/auth?action=register', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); if (state.authReturnIntent) state.preserveAuthIntent = true; closeModal('register-modal'); notify(payload.message); openModal('#login-modal'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#edit-profile-form').addEventListener('submit', (event) => {
   event.preventDefault();

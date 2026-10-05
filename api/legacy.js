@@ -574,6 +574,34 @@ export default async function handler(req, res) {
     }
     if (route === 'admin_actions') {
       ({ profile } = await userFor(req,s, action !== 'activity_dashboard'));
+      if (action === 'staff_dashboard') {
+        const permissions=profile.staff_permissions||defaultStaffPermissions(profile.role);
+        if (!permissions.can_view_users&&!permissions.can_moderate_tasks&&!permissions.can_review_reports&&!permissions.can_resolve_disputes) {
+          throw fail('Your account has no admin workspace permissions.',403);
+        }
+        const checks=[];
+        if (permissions.can_view_users) checks.push(['users',s.from('user_profiles').select('id',{count:'exact',head:true}).neq('role','superadmin')]);
+        if (permissions.can_moderate_tasks) {
+          checks.push(['tasks',s.from('tasks').select('id',{count:'exact',head:true})]);
+          checks.push(['open_tasks',s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Open')]);
+          checks.push(['under_review_tasks',s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Under Review')]);
+          checks.push(['recent_tasks',s.from('tasks').select('id,title,category,status,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name)').order('created_at',{ascending:false}).limit(5)]);
+        }
+        if (permissions.can_review_reports) {
+          checks.push(['open_reports',s.from('task_reports').select('id',{count:'exact',head:true}).eq('status','Open')]);
+          checks.push(['recent_reports',s.from('task_reports').select('id,task_id,reason,details,created_at,task:tasks!task_reports_task_id_fkey(title)').eq('status','Open').order('created_at',{ascending:false}).limit(5)]);
+        }
+        if (permissions.can_resolve_disputes) checks.push(['open_disputes',s.from('task_disputes').select('id',{count:'exact',head:true}).eq('status','Open')]);
+        const results=await Promise.all(checks.map(async([key,query])=>[key,await query]));
+        const dashboard={permissions,stats:{},recent_tasks:[],recent_reports:[]};
+        for (const [key,result] of results) {
+          if (result.error) throw fail(result.error.message);
+          if (key==='recent_tasks') dashboard.recent_tasks=(result.data||[]).map((task)=>({...task,owner_name:task.owner?`${task.owner.first_name} ${task.owner.last_name}`.trim():'Member'}));
+          else if (key==='recent_reports') dashboard.recent_reports=result.data||[];
+          else dashboard.stats[key]=result.count||0;
+        }
+        return res.status(200).json(ok('',dashboard));
+      }
       if (action === 'list_disputes') {
         if (!canResolveDisputes(profile)) throw fail('You do not have permission to view disputes.',403);
         const {data,error}=await s.from('task_disputes').select('id,task_id,opened_by,details,status,resolution,created_at,resolved_at,task:tasks!task_disputes_task_id_fkey(id,title,status,user_id,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email))').order('created_at',{ascending:false}).limit(100);

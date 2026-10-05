@@ -1198,6 +1198,35 @@ body.superadmin-mode #task-management-page .superadmin-task-list .superadmin-tas
 body.superadmin-mode #task-management-page .superadmin-task-list .superadmin-task-row > div:first-child { min-width:0; }
 body.superadmin-mode #task-management-page .superadmin-task-list .superadmin-task-row strong { font-size:1rem; line-height:1.4; white-space:normal; }
 body.superadmin-mode #task-management-page .superadmin-task-list .superadmin-task-row p { margin-top:.35rem; font-size:.88rem; line-height:1.45; }
+body.staff-admin-mode { background:#f4f7fb; }
+body.staff-admin-mode .page-shell { min-height:calc(100vh - 66px); padding-top:1.5rem; background:linear-gradient(140deg,#f4f7fb 0%,#f7f9fc 48%,#edf6f5 100%); }
+body.staff-admin-mode .page-shell:has(.superadmin-sidebar) > .mx-auto { max-width:1600px; padding-right:clamp(1rem,3vw,2.5rem); padding-left:clamp(1rem,3vw,2.5rem); }
+body.staff-admin-mode .page-shell:has(.superadmin-sidebar) .card { min-height:calc(100vh - 98px); margin-left:280px; border:1px solid #e8edf4; border-radius:20px; background:rgba(255,255,255,.94); box-shadow:0 16px 48px rgba(30,41,59,.07); }
+body.staff-admin-mode .superadmin-sidebar { top:84px; bottom:20px; left:max(20px,calc((100vw - 1600px)/2 + 40px)); width:236px; gap:5px; border:1px solid #e9edf3; border-radius:18px; background:rgba(255,255,255,.96); padding:14px 12px; box-shadow:0 14px 40px rgba(30,41,59,.08); }
+body.staff-admin-mode .superadmin-sidebar::before { content:"TASKERPH  /  ADMIN"; display:block; margin:5px 10px 15px; padding:3px 0 15px; border-bottom:1px solid #edf0f4; color:#94a3b8; font-size:.65rem; font-weight:800; letter-spacing:.14em; }
+body.staff-admin-mode .superadmin-sidebar button { display:flex; min-height:44px; align-items:center; gap:12px; border:1px solid transparent; border-radius:10px; padding:0 12px; color:#65738a; font-size:.84rem; font-weight:650; }
+body.staff-admin-mode .superadmin-sidebar button::before { width:18px; color:#94a3b8; font-family:"Font Awesome 6 Free"; font-size:.9rem; font-weight:900; text-align:center; }
+body.staff-admin-mode .superadmin-sidebar button[data-page="staff-dashboard-page"]::before { content:"\f015"; }
+body.staff-admin-mode .superadmin-sidebar button[data-admin-page="task-management-page"]::before { content:"\f0ae"; }
+body.staff-admin-mode .superadmin-sidebar button[data-admin-page="report-management-page"]::before { content:"\f071"; }
+body.staff-admin-mode .superadmin-sidebar button[data-admin-page="user-management-page"]::before { content:"\f0c0"; }
+body.staff-admin-mode .superadmin-sidebar button:hover, body.staff-admin-mode .superadmin-sidebar button.is-active { border-color:#d7eeeb; background:linear-gradient(100deg,#e8f6f4,#f2f9f8); color:#087e78; }
+body.staff-admin-mode #staff-dashboard-page .card { overflow:visible; }
+body.staff-admin-mode #staff-dashboard-page h1 { color:#172033; font-size:clamp(1.65rem,2vw,2.1rem); letter-spacing:-.035em; }
+body.staff-admin-mode .superadmin-stat { min-height:100px; border-color:#e9edf3; border-radius:15px; box-shadow:0 4px 14px rgba(30,41,59,.025); }
+body.staff-admin-mode .superadmin-panel { border-color:#e9edf3; border-radius:16px; box-shadow:0 5px 18px rgba(30,41,59,.035); }
+body.dark-mode.staff-admin-mode { background:#101720; }
+body.dark-mode.staff-admin-mode .page-shell { background:linear-gradient(140deg,#111923,#131e29 55%,#102522); }
+body.dark-mode.staff-admin-mode .page-shell:has(.superadmin-sidebar) .card, body.dark-mode.staff-admin-mode .superadmin-sidebar { border-color:#293647; background:#182330; }
+body.dark-mode.staff-admin-mode .superadmin-sidebar::before { border-color:#2c3847; color:#8794a6; }
+body.dark-mode.staff-admin-mode .superadmin-sidebar button { color:#aab6c5; }
+body.dark-mode.staff-admin-mode .superadmin-sidebar button:hover, body.dark-mode.staff-admin-mode .superadmin-sidebar button.is-active { border-color:#285652; background:#173b3b; color:#8ce0d2; }
+body.dark-mode.staff-admin-mode .superadmin-panel, body.dark-mode.staff-admin-mode .superadmin-stat { border-color:#293647; background:#182330; }
+body.dark-mode.staff-admin-mode #staff-dashboard-page h1, body.dark-mode.staff-admin-mode .superadmin-panel-heading h3, body.dark-mode.staff-admin-mode .superadmin-stat-value { color:#f1f5f9; }
+@media (max-width:1023px) {
+  body.staff-admin-mode .superadmin-sidebar { position:static; width:auto; flex-direction:row; align-items:center; overflow-x:auto; margin:0 0 1rem; }
+  body.staff-admin-mode .page-shell:has(.superadmin-sidebar) .card { margin-left:0; }
+}
 body.superadmin-mode #task-management-page .superadmin-task-list .superadmin-task-row small { margin-top:.3rem; font-size:.82rem; line-height:1.4; }
 body.superadmin-mode #task-management-page .superadmin-task-list .admin-action-button { min-height:2.7rem; padding:.55rem .85rem; font-size:.9rem; }
 body.superadmin-mode #task-management-page .superadmin-task-card-top .superadmin-review-label { font-size:.82rem; }
