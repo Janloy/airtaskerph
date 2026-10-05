@@ -828,14 +828,15 @@ function showPage(pageId) {
   const canReviewReports = role==='superadmin'||Boolean(permissions.can_review_reports);
   const canViewStaffProfiles = role==='superadmin'||canViewUsers||canModerateAdmin||canReviewReports;
   const canOpenStaffDashboard=['admin','moderator'].includes(role);
-  if (['account-activity-modal','audit-log-page','superadmin-account-page','admin-operations-page'].includes(pageId) && role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
+  if (['account-activity-modal','audit-log-page','admin-operations-page'].includes(pageId) && role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
+  if (pageId==='superadmin-account-page'&&role!=='superadmin'&&!canOpenStaffDashboard) { notify('Only Admin staff can open workspace account settings.', 'error'); return false; }
   if (pageId==='staff-dashboard-page'&&!canOpenStaffDashboard) { notify('Only Admin or Moderator staff can open this dashboard.', 'error'); return false; }
   if (pageId === 'user-management-page' && !canViewUsers) { notify('You do not have permission to view user records.', 'error'); return false; }
   if (pageId === 'superadmin-user-profile-page' && !canViewStaffProfiles) { notify('Only staff can view member profiles.', 'error'); return false; }
   if (['task-management-page','superadmin-task-detail-page'].includes(pageId) && !canModerateAdmin) { notify('You do not have permission to moderate tasks.', 'error'); return false; }
   if (pageId==='report-management-page'&&!canReviewReports) { notify('You do not have permission to review reports.', 'error'); return false; }
   ensureAdminControls();
-  const staffWorkspacePage = ['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page','user-management-page','superadmin-user-profile-page'].includes(pageId);
+  const staffWorkspacePage = ['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page','user-management-page','superadmin-user-profile-page','superadmin-account-page'].includes(pageId);
   const staffConsoleRole = ['admin','moderator','support'].includes(role);
   const staffConsoleActive = staffConsoleRole && (staffWorkspacePage || (pageId === 'profile-page' && ['admin','moderator'].includes(role)));
   document.body.classList.toggle('staff-admin-mode',canOpenStaffDashboard&&staffWorkspacePage);
@@ -851,12 +852,13 @@ function showPage(pageId) {
     if (button.dataset.page==='staff-dashboard-page'&&role==='superadmin') button.dataset.page='account-activity-modal';
     if (button.dataset.page==='account-activity-modal'&&canOpenStaffDashboard) button.dataset.page='staff-dashboard-page';
     const target = button.dataset.adminPage || button.dataset.page;
-    const superadminOnly = ['account-activity-modal','audit-log-page','superadmin-account-page','admin-operations-page'].includes(target);
+    const superadminOnly = ['account-activity-modal','audit-log-page','admin-operations-page'].includes(target);
+    const staffAccountSettingsOnly=target==='superadmin-account-page';
     const staffDashboardOnly = target==='staff-dashboard-page';
     const usersOnly = target === 'user-management-page';
     const moderationOnly = ['task-management-page','superadmin-task-detail-page'].includes(target);
     const reportsOnly = target==='report-management-page';
-    button.hidden = Boolean((superadminOnly && role !== 'superadmin') || (staffDashboardOnly&&!canOpenStaffDashboard) || (usersOnly && !canViewUsers) || (moderationOnly && !canModerateAdmin) || (reportsOnly&&!canReviewReports));
+    button.hidden = Boolean((superadminOnly && role !== 'superadmin') || (staffAccountSettingsOnly&&role!=='superadmin'&&!canOpenStaffDashboard) || (staffDashboardOnly&&!canOpenStaffDashboard) || (usersOnly && !canViewUsers) || (moderationOnly && !canModerateAdmin) || (reportsOnly&&!canReviewReports));
     const active = target === activeAdminPage;
     button.classList.toggle('is-active', active);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
@@ -895,7 +897,7 @@ function renderAuth() {
   $('#desktop-notification-trigger')?.classList.toggle('hidden', !loggedIn);
   $('#mobile-notification-trigger')?.classList.toggle('hidden', !loggedIn);
   const activePageId = document.querySelector('.app-page:not(.hidden)')?.id;
-  const staffConsolePage = ['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page','user-management-page','superadmin-user-profile-page'].includes(activePageId) || (activePageId === 'profile-page' && ['admin','moderator'].includes(state.user?.role));
+  const staffConsolePage = ['staff-dashboard-page','task-management-page','superadmin-task-detail-page','report-management-page','user-management-page','superadmin-user-profile-page','superadmin-account-page'].includes(activePageId) || (activePageId === 'profile-page' && ['admin','moderator'].includes(state.user?.role));
   document.body.classList.toggle('staff-admin-mode', ['admin','moderator'].includes(state.user?.role) && staffConsolePage);
   document.body.classList.toggle('superadmin-mode', state.user?.role === 'superadmin' || (['admin','moderator','support'].includes(state.user?.role) && staffConsolePage));
   if ($('#admin-topbar-name') && loggedIn) $('#admin-topbar-name').textContent = `${state.user.first_name || ''} ${state.user.last_name || ''}`.trim();
@@ -1015,6 +1017,9 @@ function ensureAdminControls() {
   if(userManagementCreateAdmin) userManagementCreateAdmin.hidden=state.user?.role!=='superadmin';
   if (!$('#admin-operations-page')) $('footer')?.insertAdjacentHTML('beforebegin','<section id="admin-operations-page" class="app-page page-shell hidden"><div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div class="card rounded-2xl bg-white p-5 shadow-xl sm:p-7"><div class="flex flex-wrap items-center justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[.16em] text-[#008f8c]">Superadmin · Operations</p><h1 class="mt-1 text-3xl font-bold">Admin operations</h1><p class="mt-2 text-sm text-[#68727c]">Disputes, staff permissions, platform analytics, suspension appeals, announcements, and system status.</p></div><button type="button" data-admin-ops-refresh class="touch-target rounded-lg bg-[#006f70] px-4 font-bold text-white"><i class="fa-solid fa-rotate mr-2" aria-hidden="true"></i>Refresh</button></div><nav class="superadmin-sidebar my-5 flex flex-wrap gap-2" aria-label="Superadmin sections"><button data-page="account-activity-modal" class="rounded-lg border px-4 py-2 text-sm font-bold">Dashboard</button><button data-admin-page="user-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Users</button><button data-admin-page="task-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Tasks</button><button data-admin-page="report-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Reports</button><button data-admin-page="audit-log-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Audit log</button><button data-admin-page="admin-operations-page" class="rounded-lg bg-[#006f70] px-4 py-2 text-sm font-bold text-white">Operations</button><button data-admin-page="superadmin-account-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Account settings</button></nav><div id="admin-operations-state" class="grid gap-5 lg:grid-cols-2" aria-live="polite"></div></div></div></section>');
   document.querySelectorAll('.superadmin-sidebar').forEach((nav)=>{
+    if(['admin','moderator'].includes(state.user?.role)&&!nav.querySelector('[data-admin-page="superadmin-account-page"]')){
+      nav.insertAdjacentHTML('beforeend','<button data-admin-page="superadmin-account-page" class="rounded-lg border px-4 py-2 text-sm font-bold"><i class="fa-solid fa-gear mr-2" aria-hidden="true"></i>Account settings</button>');
+    }
     let operations=nav.querySelector('[data-admin-page="admin-operations-page"]');
     if (!operations) {
       nav.insertAdjacentHTML('beforeend','<button data-admin-page="admin-operations-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Operations</button>');
@@ -1023,7 +1028,7 @@ function ensureAdminControls() {
     const accountSettings=nav.querySelector('[data-admin-page="superadmin-account-page"]');
     if (operations&&accountSettings&&operations.nextElementSibling!==accountSettings) nav.insertBefore(operations,accountSettings);
     if (['admin','moderator'].includes(state.user?.role)) {
-      const order=new Map([['dashboard',0],['staff-dashboard-page',0],['user-management-page',1],['task-management-page',2],['report-management-page',3],['audit-log-page',4],['admin-operations-page',5],['superadmin-account-page',6]]);
+      const order=new Map([['dashboard',0],['staff-dashboard-page',0],['user-management-page',1],['task-management-page',2],['report-management-page',3],['superadmin-account-page',4],['audit-log-page',5],['admin-operations-page',6]]);
       const buttons=[...nav.children].filter((child)=>child.matches('button'));
       buttons.sort((a,b)=>{
         const target=(button)=>button.dataset.adminPage||(button.dataset.page==='account-activity-modal'?'dashboard':button.dataset.page)||'';
@@ -1600,7 +1605,7 @@ function renderProfile() {
   if (user.avatar_path) avatar.src = `${user.avatar_path}?v=${encodeURIComponent(user.avatar_path)}`;
 }
 function renderSuperadminAccountSettings() {
-  if (state.user?.role !== 'superadmin') return;
+  if (!['superadmin','admin','moderator'].includes(state.user?.role)) return;
   const profile = $('#admin-edit-profile');
   if (profile) {
     profile.elements.first_name.value = state.user.first_name || '';
@@ -1610,6 +1615,19 @@ function renderSuperadminAccountSettings() {
   const email = $('#admin-change-email');
   if (email) email.elements.email.value = state.user.email || '';
   if ($('#admin-topbar-name')) $('#admin-topbar-name').textContent = `${state.user.first_name || ''} ${state.user.last_name || ''}`.trim();
+  const staffWorkspace=state.user.role!=='superadmin';
+  const eyebrow=$('#superadmin-account-page .superadmin-account-heading p');
+  if(eyebrow) eyebrow.textContent=staffWorkspace?'Admin workspace':'Superadmin workspace';
+  const dashboardButton=$('#superadmin-account-page [data-page="account-activity-modal"]');
+  if(dashboardButton) dashboardButton.dataset.page=staffWorkspace?'staff-dashboard-page':'account-activity-modal';
+  const sidebarDashboard=$('#superadmin-account-page .superadmin-sidebar [data-page="account-activity-modal"]');
+  if(sidebarDashboard) sidebarDashboard.dataset.page=staffWorkspace?'staff-dashboard-page':'account-activity-modal';
+  const sidebar=$('#superadmin-account-page .superadmin-sidebar');
+  if(sidebar) sidebar.setAttribute('aria-label',staffWorkspace?'Admin sections':'Superadmin sections');
+  const heading=$('#superadmin-account-page .superadmin-account-heading h1');
+  if(heading) heading.textContent='Account settings';
+  const description=$('#superadmin-account-page .superadmin-account-heading p:last-child');
+  if(description) description.textContent='Manage your profile and sign-in credentials.';
 }
 async function openProfile(formId = null) {
   closeDrawer();
