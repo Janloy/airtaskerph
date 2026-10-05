@@ -586,17 +586,19 @@ export default async function handler(req, res) {
           checks.push(['open_tasks',s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Open')]);
           checks.push(['under_review_tasks',s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Under Review')]);
           checks.push(['recent_tasks',s.from('tasks').select('id,title,category,status,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name)').order('created_at',{ascending:false}).limit(5)]);
+          checks.push(['review_queue',s.from('tasks').select('id,title,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name)').eq('status','Under Review').order('created_at',{ascending:false}).limit(20)]);
         }
         if (permissions.can_review_reports) {
           checks.push(['open_reports',s.from('task_reports').select('id',{count:'exact',head:true}).eq('status','Open')]);
-          checks.push(['recent_reports',s.from('task_reports').select('id,task_id,reason,details,created_at,task:tasks!task_reports_task_id_fkey(title)').eq('status','Open').order('created_at',{ascending:false}).limit(5)]);
+          checks.push(['recent_reports',s.from('task_reports').select('id,task_id,reason,details,status,created_at,task:tasks!task_reports_task_id_fkey(title)').eq('status','Open').order('created_at',{ascending:false}).limit(5)]);
         }
         if (permissions.can_resolve_disputes) checks.push(['open_disputes',s.from('task_disputes').select('id',{count:'exact',head:true}).eq('status','Open')]);
         const results=await Promise.all(checks.map(async([key,query])=>[key,await query]));
-        const dashboard={permissions,stats:{},recent_tasks:[],recent_reports:[]};
+        const dashboard={permissions,stats:{},recent_tasks:[],recent_reports:[],under_review_tasks:[]};
         for (const [key,result] of results) {
           if (result.error) throw fail(result.error.message);
           if (key==='recent_tasks') dashboard.recent_tasks=(result.data||[]).map((task)=>({...task,owner_name:task.owner?`${task.owner.first_name} ${task.owner.last_name}`.trim():'Member'}));
+          else if (key==='review_queue') dashboard.under_review_tasks=(result.data||[]).map((task)=>({...task,owner_name:task.owner?`${task.owner.first_name} ${task.owner.last_name}`.trim():'Member'}));
           else if (key==='recent_reports') dashboard.recent_reports=result.data||[];
           else dashboard.stats[key]=result.count||0;
         }

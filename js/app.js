@@ -946,6 +946,7 @@ function formatActivityTimestamp(value) {
   return Number.isNaN(date.getTime()) ? 'Not recorded yet' : new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 let accountActivityData = { users: [], events: [], reports: [], tasks: [], under_review_tasks: [], trends: [], stats: {} };
+let staffDashboardData = { recent_reports: [], under_review_tasks: [] };
 let superadminTaskView = 'list';
 let superadminUserPage = 1;
 let superadminUserTotal = 0;
@@ -1005,7 +1006,7 @@ function ensureAdminControls() {
   const audit = $('#account-activity-events');
   if (audit && !$('#admin-audit-controls')) audit.insertAdjacentHTML('beforebegin','<div id="admin-audit-controls" class="admin-workspace-controls"><label>Search audit history<input id="admin-audit-search" type="search" placeholder="Administrator, action, target, reason"></label><button type="button" id="admin-audit-export" class="superadmin-load-more-button"><i class="fa-solid fa-download mr-2" aria-hidden="true"></i>Export all as CSV</button></div>');
   if (audit && !$('#admin-audit-pagination')) audit.insertAdjacentHTML('afterend','<div id="admin-audit-pagination" class="superadmin-pagination"></div>');
-  if (!$('#staff-dashboard-page')) $('footer')?.insertAdjacentHTML('beforebegin','<section id="staff-dashboard-page" class="app-page page-shell hidden"><div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div class="card overflow-hidden rounded-2xl bg-white shadow-xl"><div class="superadmin-topbar"><div class="superadmin-topbar-right"><span class="superadmin-avatar"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><span><strong id="staff-dashboard-name">Admin workspace</strong><small>Marketplace operations</small></span></div><button type="button" data-staff-dashboard-refresh class="touch-target rounded-lg border px-4 py-2 text-sm font-bold text-[#006f70]"><i class="fa-solid fa-rotate mr-2" aria-hidden="true"></i>Refresh</button></div><div class="flex items-start justify-between gap-4 border-b border-[#dbe3e7] p-5 sm:p-6"><div><p class="text-xs font-bold uppercase tracking-[.16em] text-[#008f8c]">TaskerPH · Admin</p><h1 class="mt-1 text-3xl font-bold">Admin dashboard</h1><p class="mt-1 text-sm text-[#68727c]">Review marketplace activity and jump into your authorized workspaces.</p></div></div><div class="space-y-5 p-5 sm:p-6"><nav class="superadmin-sidebar flex flex-wrap gap-2" aria-label="Admin sections"><button data-page="staff-dashboard-page" class="rounded-lg bg-[#006f70] px-4 py-2 text-sm font-bold text-white">Dashboard</button><button data-admin-page="task-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Tasks</button><button data-admin-page="report-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Reports</button><button data-admin-page="user-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Users</button></nav><div id="staff-dashboard-state" class="hidden" role="status" aria-live="polite"></div><div id="staff-dashboard-stats" class="superadmin-stats-grid"></div><div class="superadmin-dashboard-grid"><section class="superadmin-panel"><div class="superadmin-panel-heading"><div><h3>Latest tasks</h3><p>Most recently posted marketplace tasks</p></div><button data-admin-page="task-management-page" class="superadmin-text-link">Manage tasks</button></div><div id="staff-dashboard-tasks" class="superadmin-list"></div></section><section class="superadmin-panel"><div class="superadmin-panel-heading"><div><h3>Reports needing review</h3><p>Open reports assigned to your permissions</p></div><button data-admin-page="report-management-page" class="superadmin-text-link">View reports</button></div><div id="staff-dashboard-reports" class="superadmin-list"></div></section><section class="superadmin-panel superadmin-wide-panel"><div class="superadmin-panel-heading"><div><h3>Quick access</h3><p>Available admin workspaces</p></div></div><div id="staff-dashboard-shortcuts" class="superadmin-shortcuts"></div></section></div></div></div></div></section>');
+  if (!$('#staff-dashboard-page')) $('footer')?.insertAdjacentHTML('beforebegin','<section id="staff-dashboard-page" class="app-page page-shell hidden"><div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div class="card overflow-hidden rounded-2xl bg-white shadow-xl"><div class="superadmin-topbar"><div class="superadmin-topbar-right"><span class="superadmin-avatar"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><span><strong id="staff-dashboard-name">Admin workspace</strong><small>Marketplace operations</small></span></div><div class="superadmin-topbar-right"><button type="button" id="staff-notification-trigger" class="superadmin-topbar-icon" title="Open admin action notifications" aria-label="Open admin action notifications"><i class="fa-regular fa-bell" aria-hidden="true"></i><b id="staff-notification-badge">0</b></button><button type="button" data-staff-dashboard-refresh class="touch-target rounded-lg border px-4 py-2 text-sm font-bold text-[#006f70]"><i class="fa-solid fa-rotate mr-2" aria-hidden="true"></i>Refresh</button></div></div><div class="flex items-start justify-between gap-4 border-b border-[#dbe3e7] p-5 sm:p-6"><div><p class="text-xs font-bold uppercase tracking-[.16em] text-[#008f8c]">TaskerPH · Admin</p><h1 class="mt-1 text-3xl font-bold">Admin dashboard</h1><p class="mt-1 text-sm text-[#68727c]">Review marketplace activity and jump into your authorized workspaces.</p></div></div><div class="space-y-5 p-5 sm:p-6"><nav class="superadmin-sidebar flex flex-wrap gap-2" aria-label="Admin sections"><button data-page="staff-dashboard-page" class="rounded-lg bg-[#006f70] px-4 py-2 text-sm font-bold text-white">Dashboard</button><button data-admin-page="task-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Tasks</button><button data-admin-page="report-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Reports</button><button data-admin-page="user-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Users</button></nav><div id="staff-dashboard-state" class="hidden" role="status" aria-live="polite"></div><div id="staff-dashboard-stats" class="superadmin-stats-grid"></div><div class="superadmin-dashboard-grid"><section class="superadmin-panel"><div class="superadmin-panel-heading"><div><h3>Latest tasks</h3><p>Most recently posted marketplace tasks</p></div><button data-admin-page="task-management-page" class="superadmin-text-link">Manage tasks</button></div><div id="staff-dashboard-tasks" class="superadmin-list"></div></section><section class="superadmin-panel"><div class="superadmin-panel-heading"><div><h3>Reports needing review</h3><p>Open reports assigned to your permissions</p></div><button data-admin-page="report-management-page" class="superadmin-text-link">View reports</button></div><div id="staff-dashboard-reports" class="superadmin-list"></div></section><section class="superadmin-panel superadmin-wide-panel"><div class="superadmin-panel-heading"><div><h3>Quick access</h3><p>Available admin workspaces</p></div></div><div id="staff-dashboard-shortcuts" class="superadmin-shortcuts"></div></section></div></div></div></div></section>');
   if (!$('#admin-operations-page')) $('footer')?.insertAdjacentHTML('beforebegin','<section id="admin-operations-page" class="app-page page-shell hidden"><div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div class="card rounded-2xl bg-white p-5 shadow-xl sm:p-7"><div class="flex flex-wrap items-center justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[.16em] text-[#008f8c]">Superadmin · Operations</p><h1 class="mt-1 text-3xl font-bold">Admin operations</h1><p class="mt-2 text-sm text-[#68727c]">Disputes, staff permissions, platform analytics, suspension appeals, announcements, and system status.</p></div><button type="button" data-admin-ops-refresh class="touch-target rounded-lg bg-[#006f70] px-4 font-bold text-white"><i class="fa-solid fa-rotate mr-2" aria-hidden="true"></i>Refresh</button></div><nav class="superadmin-sidebar my-5 flex flex-wrap gap-2" aria-label="Superadmin sections"><button data-page="account-activity-modal" class="rounded-lg border px-4 py-2 text-sm font-bold">Dashboard</button><button data-admin-page="user-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Users</button><button data-admin-page="task-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Tasks</button><button data-admin-page="report-management-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Reports</button><button data-admin-page="audit-log-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Audit log</button><button data-admin-page="admin-operations-page" class="rounded-lg bg-[#006f70] px-4 py-2 text-sm font-bold text-white">Operations</button><button data-admin-page="superadmin-account-page" class="rounded-lg border px-4 py-2 text-sm font-bold">Account settings</button></nav><div id="admin-operations-state" class="grid gap-5 lg:grid-cols-2" aria-live="polite"></div></div></div></section>');
   document.querySelectorAll('.superadmin-sidebar').forEach((nav)=>{
     let operations=nav.querySelector('[data-admin-page="admin-operations-page"]');
@@ -1278,6 +1279,14 @@ async function loadStaffDashboard() {
 }
 function renderStaffDashboard(data) {
   const stats=data.stats||{}, permissions=data.permissions||{};
+  staffDashboardData = {
+    recent_reports: Array.isArray(data.recent_reports) ? data.recent_reports : [],
+    under_review_tasks: Array.isArray(data.under_review_tasks) ? data.under_review_tasks : [],
+  };
+  const actionCount = (permissions.can_review_reports ? Number(stats.open_reports) || 0 : 0)
+    + (permissions.can_moderate_tasks ? Number(stats.under_review_tasks) || 0 : 0);
+  if ($('#staff-notification-badge')) $('#staff-notification-badge').textContent = String(actionCount);
+  $('#staff-notification-trigger')?.setAttribute('aria-label', `${actionCount} admin action notifications`);
   const name=`${state.user?.first_name||''} ${state.user?.last_name||''}`.trim();
   if ($('#staff-dashboard-name')) $('#staff-dashboard-name').textContent=name||'Admin workspace';
   const metrics=[
@@ -1335,7 +1344,9 @@ function openReportersModal(taskId) {
 }
 
 function openSuperadminNotifications() {
-  const openReports = accountActivityData.reports.filter((report) => report.status === 'Open');
+  const isStaff = ['admin','moderator'].includes(state.user?.role);
+  const reports = isStaff ? staffDashboardData.recent_reports : accountActivityData.reports;
+  const openReports = reports.filter((report) => report.status === 'Open');
   const reportGroups = new Map();
   openReports.forEach((report) => {
     const key = report.task_id ? String(report.task_id) : `report-${report.id}`;
@@ -1346,12 +1357,14 @@ function openSuperadminNotifications() {
     const report = reports[0], title = report.task?.title || 'Removed task';
     return `<button type="button" data-admin-notification-report="${Number(report.task_id) || 0}" class="superadmin-notification-item"><span class="superadmin-notification-icon is-report"><i class="fa-solid fa-flag" aria-hidden="true"></i></span><span><strong>Open task report${reports.length === 1 ? '' : 's'}</strong><small>${escapeHtml(title)} · ${reports.length} ${reports.length === 1 ? 'report needs' : 'reports need'} review</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`;
   }).join('');
-  const disputeItems = accountActivityData.under_review_tasks.map((task) => `<button type="button" data-admin-notification-task="${Number(task.id)}" class="superadmin-notification-item"><span class="superadmin-notification-icon is-dispute"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span><strong>Task paused for review</strong><small>${escapeHtml(task.title)} · ${escapeHtml(task.owner_name || 'Task poster')}</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join('');
+  const reviewTasks = isStaff ? staffDashboardData.under_review_tasks : accountActivityData.under_review_tasks;
+  const disputeItems = reviewTasks.map((task) => `<button type="button" data-admin-notification-task="${Number(task.id)}" class="superadmin-notification-item"><span class="superadmin-notification-icon is-dispute"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span><strong>Task paused for review</strong><small>${escapeHtml(task.title)} · ${escapeHtml(task.owner_name || 'Task poster')}</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join('');
   let modal = $('#superadmin-notifications-modal');
   if (!modal) {
-    document.body.insertAdjacentHTML('beforeend', '<div id="superadmin-notifications-modal" class="modal-backdrop fixed inset-0 z-[108] hidden items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="superadmin-notifications-title"><section class="modal-panel superadmin-notifications-panel"><header><div><p class="superadmin-review-label">Superadmin dashboard</p><h2 id="superadmin-notifications-title">Action notifications</h2><p>Open reports and tasks paused for review.</p></div><button type="button" data-close="superadmin-notifications-modal" aria-label="Close notifications"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header><div id="superadmin-notifications-list" class="superadmin-notifications-list"></div></section></div>');
+    document.body.insertAdjacentHTML('beforeend', '<div id="superadmin-notifications-modal" class="modal-backdrop fixed inset-0 z-[108] hidden items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="superadmin-notifications-title"><section class="modal-panel superadmin-notifications-panel"><header><div><p id="admin-notifications-eyebrow" class="superadmin-review-label">Superadmin dashboard</p><h2 id="superadmin-notifications-title">Action notifications</h2><p>Open reports and tasks paused for review.</p></div><button type="button" data-close="superadmin-notifications-modal" aria-label="Close notifications"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header><div id="superadmin-notifications-list" class="superadmin-notifications-list"></div></section></div>');
     modal = $('#superadmin-notifications-modal');
   }
+  if ($('#admin-notifications-eyebrow')) $('#admin-notifications-eyebrow').textContent = isStaff ? 'Admin workspace' : 'Superadmin dashboard';
   const items = `${reportItems}${disputeItems}`;
   $('#superadmin-notifications-list').innerHTML = items || '<div class="superadmin-notifications-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><strong>You’re all caught up</strong><span>No open reports or tasks under review.</span></div>';
   openModal('#superadmin-notifications-modal');
@@ -2294,6 +2307,18 @@ async function init() {
     await finishMobileSplash(mobileSplash);
     return;
   }
+  if (['admin','moderator'].includes(state.user?.role)) {
+    showPage('staff-dashboard-page');
+    const staffLoads=[loadStaffDashboard(),loadTasks()];
+    if (state.user) staffLoads.push(refreshSavedTaskData().catch((error)=>notify(error.message,'error')));
+    await Promise.all(staffLoads);
+    renderTasks();
+    startNotificationPolling();
+    startTaskPolling();
+    await finishMobileSplash(mobileSplash);
+    maybeShowInstallGuide();
+    return;
+  }
   const initialLoads = [loadTasks()];
   if (state.user) initialLoads.push(refreshSavedTaskData().catch((error) => notify(error.message, 'error')));
   await Promise.all(initialLoads);
@@ -2563,11 +2588,12 @@ document.addEventListener('click', async (event) => {
     openSuperadminTask(task);
     return;
   }
-  if (event.target.closest('#admin-notification-trigger')) { openSuperadminNotifications(); return; }
+  if (event.target.closest('#admin-notification-trigger, #staff-notification-trigger')) { openSuperadminNotifications(); return; }
   const adminNotificationReport = event.target.closest('[data-admin-notification-report]');
   if (adminNotificationReport) {
     const taskId = Number(adminNotificationReport.dataset.adminNotificationReport);
     closeModal('superadmin-notifications-modal');
+    if (['admin','moderator'].includes(state.user?.role)) { showPage('report-management-page'); return; }
     if (taskId > 0) openReportersModal(taskId);
     else showPage('report-management-page');
     return;
@@ -2577,6 +2603,7 @@ document.addEventListener('click', async (event) => {
     const taskId = Number(adminNotificationTask.dataset.adminNotificationTask);
     const task = accountActivityData.under_review_tasks.find((item) => Number(item.id) === taskId) || { id: taskId };
     closeModal('superadmin-notifications-modal');
+    if (['admin','moderator'].includes(state.user?.role)) { showPage('task-management-page'); return; }
     openSuperadminTask(task);
     return;
   }
