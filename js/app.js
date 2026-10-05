@@ -796,12 +796,25 @@ function protectedRouteForElement(target) {
 function showPage(pageId) {
   const protectedIntent = { 'create-task-page': 'post', 'my-tasks-modal': 'tasks', 'my-bids-page': 'bids', 'profile-page': 'profile', 'saved-tasks-page': 'saved', 'conversation-modal': 'messages' }[pageId];
   if (protectedIntent && requestAuthGate(protectedIntent)) return false;
-  if (['account-activity-modal','user-management-page','task-management-page','superadmin-task-detail-page','superadmin-user-profile-page','report-management-page','audit-log-page','superadmin-account-page'].includes(pageId) && state.user?.role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
+  const role = state.user?.role;
+  const canModerateAdmin = ['superadmin','admin','moderator'].includes(role);
+  const canViewUsers = ['superadmin','support'].includes(role);
+  const canViewStaffProfiles = ['superadmin','support','admin','moderator'].includes(role);
+  if (['account-activity-modal','audit-log-page','superadmin-account-page'].includes(pageId) && role !== 'superadmin') { notify('Only the Superadmin can open this page.', 'error'); return false; }
+  if (pageId === 'user-management-page' && !canViewUsers) { notify('Only Superadmins or Support staff can open user records.', 'error'); return false; }
+  if (pageId === 'superadmin-user-profile-page' && !canViewStaffProfiles) { notify('Only staff can view member profiles.', 'error'); return false; }
+  if (['task-management-page','superadmin-task-detail-page','report-management-page'].includes(pageId) && !canModerateAdmin) { notify('Only moderation staff can open this page.', 'error'); return false; }
+  ensureAdminControls();
   document.querySelectorAll('.app-page').forEach((page) => page.classList.toggle('hidden', page.id !== pageId));
   if (pageId === 'superadmin-account-page') renderSuperadminAccountSettings();
   const activeAdminPage = ({ 'superadmin-task-detail-page': 'task-management-page', 'superadmin-user-profile-page': 'user-management-page' })[pageId] || pageId;
   document.querySelectorAll('.superadmin-sidebar [data-admin-page], .superadmin-sidebar [data-page]').forEach((button) => {
-    const active = (button.dataset.adminPage || button.dataset.page) === activeAdminPage;
+    const target = button.dataset.adminPage || button.dataset.page;
+    const superadminOnly = ['account-activity-modal','audit-log-page','superadmin-account-page'].includes(target);
+    const usersOnly = target === 'user-management-page';
+    const moderationOnly = ['task-management-page','report-management-page','superadmin-task-detail-page'].includes(target);
+    button.hidden = Boolean((superadminOnly && role !== 'superadmin') || (usersOnly && !canViewUsers) || (moderationOnly && !canModerateAdmin));
+    const active = target === activeAdminPage;
     button.classList.toggle('is-active', active);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
@@ -825,6 +838,10 @@ function showPage(pageId) {
   document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach((modal) => closeModal(`#${modal.id}`));
   resetScrollPosition();
   if (pageId === 'marketplace-page' && state.taskRefreshTimer) refreshMarketplaceTasks();
+  if (pageId === 'user-management-page') void loadAdminUsers(true);
+  if (pageId === 'task-management-page' && canModerateAdmin && role !== 'superadmin') void loadModeratorTasks();
+  if (pageId === 'report-management-page') void loadAdminReports(true);
+  if (pageId === 'audit-log-page') void loadAdminAudit(true);
 }
 
 function renderAuth() {
@@ -836,14 +853,14 @@ function renderAuth() {
   if ($('#admin-topbar-name') && loggedIn) $('#admin-topbar-name').textContent = `${state.user.first_name || ''} ${state.user.last_name || ''}`.trim();
   $('#mobile-header-login-button')?.classList.toggle('hidden', loggedIn);
   $('.mobile-saved-button')?.classList.toggle('hidden', !loggedIn);
-  $('#auth-actions').innerHTML = loggedIn ? `<div class="desktop-profile-root relative hidden lg:block"><button id="desktop-profile-trigger" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="desktop-profile-dropdown" class="desktop-profile-trigger touch-target flex items-center gap-2 rounded-xl border border-slate-200 px-2 py-1.5 text-left hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"><span class="desktop-profile-avatar"><img id="desktop-avatar-image" class="hidden" alt=""><span id="desktop-avatar-fallback">${escapeHtml(initials(state.user))}</span></span><span class="max-w-32"><strong class="block truncate text-sm">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.last_name)}</strong><small class="block truncate text-xs text-slate-500">${escapeHtml(state.user.email)}</small></span><i class="fa-solid fa-chevron-down text-xs text-slate-500" aria-hidden="true"></i></button><div id="desktop-profile-dropdown" class="desktop-profile-dropdown hidden" aria-label="Profile menu"><div class="desktop-profile-menu-user"><span class="desktop-profile-menu-avatar"><img id="desktop-menu-avatar-image" class="hidden" alt=""><span id="desktop-menu-avatar-fallback">${escapeHtml(initials(state.user))}</span></span><span class="min-w-0"><strong class="block truncate">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.middle_initial ? `${state.user.middle_initial}. ` : '')}${escapeHtml(state.user.last_name)}</strong><small class="block truncate">${escapeHtml(state.user.email)}</small><em>${state.user.role === 'superadmin' ? 'Super Admin' : state.user.role === 'admin' ? 'Administrator' : 'TaskerPH Member'}</em></span></div><button data-appearance-toggle class="desktop-profile-menu-row"><i class="fa-solid fa-circle-half-stroke"></i><span>Appearance</span><strong id="desktop-appearance-state">Light</strong></button><label class="desktop-glass-row"><span><i class="fa-solid fa-wand-magic-sparkles"></i> Glass transparency</span><strong id="desktop-glass-label">0%</strong><input id="desktop-glass-opacity" type="range" min="0" max="100" step="1" value="0" aria-label="Glass transparency"></label><button data-page="create-task-page" class="desktop-profile-menu-row"><i class="fa-solid fa-plus"></i><span>Post a task</span></button><button data-my-tasks class="desktop-profile-menu-row"><i class="fa-solid fa-clipboard-list"></i><span>My tasks</span></button><button type="button" data-my-task-drafts class="desktop-profile-menu-row"><i class="fa-regular fa-file-lines"></i><span>Saved drafts</span><strong id="desktop-task-draft-count" class="desktop-menu-count">0</strong></button><button data-my-bids class="desktop-profile-menu-row"><i class="fa-solid fa-gavel"></i><span>My bids</span></button><button data-saved-tasks class="desktop-profile-menu-row"><i class="fa-regular fa-bookmark"></i><span>Saved tasks</span><strong id="desktop-saved-task-count" class="desktop-menu-count">0</strong></button><div class="desktop-profile-menu-divider"></div><button data-profile-page class="desktop-profile-menu-row"><i class="fa-solid fa-user"></i><span>View profile</span></button><button data-desktop-profile-form="edit-profile-form" class="desktop-profile-menu-row"><i class="fa-solid fa-user-pen"></i><span>Edit profile</span></button><button data-desktop-profile-form="change-email-form" class="desktop-profile-menu-row"><i class="fa-solid fa-envelope"></i><span>Change email</span></button><button data-desktop-profile-form="change-password-form" class="desktop-profile-menu-row"><i class="fa-solid fa-lock"></i><span>Change password</span></button><button data-modal="support-modal" class="desktop-profile-menu-row"><i class="fa-solid fa-circle-question"></i><span>Help &amp; Support</span></button><button data-action="logout" class="desktop-profile-logout"><i class="fa-solid fa-arrow-right-from-bracket"></i>Log out</button><small class="desktop-profile-version">TaskerPH Â· Version 1.0.0</small></div></div><button data-action="logout" class="mobile-only touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold">Log out</button>` : `<button data-modal="login-modal" class="touch-target rounded-lg px-4 text-sm font-bold text-[#006f70] hover:bg-[#e9f4f2]">Log in</button><button data-modal="register-modal" class="touch-target rounded-lg bg-[#006f70] px-4 text-sm font-bold text-white shadow-sm hover:bg-[#005b5c]">Join TaskerPH</button>`;
+  $('#auth-actions').innerHTML = loggedIn ? `<div class="desktop-profile-root relative hidden lg:block"><button id="desktop-profile-trigger" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="desktop-profile-dropdown" class="desktop-profile-trigger touch-target flex items-center gap-2 rounded-xl border border-slate-200 px-2 py-1.5 text-left hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"><span class="desktop-profile-avatar"><img id="desktop-avatar-image" class="hidden" alt=""><span id="desktop-avatar-fallback">${escapeHtml(initials(state.user))}</span></span><span class="max-w-32"><strong class="block truncate text-sm">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.last_name)}</strong><small class="block truncate text-xs text-slate-500">${escapeHtml(state.user.email)}</small></span><i class="fa-solid fa-chevron-down text-xs text-slate-500" aria-hidden="true"></i></button><div id="desktop-profile-dropdown" class="desktop-profile-dropdown hidden" aria-label="Profile menu"><div class="desktop-profile-menu-user"><span class="desktop-profile-menu-avatar"><img id="desktop-menu-avatar-image" class="hidden" alt=""><span id="desktop-menu-avatar-fallback">${escapeHtml(initials(state.user))}</span></span><span class="min-w-0"><strong class="block truncate">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.middle_initial ? `${state.user.middle_initial}. ` : '')}${escapeHtml(state.user.last_name)}</strong><small class="block truncate">${escapeHtml(state.user.email)}</small><em>${escapeHtml(({superadmin:'Super Admin',admin:'Administrator',moderator:'Moderator',support:'Support'})[state.user.role]||'TaskerPH Member')}</em></span></div><button data-appearance-toggle class="desktop-profile-menu-row"><i class="fa-solid fa-circle-half-stroke"></i><span>Appearance</span><strong id="desktop-appearance-state">Light</strong></button><label class="desktop-glass-row"><span><i class="fa-solid fa-wand-magic-sparkles"></i> Glass transparency</span><strong id="desktop-glass-label">0%</strong><input id="desktop-glass-opacity" type="range" min="0" max="100" step="1" value="0" aria-label="Glass transparency"></label><button data-page="create-task-page" class="desktop-profile-menu-row"><i class="fa-solid fa-plus"></i><span>Post a task</span></button><button data-my-tasks class="desktop-profile-menu-row"><i class="fa-solid fa-clipboard-list"></i><span>My tasks</span></button><button type="button" data-my-task-drafts class="desktop-profile-menu-row"><i class="fa-regular fa-file-lines"></i><span>Saved drafts</span><strong id="desktop-task-draft-count" class="desktop-menu-count">0</strong></button><button data-my-bids class="desktop-profile-menu-row"><i class="fa-solid fa-gavel"></i><span>My bids</span></button><button data-saved-tasks class="desktop-profile-menu-row"><i class="fa-regular fa-bookmark"></i><span>Saved tasks</span><strong id="desktop-saved-task-count" class="desktop-menu-count">0</strong></button><div class="desktop-profile-menu-divider"></div><button data-profile-page class="desktop-profile-menu-row"><i class="fa-solid fa-user"></i><span>View profile</span></button><button data-desktop-profile-form="edit-profile-form" class="desktop-profile-menu-row"><i class="fa-solid fa-user-pen"></i><span>Edit profile</span></button><button data-desktop-profile-form="change-email-form" class="desktop-profile-menu-row"><i class="fa-solid fa-envelope"></i><span>Change email</span></button><button data-desktop-profile-form="change-password-form" class="desktop-profile-menu-row"><i class="fa-solid fa-lock"></i><span>Change password</span></button><button data-modal="support-modal" class="desktop-profile-menu-row"><i class="fa-solid fa-circle-question"></i><span>Help &amp; Support</span></button><button data-action="logout" class="desktop-profile-logout"><i class="fa-solid fa-arrow-right-from-bracket"></i>Log out</button><small class="desktop-profile-version">TaskerPH Â· Version 1.0.0</small></div></div><button data-action="logout" class="mobile-only touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold">Log out</button>` : `<button data-modal="login-modal" class="touch-target rounded-lg px-4 text-sm font-bold text-[#006f70] hover:bg-[#e9f4f2]">Log in</button><button data-modal="register-modal" class="touch-target rounded-lg bg-[#006f70] px-4 text-sm font-bold text-white shadow-sm hover:bg-[#005b5c]">Join TaskerPH</button>`;
   if (loggedIn && state.user.avatar_path) {
     ['#desktop-avatar-image', '#desktop-menu-avatar-image'].forEach((selector) => { const image = $(selector); if (image) { image.src = `${state.user.avatar_path}?v=${encodeURIComponent(state.user.avatar_path)}`; image.classList.remove('hidden'); } });
     ['#desktop-avatar-fallback', '#desktop-menu-avatar-fallback'].forEach((selector) => $(selector)?.classList.add('hidden'));
   }
   $('#mobile-auth').innerHTML = loggedIn ? `<div class="mb-5 rounded-lg bg-[#e9f4f2] p-4"><p class="font-bold">${escapeHtml(state.user.first_name)} ${escapeHtml(state.user.last_name)}</p><p class="text-xs uppercase tracking-wider text-[#68727c]">${escapeHtml(state.user.role)}</p></div><button data-action="logout" class="touch-target w-full rounded-lg border border-[#c9d4d9] px-4 text-left text-sm font-bold">Log out</button>` : `<button data-modal="login-modal" class="touch-target w-full rounded-lg border border-[#c9d4d9] px-4 text-left text-sm font-bold">Log in</button><button data-modal="register-modal" class="touch-target mt-2 w-full rounded-lg bg-[#006f70] px-4 text-left text-sm font-bold text-white">Join TaskerPH</button>`;
-  if (state.user?.role === 'superadmin') $('#mobile-auth').insertAdjacentHTML('afterbegin', '<button id="mobile-activity-dashboard" data-activity-dashboard class="touch-target mb-3 w-full rounded-lg bg-[#006f70] px-4 text-left text-sm font-bold text-white"><i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>Superadmin dashboard</button>');
-  $('#role-banner').innerHTML = loggedIn ? `<strong>${escapeHtml(state.user.role === 'superadmin' ? 'Superadmin control' : state.user.role === 'admin' ? 'Admin moderation' : 'Your task space')}:</strong> ${state.user.role === 'user' ? 'Post tasks, track your listings, and discover work nearby.' : 'Use your moderation tools responsibly to keep the marketplace useful.'}` : '<strong>Welcome to TaskerPH:</strong> Find trusted local help or post your next task in minutes.';
+  if (['superadmin','admin','moderator','support'].includes(state.user?.role)) $('#mobile-auth').insertAdjacentHTML('afterbegin', `<button id="mobile-activity-dashboard" data-activity-dashboard class="touch-target mb-3 w-full rounded-lg bg-[#006f70] px-4 text-left text-sm font-bold text-white"><i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>${state.user.role==='superadmin'?'Superadmin dashboard':state.user.role==='support'?'Support workspace':'Moderation workspace'}</button>`);
+  $('#role-banner').innerHTML = loggedIn ? `<strong>${escapeHtml(state.user.role === 'superadmin' ? 'Superadmin control' : state.user.role === 'support' ? 'Support workspace' : ['admin','moderator'].includes(state.user.role) ? 'Moderation workspace' : 'Your task space')}:</strong> ${state.user.role === 'user' ? 'Post tasks, track your listings, and discover work nearby.' : state.user.role === 'support' ? 'Review member records and help resolve account questions.' : 'Use your moderation tools responsibly to keep the marketplace useful.'}` : '<strong>Welcome to TaskerPH:</strong> Find trusted local help or post your next task in minutes.';
   $('#post-task-button').classList.toggle('hidden', !loggedIn);
   $('#mobile-post').classList.toggle('hidden', !loggedIn);
   $('#hero-post').classList.toggle('hidden', !loggedIn);
@@ -856,8 +873,10 @@ function renderAuth() {
   $('#my-tasks-button').classList.toggle('hidden', !loggedIn);
   $('#mobile-my-tasks').classList.toggle('hidden', !loggedIn);
   $('#admin-button').classList.toggle('hidden', state.user?.role !== 'superadmin');
-  $('#activity-dashboard-button')?.classList.toggle('hidden', state.user?.role !== 'superadmin');
-  $('#mobile-activity-dashboard')?.classList.toggle('hidden', state.user?.role !== 'superadmin');
+  const hasAdminWorkspace=['superadmin','admin','moderator','support'].includes(state.user?.role);
+  $('#activity-dashboard-button')?.classList.toggle('hidden', !hasAdminWorkspace);
+  if ($('#activity-dashboard-button') && hasAdminWorkspace) $('#activity-dashboard-button').innerHTML=`<i class="fa-solid fa-chart-line mr-2" aria-hidden="true"></i>${state.user.role==='superadmin'?'Superadmin dashboard':state.user.role==='support'?'Support workspace':'Moderation workspace'}`;
+  $('#mobile-activity-dashboard')?.classList.toggle('hidden', !hasAdminWorkspace);
   document.querySelectorAll('[data-superadmin-return]').forEach((button) => button.classList.toggle('hidden', state.user?.role !== 'superadmin'));
   const desktopAppearanceState = $('#desktop-appearance-state');
   if (desktopAppearanceState) desktopAppearanceState.textContent = document.body.classList.contains('dark-mode') ? 'Dark' : 'Light';
@@ -876,9 +895,22 @@ function formatActivityTimestamp(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Not recorded yet' : new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
-let accountActivityData = { users: [], events: [], reports: [], tasks: [], under_review_tasks: [], stats: {} };
+let accountActivityData = { users: [], events: [], reports: [], tasks: [], under_review_tasks: [], trends: [], stats: {} };
 let superadminTaskView = 'list';
 let superadminUserPage = 1;
+let superadminUserTotal = 0;
+let superadminUserHasMore = false;
+let adminReportRows = [];
+let adminReportPage = 0;
+let adminReportHasMore = false;
+let adminReportTotal = 0;
+let adminAuditRows = [];
+let adminAuditPage = 0;
+let adminAuditHasMore = false;
+let adminAuditTotal = 0;
+let adminUserSearchTimer = null;
+let adminReportSearchTimer = null;
+let adminAuditSearchTimer = null;
 let superadminHasMoreTasks = false;
 let superadminLoadingMoreTasks = false;
 let superadminSearchingTasks = false;
@@ -903,6 +935,154 @@ function renderAccountActivityUsers() {
     const name = `${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`.trim();
     return `<article class="rounded-lg border border-[#dbe3e7] p-3"><div class="flex flex-wrap items-start justify-between gap-2"><div class="min-w-0"><strong class="block truncate">${escapeHtml(name)}</strong><span class="block truncate text-xs text-[#68727c]">${escapeHtml(user.email)}</span></div><span class="account-activity-role">${escapeHtml(user.role)}</span></div><div class="mt-2 grid gap-1 text-xs text-[#4c5962] sm:grid-cols-2"><p>Last login: <strong>${escapeHtml(formatActivityTimestamp(user.last_login_at))}</strong></p><p>Last activity: <strong>${escapeHtml(recentlyActive ? 'Active in the last 5 min' : formatActivityTimestamp(user.last_seen_at))}</strong></p></div></article>`;
   }).join('') : `<p class="text-sm text-[#68727c]">No ${filter === 'admins' ? 'admins' : filter === 'users' ? 'users' : 'accounts'} found.</p>`;
+}
+function ensureAdminControls() {
+  const roleSelects = [$('#admin-edit-user-form select[name="role"]'), $('#superadmin-user-filter')].filter(Boolean);
+  roleSelects.forEach((select) => {
+    for (const [value, label] of [['moderator','Moderator'],['support','Support']]) {
+      if (![...select.options].some((option) => option.value === value)) select.add(new Option(label, value));
+    }
+  });
+  const staffForm = $('#admin-form');
+  if (staffForm && !staffForm.elements.role) {
+    staffForm.querySelector('button[type="submit"],button:not([type])')?.insertAdjacentHTML('beforebegin','<label class="block text-sm font-bold lg:col-span-2">Staff role<select name="role" required class="form-control mt-2"><option value="admin">Admin · moderation</option><option value="moderator">Moderator · tasks, reports, disputes</option><option value="support">Support · read-only member records</option></select></label>');
+  }
+  const reports = $('#account-activity-reports');
+  if (reports && !$('#admin-report-controls')) reports.insertAdjacentHTML('beforebegin','<div id="admin-report-controls" class="admin-workspace-controls"><label>Search reports<input id="admin-report-search" type="search" placeholder="Task, reason, reporter details"></label><label>Status<select id="admin-report-status"><option value="all">All statuses</option><option value="Open">Open</option><option value="Reviewed">Reviewed</option><option value="Dismissed">Dismissed</option></select></label><label>Reason<select id="admin-report-reason"><option value="all">All reasons</option><option>Scam or fraud</option><option>Inappropriate content</option><option>Misleading information</option><option>Other</option></select></label><label>From<input id="admin-report-from" type="date"></label><label>To<input id="admin-report-to" type="date"></label></div>');
+  if (reports && !$('#admin-report-pagination')) reports.insertAdjacentHTML('afterend','<div id="admin-report-pagination" class="superadmin-pagination"></div>');
+  const audit = $('#account-activity-events');
+  if (audit && !$('#admin-audit-controls')) audit.insertAdjacentHTML('beforebegin','<div id="admin-audit-controls" class="admin-workspace-controls"><label>Search audit history<input id="admin-audit-search" type="search" placeholder="Administrator, action, target, reason"></label><button type="button" id="admin-audit-export" class="superadmin-load-more-button"><i class="fa-solid fa-download mr-2" aria-hidden="true"></i>Export all as CSV</button></div>');
+  if (audit && !$('#admin-audit-pagination')) audit.insertAdjacentHTML('afterend','<div id="admin-audit-pagination" class="superadmin-pagination"></div>');
+  const summary = $('#account-activity-summary');
+  if (summary && !$('#superadmin-trends')) summary.insertAdjacentHTML('afterend','<section id="superadmin-trends" class="superadmin-panel superadmin-trends"><div class="superadmin-panel-heading"><div><h3>Platform trends</h3><p>Daily registrations, task posts, completions, and reports</p></div><button type="button" id="admin-trends-export" class="superadmin-text-link"><i class="fa-solid fa-download mr-1" aria-hidden="true"></i>Download CSV</button></div><div class="admin-workspace-controls superadmin-trend-controls"><label>Period<select id="admin-trend-days"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></label><label>Task category<select id="admin-trend-category"><option value="">All categories</option><option>Home &amp; Repair</option><option>Cleaning Services</option><option>Moving &amp; Transport</option><option>Delivery &amp; Logistics</option><option>IT &amp; Tech Support</option><option>Digital &amp; Creative</option><option>Events &amp; Entertainment</option><option>Errands &amp; Shopping</option><option>Tutoring &amp; Training</option><option>Beauty &amp; Wellness</option><option>Pet Care</option><option>Business Services</option></select></label></div><div id="superadmin-trend-chart"></div></section>');
+  if (!$('#admin-suspension-modal')) document.body.insertAdjacentHTML('beforeend','<div id="admin-suspension-modal" class="modal-backdrop fixed inset-0 z-[108] hidden items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="admin-suspension-title"><section class="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><p class="text-xs font-bold uppercase tracking-wider text-rose-600">Superadmin only</p><h2 id="admin-suspension-title" class="mt-2 text-2xl font-bold">Suspend account</h2><p id="admin-suspension-user" class="mt-1 text-sm text-slate-600"></p><form id="admin-suspension-form" class="mt-5 grid gap-4"><input type="hidden" name="user_id"><label class="grid gap-2 text-sm font-bold">Duration<select name="duration" class="form-control"><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option><option value="permanent">Indefinite</option></select></label><label class="grid gap-2 text-sm font-bold">Reason<textarea name="reason" required maxlength="1000" rows="3" class="form-control" placeholder="Explain the policy or safety reason"></textarea></label><div class="flex justify-end gap-2"><button type="button" data-close="admin-suspension-modal" class="touch-target rounded-lg border px-4 font-bold">Cancel</button><button type="submit" class="touch-target rounded-lg bg-rose-600 px-4 font-bold text-white">Suspend account</button></div></form></section></div>');
+  const suspensionForm=$('#admin-suspension-form');
+  if (suspensionForm && !suspensionForm.dataset.bound) {
+    suspensionForm.dataset.bound='true';
+    suspensionForm.addEventListener('submit',async(event)=>{
+      event.preventDefault();
+      const form=event.currentTarget;
+      setBusy(form,true,'Suspending account...');
+      try {
+        const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'suspend_user',...Object.fromEntries(new FormData(form))})});
+        closeModal('admin-suspension-modal');
+        form.reset();
+        notify(payload.message);
+        await loadAccountActivity();
+        await loadAdminUsers(false,superadminUserPage);
+      } catch(error) { notify(error.message,'error'); }
+      finally { setBusy(form,false); }
+    });
+  }
+}
+function renderAdminReportQueue() {
+  const container = $('#account-activity-reports');
+  if (!container) return;
+  const rows = adminReportRows;
+  container.innerHTML = rows.length ? rows.map((report) => {
+    const task = report.task || {}, reporter = report.reporter || {};
+    const taskTitle = task.title || 'Removed task';
+    const ageHours = Math.max(0,Math.floor((Date.now()-new Date(report.created_at).getTime())/3_600_000));
+    const age = ageHours >= 24 ? `${Math.floor(ageHours/24)}d waiting` : `${ageHours}h waiting`;
+    return `<article class="superadmin-report-row admin-report-card" data-admin-report-row="${Number(report.id)}"><div class="superadmin-report-main"><div class="superadmin-report-heading"><div class="min-w-0"><span class="superadmin-report-kicker">${Number(report.task_report_count)||1} report${Number(report.task_report_count)===1?'':'s'} on task · ${Number(report.task_open_report_count)||0} open · ${escapeHtml(report.reason)} · ${escapeHtml(age)}</span><strong>${escapeHtml(taskTitle)}</strong></div><span class="superadmin-report-status" data-status="${escapeHtml(report.status)}">${escapeHtml(report.status)}</span></div><p class="superadmin-report-count">${escapeHtml(`${reporter.first_name||''} ${reporter.last_name||''}`.trim()||'Member')} · ${escapeHtml(reporter.email||'')} · Submitted ${escapeHtml(formatActivityTimestamp(report.created_at))}</p><p class="admin-report-details">${escapeHtml(report.details||'No additional details provided.')}</p>${report.resolution_note?`<p class="admin-report-resolution"><strong>Resolution:</strong> ${escapeHtml(report.resolution_note)}</p>`:''}<div class="superadmin-report-actions"><button type="button" data-superadmin-view-profile="${Number(report.reporter_id)||0}" class="superadmin-report-button superadmin-report-button-view"><i class="fa-regular fa-user" aria-hidden="true"></i><span>Reporter profile</span></button>${task.id?`<button type="button" data-superadmin-view-task="${Number(task.id)}" class="superadmin-report-button superadmin-report-button-view"><i class="fa-regular fa-eye" aria-hidden="true"></i><span>View task</span></button>`:'<span class="superadmin-report-removed">Task removed</span>'}</div></div>${report.status==='Open'?`<div class="superadmin-report-actions admin-report-review"><label>Resolution note<textarea name="resolution_note" maxlength="1000" rows="2" placeholder="Record the decision and any action taken"></textarea></label><button type="button" data-review-report="${Number(report.id)}" data-report-status="Reviewed" class="superadmin-report-button superadmin-report-button-review">Mark reviewed</button><button type="button" data-review-report="${Number(report.id)}" data-report-status="Dismissed" class="superadmin-report-button superadmin-report-button-dismiss">Dismiss</button></div>`:''}</article>`;
+  }).join('') : '<p class="p-4 text-sm text-slate-500">No reports match these filters.</p>';
+  const pagination = $('#admin-report-pagination');
+  if (pagination) pagination.innerHTML = `<span>${adminReportRows.length ? `Page ${adminReportPage+1} · ${adminReportTotal} matching reports` : 'No reports'}</span><div><button type="button" data-admin-report-page="${adminReportPage-1}" ${adminReportPage===0?'disabled':''} aria-label="Previous report page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button><strong>${adminReportPage+1}</strong><button type="button" data-admin-report-page="${adminReportPage+1}" ${adminReportHasMore?'':'disabled'} aria-label="Next report page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>`;
+}
+async function loadAdminReports(reset = false) {
+  if (state.user?.role === 'superadmin') ensureAdminControls();
+  if (!['superadmin','admin','moderator'].includes(state.user?.role)) return;
+  if (reset) adminReportPage = 0;
+  const params = {
+    action:'list_reports', offset:adminReportPage*50,
+    search:$('#admin-report-search')?.value.trim()||'',
+    status:$('#admin-report-status')?.value||'all',
+    reason:$('#admin-report-reason')?.value||'all',
+    from:$('#admin-report-from')?.value||'',
+    to:$('#admin-report-to')?.value||''
+  };
+  try {
+    const payload = await api('api/admin_actions',{method:'POST',body:JSON.stringify(params)});
+    adminReportRows = payload.reports||[];
+    adminReportTotal=Number(payload.total_count)||0;
+    adminReportHasMore = Boolean(payload.has_more);
+    renderAdminReportQueue();
+  } catch (error) { notify(error.message,'error'); }
+}
+function renderAdminAudit() {
+  const container = $('#account-activity-events');
+  if (!container) return;
+  const olderEvents=adminAuditPage===0?accountActivityData.events.map((entry)=>`<article class="superadmin-feed-row admin-audit-row"><span class="superadmin-feed-icon"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></span><div class="min-w-0"><strong>${escapeHtml(entry.summary)}</strong><small>${escapeHtml(entry.user?`${entry.user.first_name} ${entry.user.last_name} · ${entry.user.email}`:'System')} · ${escapeHtml(formatActivityTimestamp(entry.created_at))} · Legacy activity</small></div></article>`):'';
+  container.innerHTML = adminAuditRows.length||olderEvents ? `${adminAuditRows.map((entry) => `<article class="superadmin-feed-row admin-audit-row"><span class="superadmin-feed-icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><div class="min-w-0"><strong>${escapeHtml(entry.action.replaceAll('_',' '))} · ${escapeHtml(entry.target_label||entry.target_type||'Platform')}</strong><small>${escapeHtml(entry.actor_name)} · ${escapeHtml(entry.actor_email)} · ${escapeHtml(formatActivityTimestamp(entry.created_at))}</small>${entry.reason?`<p>${escapeHtml(entry.reason)}</p>`:''}${entry.before_state||entry.after_state?`<details><summary>Change details</summary><pre>${escapeHtml(JSON.stringify({before:entry.before_state,after:entry.after_state},null,2))}</pre></details>`:''}</div></article>`).join('')}${olderEvents}` : '<p class="p-4 text-sm text-slate-500">No audit events match this search.</p>';
+  const pagination = $('#admin-audit-pagination');
+  if (pagination) pagination.innerHTML = `<span>Page ${adminAuditPage+1} · ${adminAuditTotal} events</span><div><button type="button" data-admin-audit-page="${adminAuditPage-1}" ${adminAuditPage===0?'disabled':''} aria-label="Previous audit page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button><strong>${adminAuditPage+1}</strong><button type="button" data-admin-audit-page="${adminAuditPage+1}" ${adminAuditHasMore?'':'disabled'} aria-label="Next audit page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>`;
+}
+async function loadAdminAudit(reset = false) {
+  if (state.user?.role !== 'superadmin') return;
+  ensureAdminControls();
+  if (reset) adminAuditPage = 0;
+  try {
+    const payload = await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'list_audit',offset:adminAuditPage*50,search:$('#admin-audit-search')?.value.trim()||''})});
+    adminAuditRows=payload.events||[];
+    adminAuditTotal=Number(payload.total_count)||0;
+    adminAuditHasMore=Boolean(payload.has_more);
+    if (adminAuditPage===0 && !$('#admin-audit-search')?.value.trim()) accountActivityData.events=accountActivityData.events||[];
+    renderAdminAudit();
+  } catch (error) { notify(error.message,'error'); }
+}
+function csvCell(value) {
+  let text = String(value ?? '');
+  if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"','""')}"`;
+}
+async function exportAuditCsv() {
+  const events = [];
+  try {
+    for (let offset=0;;offset+=500) {
+      const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'export_audit',offset})});
+      events.push(...(payload.events||[]));
+      if (!payload.has_more) break;
+    }
+    const columns=['created_at','actor_name','actor_email','action','target_type','target_id','target_label','reason','before_state','after_state'];
+    const csv=[columns.join(','),...events.map((event)=>columns.map((column)=>csvCell(typeof event[column]==='object'?JSON.stringify(event[column]):event[column])).join(','))].join('\r\n');
+    const link=document.createElement('a');
+    link.href=URL.createObjectURL(new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'}));
+    link.download=`taskerph-admin-audit-${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    notify(`Exported ${events.length} audit events.`);
+  } catch (error) { notify(error.message,'error'); }
+}
+async function loadAdminUsers(reset = false, page = 1) {
+  if (!['superadmin','support'].includes(state.user?.role)) return;
+  if (reset) page=1;
+  superadminUserPage=page;
+  try {
+    const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'list_users',offset:(page-1)*50,search:$('#superadmin-user-search')?.value.trim()||'',role:$('#superadmin-user-filter')?.value||'all'})});
+    accountActivityData.users=payload.users||[];
+    superadminUserTotal=Number(payload.total_count)||0;
+    superadminUserHasMore=Boolean(payload.has_more);
+    renderSuperadminUsers();
+  } catch(error) { notify(error.message,'error'); }
+}
+async function loadModeratorTasks() {
+  if (!['admin','moderator'].includes(state.user?.role)) return;
+  try {
+    const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'more_tasks',offset:0,search:'',status:'all'})});
+    accountActivityData.tasks=payload.tasks||[];
+    superadminHasMoreTasks=Boolean(payload.has_more_tasks);
+    superadminTaskResultTotal=Number(payload.total_count)||0;
+    superadminTaskQuery={search:'',status:'all'};
+    renderSuperadminTasks();
+  } catch(error) { notify(error.message,'error'); }
+}
+async function loadDashboardTrends() {
+  if (state.user?.role!=='superadmin') return;
+  try {
+    const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'dashboard_trends',days:Number($('#admin-trend-days')?.value)||30,category:$('#admin-trend-category')?.value||''})});
+    accountActivityData.trends=payload.trends||[];
+    renderSuperadminTrends();
+  } catch(error) { notify(error.message,'error'); }
 }
 function openReportersModal(taskId) {
   const reports = accountActivityData.reports.filter((report) => Number(report.task_id) === Number(taskId));
@@ -950,31 +1130,63 @@ function openSuperadminNotifications() {
   $('#superadmin-notifications-list').innerHTML = items || '<div class="superadmin-notifications-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><strong>You’re all caught up</strong><span>No open reports or tasks under review.</span></div>';
   openModal('#superadmin-notifications-modal');
 }
-
+async function removeTaskFromModeration(taskId, reason) {
+  const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'delete_task',task_id:taskId,reason})});
+  notify(payload.message);
+  await loadTasks();
+  if (state.user?.role==='superadmin') {
+    await loadAccountActivity();
+    showPage('task-management-page');
+  } else {
+    await loadModeratorTasks();
+    showPage('task-management-page');
+  }
+}
+function renderSuperadminTrends() {
+  const container=$('#superadmin-trend-chart');
+  if (!container) return;
+  const trends=accountActivityData.trends||[];
+  const maximum=Math.max(1,...trends.flatMap((day)=>[Number(day.registrations)||0,Number(day.tasks)||0,Number(day.completions)||0,Number(day.reports)||0]));
+  const series=[['registrations','Registrations'],['tasks','Tasks'],['completions','Completions'],['reports','Reports']];
+  container.innerHTML=trends.length?`<div class="superadmin-trend-legend">${series.map(([key,label])=>`<span data-series="${key}"><i></i>${label}</span>`).join('')}</div><div class="superadmin-trend-bars" role="img" aria-label="Daily platform registrations, tasks, completions, and reports for the last 30 days">${trends.map((day)=>`<div class="superadmin-trend-day" title="${escapeHtml(day.day)}: ${series.map(([key,label])=>`${label} ${Number(day[key])||0}`).join(', ')}"><div>${series.map(([key])=>`<i data-series="${key}" style="height:${Math.max(Number(day[key])?2:0,(Number(day[key])||0)/maximum*100)}%"></i>`).join('')}</div><small>${escapeHtml(String(day.day||'').slice(5))}</small></div>`).join('')}</div>`:'<p class="superadmin-empty-state">Trend data is not available yet.</p>';
+}
+function exportTrendCsv() {
+  const trends=accountActivityData.trends||[];
+  const columns=['day','registrations','tasks','completions','reports'];
+  const csv=[columns.join(','),...trends.map((day)=>columns.map((column)=>csvCell(day[column])).join(','))].join('\r\n');
+  const link=document.createElement('a');
+  link.href=URL.createObjectURL(new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'}));
+  link.download=`taskerph-platform-trends-${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
 function renderAccountActivity(payload) {
-  accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [], tasks: Array.isArray(payload.tasks) ? payload.tasks : [], under_review_tasks: Array.isArray(payload.under_review_tasks) ? payload.under_review_tasks : [], stats: payload.stats || {} };
+  accountActivityData = { users: Array.isArray(payload.users) ? payload.users : [], events: Array.isArray(payload.events) ? payload.events : [], reports: Array.isArray(payload.reports) ? payload.reports : [], tasks: Array.isArray(payload.tasks) ? payload.tasks : [], under_review_tasks: Array.isArray(payload.under_review_tasks) ? payload.under_review_tasks : [], trends: Array.isArray(payload.trends) ? payload.trends : [], stats: payload.stats || {} };
   superadminHasMoreTasks = Boolean(payload.has_more_tasks);
   superadminTaskResultTotal = Number(accountActivityData.stats.total_tasks) || 0;
   superadminTaskQuery = { search: '', status: 'all' };
   if ($('#superadmin-task-search')) $('#superadmin-task-search').value = '';
   if ($('#superadmin-task-status-filter')) $('#superadmin-task-status-filter').value = 'all';
   const users = accountActivityData.users;
-  const active = users.filter((user) => user.last_seen_at && Date.now() - new Date(user.last_seen_at).getTime() <= 5 * 60 * 1000).length;
-  const admins = users.filter((user) => user.role === 'admin').length;
-  const members = users.filter((user) => user.role === 'user').length;
+  const active = Number(accountActivityData.stats.active_count) || 0;
+  const admins = Number(accountActivityData.stats.admin_count) || 0;
+  const members = Math.max(0,(Number(accountActivityData.stats.total_users)||users.length)-admins);
   const summary = [
-    ['Members', members, 'fa-users', 'text-sky-600'], ['Admins', admins, 'fa-user-shield', 'text-violet-600'],
+    ['Members', members, 'fa-users', 'text-sky-600'], ['Staff', admins, 'fa-user-shield', 'text-violet-600'],
     ['Total tasks', accountActivityData.stats.total_tasks || 0, 'fa-list-check', 'text-teal-600'], ['Open tasks', accountActivityData.stats.open_tasks || 0, 'fa-briefcase', 'text-amber-600'],
-    ['Completed', accountActivityData.stats.completed_tasks || 0, 'fa-circle-check', 'text-emerald-600'], ['Open reports', accountActivityData.reports.filter((r) => r.status === 'Open').length, 'fa-flag', 'text-rose-600'], ['Active now', active, 'fa-bolt', 'text-blue-600']
+    ['Completed', accountActivityData.stats.completed_tasks || 0, 'fa-circle-check', 'text-emerald-600'], ['Open reports', accountActivityData.stats.open_reports || 0, 'fa-flag', 'text-rose-600'], ['Active now', active, 'fa-bolt', 'text-blue-600']
   ].map(([label, value, icon, color]) => `<article class="superadmin-stat"><span class="superadmin-stat-icon ${color}"><i class="fa-solid ${icon}" aria-hidden="true"></i></span><span class="superadmin-stat-label">${label}</span><strong class="superadmin-stat-value">${value}</strong></article>`).join('');
   $('#account-activity-summary').innerHTML = summary;
   $('#superadmin-dashboard-state')?.classList.add('hidden');
-  const openReports = accountActivityData.reports.filter((report) => report.status === 'Open').length;
+  const openReports = Number(accountActivityData.stats.open_reports)||0;
   const adminActionCount = openReports + accountActivityData.under_review_tasks.length;
   if ($('#admin-report-badge')) $('#admin-report-badge').textContent = String(adminActionCount);
   $('#admin-notification-trigger')?.setAttribute('aria-label', `${adminActionCount} Superadmin notifications: ${openReports} open reports and ${accountActivityData.under_review_tasks.length} tasks under review`);
   const eventsHtml = accountActivityData.events.slice(0, 6).map((event) => `<article class="superadmin-feed-row"><span class="superadmin-feed-icon"><i class="fa-solid ${event.event_type === 'user_registered' ? 'fa-user-plus' : event.event_type === 'task_completed' ? 'fa-circle-check' : event.event_type.includes('report') ? 'fa-flag' : 'fa-clock'}"></i></span><div class="min-w-0"><strong>${escapeHtml(event.summary)}</strong><small>${escapeHtml(event.user ? `${event.user.first_name} ${event.user.last_name} · ${event.user.email}` : 'System')} · ${escapeHtml(formatActivityTimestamp(event.created_at))}</small></div></article>`).join('') || '<p class="p-4 text-sm text-slate-500">No activity recorded yet.</p>';
-  document.querySelectorAll('#dashboard-events, #account-activity-events').forEach((node) => { node.innerHTML = eventsHtml; });
+  const dashboardEvents=$('#dashboard-events');
+  if(dashboardEvents) dashboardEvents.innerHTML=eventsHtml;
+  const adminAuditContainer=$('#account-activity-events');
+  if(adminAuditContainer && !$('#admin-audit-controls')) adminAuditContainer.innerHTML=eventsHtml;
   const reportsByTask = new Map();
   accountActivityData.reports.forEach((report) => {
     const key = report.task_id ? `task:${report.task_id}` : `missing:${report.id}`;
@@ -989,7 +1201,7 @@ function renderAccountActivity(payload) {
     const overallStatus = openCount ? 'Open' : reports.every((report) => report.status === 'Dismissed') ? 'Dismissed' : 'Reviewed';
     return `<article class="superadmin-report-row"><div class="superadmin-report-main"><div class="superadmin-report-heading"><div class="min-w-0"><span class="superadmin-report-kicker">Reported task</span><strong>${escapeHtml(task.title || 'Removed task')}</strong></div><span class="superadmin-report-status" data-status="${overallStatus}"><i class="fa-solid ${overallStatus === 'Open' ? 'fa-circle-exclamation' : overallStatus === 'Reviewed' ? 'fa-circle-check' : 'fa-circle-minus'}" aria-hidden="true"></i>${openCount ? `${openCount} open` : overallStatus}</span></div><p class="superadmin-report-count">${reports.length} ${reports.length === 1 ? 'user has' : 'users have'} reported this task</p><div class="superadmin-report-people"><button type="button" data-show-reporters="${Number(reports[0].task_id) || 0}" class="superadmin-report-button superadmin-report-button-view"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Who reported? · ${reports.length}</span></button>${task.user_id ? `<div><span class="superadmin-report-person-label"><i class="fa-regular fa-user" aria-hidden="true"></i> Task poster</span><button type="button" data-superadmin-view-profile="${Number(task.user_id)}" class="superadmin-report-profile-link">${escapeHtml(ownerName)} <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button><small>${escapeHtml(owner.email || '')}</small></div>` : ''}</div></div><div class="superadmin-report-actions">${task.id ? `<button type="button" data-superadmin-view-task="${Number(task.id)}" class="superadmin-report-button superadmin-report-button-view"><i class="fa-regular fa-eye" aria-hidden="true"></i><span>View task</span></button>` : '<span class="superadmin-report-removed">Task removed</span>'}</div></article>`;
   }).join('') || '<p class="p-4 text-sm text-slate-500">No reports submitted.</p>';
-  document.querySelectorAll('#dashboard-reports, #account-activity-reports').forEach((node) => { node.innerHTML = reportsHtml; });
+  document.querySelectorAll('#dashboard-reports').forEach((node) => { node.innerHTML = reportsHtml; });
   const totalTasks = Number(accountActivityData.stats.total_tasks) || 0;
   const completedTasks = Number(accountActivityData.stats.completed_tasks) || 0;
   const openTasks = Number(accountActivityData.stats.open_tasks) || 0;
@@ -998,6 +1210,7 @@ function renderAccountActivity(payload) {
   const pulse = $('#dashboard-task-pulse');
   if (pulse) pulse.innerHTML = `<div class="superadmin-pulse-summary"><strong>${totalTasks.toLocaleString('en-PH')}</strong><span>Total tasks tracked</span></div><div class="superadmin-pulse-track" role="img" aria-label="${openTasks} open, ${inProgressTasks} in progress, and ${completedTasks} completed tasks"><span class="pulse-open" style="width:${taskShare(openTasks)}"></span><span class="pulse-progress" style="width:${taskShare(inProgressTasks)}"></span><span class="pulse-complete" style="width:${taskShare(completedTasks)}"></span></div><div class="superadmin-pulse-legend"><span><i class="pulse-open"></i>Open <b>${openTasks.toLocaleString('en-PH')}</b></span><span><i class="pulse-progress"></i>In progress <b>${inProgressTasks.toLocaleString('en-PH')}</b></span><span><i class="pulse-complete"></i>Completed <b>${completedTasks.toLocaleString('en-PH')}</b></span></div><div class="superadmin-pulse-foot"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Counts update with dashboard activity.</div>`;
   renderSuperadminTasks();
+  renderSuperadminTrends();
   const recentTasksHtml = accountActivityData.tasks.slice(0, 5).map((task) => `<article class="superadmin-compact-row"><span class="superadmin-compact-icon"><i class="fa-solid fa-briefcase" aria-hidden="true"></i></span><span class="superadmin-compact-copy"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.category)} · ${escapeHtml(formatActivityTimestamp(task.created_at))}</small></span><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span></article>`).join('') || '<p class="superadmin-empty-state">No tasks posted yet.</p>';
   $('#dashboard-recent-tasks')?.replaceChildren();
   if ($('#dashboard-recent-tasks')) $('#dashboard-recent-tasks').innerHTML = recentTasksHtml;
@@ -1007,17 +1220,19 @@ function renderAccountActivity(payload) {
   renderSuperadminUsers();
 }function renderSuperadminUsers() {
   const body = $('#superadmin-users-table'); if (!body) return;
-  const term = ($('#superadmin-user-search')?.value || '').trim().toLocaleLowerCase();
-  const role = $('#superadmin-user-filter')?.value || 'all';
-  const users = accountActivityData.users.filter((user) => user.role !== 'superadmin' && (role === 'all' || user.role === role) && `${user.first_name} ${user.middle_initial || ''} ${user.last_name} ${user.email}`.toLocaleLowerCase().includes(term));
-  const pageSize = 10;
-  const pageCount = Math.max(1,Math.ceil(users.length/pageSize));
-  superadminUserPage = Math.min(superadminUserPage,pageCount);
-  const visibleUsers = users.slice((superadminUserPage-1)*pageSize,superadminUserPage*pageSize);
-  body.innerHTML = visibleUsers.length ? visibleUsers.map((user) => `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`)}</td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3"><div class="flex items-center gap-2"><button data-superadmin-view-profile="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">View profile</button><button data-edit-user="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">Edit</button><button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button></div></td></tr>`).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
+  const users = accountActivityData.users.filter((user) => user.role !== 'superadmin');
+  const pageSize = 50;
+  const pageCount = Math.max(1,Math.ceil(superadminUserTotal/pageSize));
+  const isSuperadmin=state.user?.role==='superadmin';
+  body.innerHTML = users.length ? users.map((user) => {
+    const name=`${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`;
+    const suspension=user.is_suspended?`<span class="superadmin-status-pill is-suspended">${user.suspended_until&&new Date(user.suspended_until)>new Date()?`Suspended until ${escapeHtml(formatActivityTimestamp(user.suspended_until))}`:'Suspended'}</span>`:'';
+    const actions=`<button data-superadmin-view-profile="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">View profile</button>${isSuperadmin?`<button data-edit-user="${Number(user.id)}" class="superadmin-user-edit rounded-lg border px-3 py-2 text-xs font-bold">Edit</button>${user.is_suspended?`<button data-unsuspend-user="${Number(user.id)}" class="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700">Reactivate</button>`:`<button data-suspend-user="${Number(user.id)}" class="rounded-lg border border-amber-200 px-3 py-2 text-xs font-bold text-amber-700">Suspend</button>`}<button data-delete-user="${Number(user.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Delete</button>`:''}`;
+    return `<tr class="border-b border-[#edf0f1]"><td class="p-3 font-semibold">${escapeHtml(name)}<div>${suspension}</div></td><td class="p-3">${escapeHtml(user.email)}</td><td class="p-3"><span class="account-activity-role">${escapeHtml(user.role)}</span></td><td class="p-3">${escapeHtml(formatActivityTimestamp(user.created_at))}</td><td class="p-3"><div class="flex flex-wrap items-center gap-2">${actions}</div></td></tr>`;
+  }).join('') : '<tr><td colspan="5" class="p-6 text-center text-sm text-[#68727c]">No matching accounts.</td></tr>';
   let pagination = $('#superadmin-user-pagination');
   if (!pagination) { body.closest('.overflow-x-auto')?.insertAdjacentHTML('afterend','<div id="superadmin-user-pagination" class="superadmin-pagination"></div>'); pagination = $('#superadmin-user-pagination'); }
-  if (pagination) { pagination.hidden = users.length <= pageSize; pagination.innerHTML = users.length > pageSize ? `<span>Showing ${(superadminUserPage-1)*pageSize+1}–${Math.min(superadminUserPage*pageSize,users.length)} of ${users.length} users</span><div><button type="button" data-superadmin-user-page="${superadminUserPage-1}" ${superadminUserPage===1?'disabled':''} aria-label="Previous user page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button><strong>Page ${superadminUserPage} of ${pageCount}</strong><button type="button" data-superadmin-user-page="${superadminUserPage+1}" ${superadminUserPage===pageCount?'disabled':''} aria-label="Next user page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>` : ''; }
+  if (pagination) { pagination.hidden = superadminUserTotal <= pageSize; pagination.innerHTML = superadminUserTotal > pageSize ? `<span>Showing ${(superadminUserPage-1)*pageSize+1}–${Math.min(superadminUserPage*pageSize+users.length,superadminUserTotal)} of ${superadminUserTotal} users</span><div><button type="button" data-superadmin-user-page="${superadminUserPage-1}" ${superadminUserPage===1?'disabled':''} aria-label="Previous user page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button><strong>Page ${superadminUserPage} of ${pageCount}</strong><button type="button" data-superadmin-user-page="${superadminUserPage+1}" ${superadminUserPage===pageCount?'disabled':''} aria-label="Next user page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>` : ''; }
 }
 function renderSuperadminTasks() {
   const container = $('#account-activity-tasks');
@@ -1068,7 +1283,7 @@ async function loadMoreSuperadminTasks() {
   finally { superadminLoadingMoreTasks = false; renderSuperadminTasks(); }
 }
 async function searchSuperadminTasks() {
-  if (state.user?.role !== 'superadmin') return;
+  if (!['superadmin','admin','moderator'].includes(state.user?.role)) return;
   const query = { search: ($('#superadmin-task-search')?.value || '').trim(), status: $('#superadmin-task-status-filter')?.value || 'all' };
   superadminTaskQuery = query;
   const requestId = ++superadminTaskSearchRequestId;
@@ -1096,6 +1311,8 @@ async function loadAccountActivity() {
   try {
     const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'activity_dashboard' }) });
     renderAccountActivity(payload);
+    if ($('#audit-log-page') && !$('#audit-log-page').classList.contains('hidden')) void loadAdminAudit(true);
+    if ($('#report-management-page') && !$('#report-management-page').classList.contains('hidden')) void loadAdminReports(true);
   } catch (error) {
     const message = escapeHtml(error.message);
     $('#superadmin-users-table').innerHTML = `<tr><td colspan="5" class="p-6 text-center text-sm text-red-600">${message}</td></tr>`;
@@ -1118,7 +1335,7 @@ function renderProfile() {
   const user = state.user;
   $('#profile-name').textContent = `${user.first_name} ${user.middle_initial ? `${user.middle_initial}. ` : ''}${user.last_name}`;
   $('#profile-email').textContent = user.email;
-  $('#profile-role').textContent = user.role === 'superadmin' ? 'Super Admin' : user.role === 'admin' ? 'Administrator' : 'TaskerPH Member';
+  $('#profile-role').textContent = ({superadmin:'Super Admin',admin:'Administrator',moderator:'Moderator',support:'Support'})[user.role] || 'TaskerPH Member';
   $('#edit-profile-form').elements.first_name.value = user.first_name || '';
   $('#edit-profile-form').elements.middle_initial.value = user.middle_initial || '';
   $('#edit-profile-form').elements.last_name.value = user.last_name || '';
@@ -1266,7 +1483,7 @@ function renderTasks() {
   feed.innerHTML = state.tasks.map(taskCardMarkup).join('');
 }
 function taskCardMarkup(task, index = 0) {
-  const canManage = state.user && (state.user.role === 'admin' || state.user.role === 'superadmin' || (state.user.role === 'user' && Number(state.user.id) === Number(task.user_id)));
+  const canManage = state.user && (['admin','moderator','superadmin'].includes(state.user.role) || (state.user.role === 'user' && Number(state.user.id) === Number(task.user_id)));
   const ownTask = state.user && Number(state.user.id) === Number(task.user_id);
   const saved = Boolean(state.user) && state.savedTaskIds.has(Number(task.id));
   return `<article data-task="${task.id}" style="--card-delay: ${Math.min(index, 8) * 45}ms" class="task-card card flex cursor-pointer flex-col p-5"><div class="flex items-start justify-between gap-3"><div><span class="text-xs font-bold uppercase tracking-[.15em] text-[#008f8c]">${escapeHtml(task.category)}</span><h3 class="mt-2 text-lg font-bold leading-tight">${escapeHtml(task.title)}</h3></div><div class="flex shrink-0 items-center gap-2"><span class="badge ${task.status === 'Open' ? 'badge-open' : task.status === 'Completed' ? 'badge-complete' : 'badge-progress'}">${escapeHtml(task.status)}</span><button type="button" data-save-task="${task.id}" class="task-save-button touch-target ${saved ? 'is-saved' : ''}" aria-label="${ownTask ? 'Your task' : saved ? 'Remove saved task' : 'Save task'}" aria-pressed="${saved}" ${ownTask ? 'disabled title="You cannot save your own task"' : ''}><i class="fa-${saved ? 'solid' : 'regular'} fa-bookmark" aria-hidden="true"></i><span class="sr-only">${ownTask ? 'Your task' : saved ? 'Remove saved task' : 'Save task'}</span></button></div></div>${taskPhotoMarkup(task, true)}<p class="mt-4 line-clamp-3 text-sm leading-6 text-[#68727c]">${escapeHtml(task.description)}</p><div class="mt-5 grid grid-cols-2 gap-3 border-y border-[#edf0f1] py-4 text-sm"><div><p class="text-xs text-[#68727c]">Budget</p><p class="mt-1 font-bold">${money(task.budget)}</p></div><div><p class="text-xs text-[#68727c]">Location</p><p class="mt-1 font-bold">${escapeHtml(task.location)}</p></div></div><div class="mt-4 flex items-center justify-between gap-3"><p class="text-xs text-[#68727c]">Posted by <strong class="text-[#17202a]">${escapeHtml(task.owner_name)}</strong></p>${canManage ? `<div class="flex"><button data-edit="${task.id}" class="touch-target rounded-lg px-2 text-sm font-bold text-[#006f70] hover:bg-[#e9f4f2]"><i class="fa-solid fa-pen-to-square"></i><span class="sr-only">Edit task</span></button><button data-delete="${task.id}" class="touch-target rounded-lg px-2 text-sm font-bold text-red-600 hover:bg-red-50"><i class="fa-solid fa-trash"></i><span class="sr-only">Delete task</span></button></div>` : '<span class="text-xs font-bold text-[#008f8c]">View task <i class="fa-solid fa-arrow-right ml-1"></i></span>'}</div></article>`;
@@ -1399,7 +1616,7 @@ async function openTask(task) {
   const isOwner = state.user && Number(state.user.id) === Number(task.user_id);
   updateTaskMessageCount(isOwner ? task.unread_message_count : 0);
   $('#task-detail-content').innerHTML = `<p class="text-sm font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category)}</p><h2 class="mt-1 text-2xl font-bold">${escapeHtml(task.title)}</h2>${taskPhotoMarkup(task)}<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-[#f5f7f8] p-4 text-sm"><div><p class="text-xs text-[#68727c]">Budget</p><p class="mt-1 font-bold">${money(task.budget)}</p></div><div><p class="text-xs text-[#68727c]">Location</p><p class="mt-1 font-bold">${escapeHtml(task.location)}</p></div></div><p class="mt-5 whitespace-pre-wrap text-sm leading-6 text-[#4c5962]">${escapeHtml(task.description)}</p>${taskDetailExtras(task)}<div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dbe3e7] bg-white p-4"><div><p class="text-xs font-semibold uppercase tracking-wider text-[#68727c]">Posted by</p>${isOwner ? `<p class="mt-1 inline-flex items-center gap-2 font-bold text-slate-700"><i class="fa-regular fa-user" aria-hidden="true"></i>${escapeHtml(task.owner_name)} <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold">You</span></p>` : `<button type="button" data-public-profile="${Number(task.user_id)}" data-profile-task="${Number(task.id)}" class="mt-1 inline-flex items-center gap-2 font-bold text-[#006f70] hover:underline"><i class="fa-regular fa-user" aria-hidden="true"></i>${escapeHtml(task.owner_name)}<i class="fa-solid fa-arrow-up-right-from-square text-xs" aria-hidden="true"></i></button>`}</div>${!isOwner ? `<button type="button" data-public-profile="${Number(task.user_id)}" data-profile-task="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">View tasker profile</button>` : ''}</div>${!state.user && task.status === 'Open' ? `<div class="mt-5 flex flex-wrap gap-3"><button type="button" data-guest-bid="${Number(task.id)}" class="touch-target rounded-lg bg-[#006f70] px-5 font-bold text-white">Submit bid</button><button type="button" data-contact-tasker="${Number(task.id)}" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Contact Tasker</button></div>` : ''}`;
-  const canManage = state.user && (state.user.role === 'admin' || state.user.role === 'superadmin' || (state.user.role === 'user' && Number(state.user.id) === Number(task.user_id)));
+  const canManage = state.user && (['admin','moderator','superadmin'].includes(state.user.role) || (state.user.role === 'user' && Number(state.user.id) === Number(task.user_id)));
   if (state.user && !isOwner && !['admin', 'superadmin'].includes(state.user.role)) $('#task-detail-content').insertAdjacentHTML('beforeend', `<div class="mt-5 border-t border-[#edf0f1] pt-4"><button type="button" data-report-task="${Number(task.id)}" disabled class="touch-target rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-bold text-slate-500" aria-label="Checking whether you already reported this task"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Checking report status...</button></div>`);
   if (canManage) {
     const mayDeleteTask = task.status !== 'Completed' || ['admin', 'superadmin'].includes(state.user?.role);
@@ -1448,7 +1665,7 @@ function returnFromTaskDetails() {
   requestAnimationFrame(() => window.scrollTo({ top: previous.scrollY, left: 0, behavior: 'instant' }));
 }
 async function openSuperadminTask(task) {
-  if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can review marketplace tasks.', 'error'); return; }
+  if (!['superadmin','admin','moderator'].includes(state.user?.role)) { notify('Only moderation staff can review marketplace tasks.', 'error'); return; }
   state.superadminTaskReturn = document.querySelector('.app-page:not(.hidden)')?.id || 'task-management-page';
   const content = $('#superadmin-task-detail-content');
   content.innerHTML = '<div class="superadmin-review-card p-10 text-center"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading task and bid details...</div>';
@@ -1479,7 +1696,7 @@ async function openSuperadminTask(task) {
   }
 }
 async function openSuperadminUserProfile(userId) {
-  if (state.user?.role !== 'superadmin') { notify('Only the Superadmin can view member profiles.', 'error'); return; }
+  if (!['superadmin','support','admin','moderator'].includes(state.user?.role)) { notify('Only staff can view member profiles.', 'error'); return; }
   state.superadminProfileReturn = document.querySelector('.app-page:not(.hidden)')?.id || 'user-management-page';
   const content = $('#superadmin-user-profile-content');
   content.innerHTML = '<div class="superadmin-review-card p-10 text-center"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading account profile...</div>';
@@ -1491,15 +1708,16 @@ async function openSuperadminUserProfile(userId) {
     state.superadminProfileBids = payload.submitted_bids || [];
     const name = `${profile.first_name} ${profile.middle_initial ? `${profile.middle_initial}. ` : ''}${profile.last_name}`.trim();
     const initials = `${profile.first_name?.[0] || ''}${profile.last_name?.[0] || ''}`.toUpperCase();
+    const canReviewTasks=['superadmin','admin','moderator'].includes(state.user?.role);
     const avatar = profile.avatar_path ? `<img class="superadmin-profile-avatar" src="${escapeHtml(profile.avatar_path)}" alt="${escapeHtml(name)}">` : `<span class="superadmin-profile-avatar superadmin-profile-initials">${escapeHtml(initials)}</span>`;
-    const tasks = (payload.tasks || []).map((task) => `<article class="superadmin-profile-task"><div class="min-w-0"><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category || 'Uncategorized')}</p><h3 class="mt-1 truncate font-bold">${escapeHtml(task.title)}</h3><p class="mt-1 text-sm text-slate-500">${escapeHtml(task.location || 'No location')} · ${money(task.budget)}</p></div><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span><button type="button" data-superadmin-view-task="${Number(task.id)}" class="admin-action-button text-[#006f70]">View task</button></article>`).join('') || '<p class="superadmin-profile-empty">No tasks posted by this account.</p>';
+    const tasks = (payload.tasks || []).map((task) => `<article class="superadmin-profile-task"><div class="min-w-0"><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category || 'Uncategorized')}</p><h3 class="mt-1 truncate font-bold">${escapeHtml(task.title)}</h3><p class="mt-1 text-sm text-slate-500">${escapeHtml(task.location || 'No location')} · ${money(task.budget)}</p></div><span class="superadmin-status-pill" data-status="${escapeHtml(task.status)}">${escapeHtml(task.status)}</span>${canReviewTasks?`<button type="button" data-superadmin-view-task="${Number(task.id)}" class="admin-action-button text-[#006f70]">View task</button>`:''}</article>`).join('') || '<p class="superadmin-profile-empty">No tasks posted by this account.</p>';
     const activity = (payload.recent_activity || []).map((item) => `<article class="superadmin-profile-activity"><span><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></span><div class="min-w-0"><strong>${escapeHtml(item.summary)}</strong><small>${escapeHtml(item.event_type.replaceAll('_',' '))} · ${escapeHtml(formatActivityTimestamp(item.created_at))}</small></div></article>`).join('') || '<p class="superadmin-profile-empty">No recent account activity.</p>';
     const activityTitle = profile.role === 'admin' ? 'Recent admin activity' : 'Recent account activity';
     const submittedBids = (payload.submitted_bids || []).map((bid) => {
       const task = bid.task || {};
       const ownerName = task.owner ? `${task.owner.first_name} ${task.owner.last_name}`.trim() : 'TaskerPH member';
       const statusClass = bid.status === 'Accepted' ? 'is-accepted' : bid.status === 'Pending' ? 'is-pending' : 'is-rejected';
-      return `<article class="superadmin-profile-bid"><div class="min-w-0 flex-1"><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category || 'Task bid')}</p><h4>${escapeHtml(task.title || `Task #${bid.task_id}`)}</h4><p>Task owner: ${escapeHtml(ownerName)} · ${money(bid.amount)} · Submitted ${escapeHtml(formatActivityTimestamp(bid.created_at))}</p><blockquote>${escapeHtml(bid.message || '')}</blockquote></div><span class="superadmin-bid-status ${statusClass}">${escapeHtml(bid.status)}</span><button type="button" data-superadmin-view-task="${Number(bid.task_id)}" class="admin-action-button text-[#006f70]">View task</button></article>`;
+      return `<article class="superadmin-profile-bid"><div class="min-w-0 flex-1"><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">${escapeHtml(task.category || 'Task bid')}</p><h4>${escapeHtml(task.title || `Task #${bid.task_id}`)}</h4><p>Task owner: ${escapeHtml(ownerName)} · ${money(bid.amount)} · Submitted ${escapeHtml(formatActivityTimestamp(bid.created_at))}</p><blockquote>${escapeHtml(bid.message || '')}</blockquote></div><span class="superadmin-bid-status ${statusClass}">${escapeHtml(bid.status)}</span>${canReviewTasks?`<button type="button" data-superadmin-view-task="${Number(bid.task_id)}" class="admin-action-button text-[#006f70]">View task</button>`:''}</article>`;
     }).join('') || '<p class="superadmin-profile-empty">This account has not submitted any bids.</p>';
     content.innerHTML = `<section class="superadmin-profile-hero">${avatar}<div class="min-w-0 flex-1"><p class="superadmin-review-label">Superadmin account review</p><h2>${escapeHtml(name)}</h2><p>${escapeHtml(profile.email)}</p></div><span class="superadmin-profile-role">${escapeHtml(profile.role)}</span></section><section class="superadmin-profile-stats"><article><span>Member since</span><strong>${escapeHtml(formatActivityTimestamp(profile.created_at))}</strong></article><article><span>Last login</span><strong>${escapeHtml(formatActivityTimestamp(profile.last_login_at))}</strong></article><article><span>Tasks posted</span><strong>${Number(payload.stats?.total_tasks) || 0}</strong></article><article><span>Completed tasks</span><strong>${Number(payload.stats?.completed_tasks) || 0}</strong></article><article><span>Bids submitted</span><strong>${Number(payload.stats?.total_bids) || 0}</strong></article><article><span>Accepted bids</span><strong>${Number(payload.stats?.accepted_bids) || 0}</strong></article></section><section class="superadmin-review-card"><div class="mb-4"><p class="superadmin-review-label">Marketplace activity</p><h3 class="mt-1 text-xl font-bold">User's tasks</h3><p class="mt-1 text-sm text-slate-500">Latest ${(payload.tasks || []).length} listings for this account.</p></div><div class="space-y-3">${tasks}</div></section><section class="superadmin-review-card"><div class="mb-4"><p class="superadmin-review-label">Marketplace activity</p><h3 class="mt-1 text-xl font-bold">Submitted bids</h3><p class="mt-1 text-sm text-slate-500">Latest ${(payload.submitted_bids || []).length} bids from this account.</p></div><div class="space-y-3">${submittedBids}</div></section><section class="superadmin-review-card"><div class="mb-4"><p class="superadmin-review-label">Account timeline</p><h3 class="mt-1 text-xl font-bold">${activityTitle}</h3></div><div class="space-y-3">${activity}</div></section>`;
   } catch (error) {
@@ -2087,7 +2305,13 @@ document.addEventListener('click', async (event) => {
     return;
   }
   const userPageButton = event.target.closest('[data-superadmin-user-page]');
-  if (userPageButton) { superadminUserPage = Number(userPageButton.dataset.superadminUserPage) || 1; renderSuperadminUsers(); return; }
+  if (userPageButton) { await loadAdminUsers(false,Number(userPageButton.dataset.superadminUserPage)||1); return; }
+  const reportPageButton=event.target.closest('[data-admin-report-page]');
+  if (reportPageButton) { adminReportPage=Math.max(0,Number(reportPageButton.dataset.adminReportPage)||0); await loadAdminReports(false); return; }
+  const auditPageButton=event.target.closest('[data-admin-audit-page]');
+  if (auditPageButton) { adminAuditPage=Math.max(0,Number(auditPageButton.dataset.adminAuditPage)||0); await loadAdminAudit(false); return; }
+  if (event.target.closest('#admin-audit-export')) { await exportAuditCsv(); return; }
+  if (event.target.closest('#admin-trends-export')) { exportTrendCsv(); return; }
   if (event.target.closest('#superadmin-task-load-more')) { await loadMoreSuperadminTasks(); return; }
   const taskViewButton = event.target.closest('[data-admin-task-view]');
   if (taskViewButton) {
@@ -2134,9 +2358,34 @@ document.addEventListener('click', async (event) => {
   if (backFromAdminTask) { showPage(state.superadminTaskReturn || 'task-management-page'); return; }
   const deleteUserButton = event.target.closest('[data-delete-user]');
   const editUserButton = event.target.closest('[data-edit-user]');
+  const suspendUserButton=event.target.closest('[data-suspend-user]');
+  if (suspendUserButton) {
+    const user=accountActivityData.users.find((item)=>Number(item.id)===Number(suspendUserButton.dataset.suspendUser));
+    if (!user || state.user?.role!=='superadmin') return;
+    const form=$('#admin-suspension-form');
+    form.reset();
+    form.elements.user_id.value=String(user.id);
+    $('#admin-suspension-user').textContent=`${user.first_name} ${user.last_name} · ${user.email}`;
+    openModal('#admin-suspension-modal');
+    return;
+  }
+  const unsuspendButton=event.target.closest('[data-unsuspend-user]');
+  if (unsuspendButton) {
+    const user=accountActivityData.users.find((item)=>Number(item.id)===Number(unsuspendButton.dataset.unsuspendUser));
+    if (!user || state.user?.role!=='superadmin') return;
+    const confirmed=await decisionModal({title:'Reactivate this account?',message:`${user.first_name} ${user.last_name} will be able to sign in and use TaskerPH again.`,confirmLabel:'Reactivate account'});
+    if (!confirmed) return;
+    try {
+      const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'unsuspend_user',user_id:user.id,reason:'Suspension lifted by Superadmin'})});
+      notify(payload.message);
+      await loadAccountActivity();
+      await loadAdminUsers(false,superadminUserPage);
+    } catch(error) { notify(error.message,'error'); }
+    return;
+  }
   if (editUserButton) {
     const user = accountActivityData.users.find((item) => Number(item.id) === Number(editUserButton.dataset.editUser));
-    if (!user || user.role === 'superadmin') return;
+    if (!user || user.role === 'superadmin' || state.user?.role !== 'superadmin') return;
     const form = $('#admin-edit-user-form');
     form.elements.user_id.value = String(user.id);
     form.elements.first_name.value = user.first_name || '';
@@ -2149,15 +2398,42 @@ document.addEventListener('click', async (event) => {
   }
   if (deleteUserButton) {
     const user = accountActivityData.users.find((item) => Number(item.id) === Number(deleteUserButton.dataset.deleteUser));
-    if (!user || user.role === 'superadmin') return;
+    if (!user || user.role === 'superadmin' || state.user?.role !== 'superadmin') return;
     $('#delete-user-id').value = String(user.id);
     $('#delete-user-name').textContent = `${user.first_name} ${user.last_name}`.trim();
     $('#delete-user-email').textContent = user.email;
     openModal('#delete-user-modal');
     return;
   }
+  const confirmDeleteUser=event.target.closest('#confirm-delete-user');
+  if (confirmDeleteUser && state.user?.role==='superadmin') {
+    event.preventDefault();
+    const userId=$('#delete-user-id').value;
+    if (!userId) return;
+    const decision=await decisionModal({title:'Permanently delete this account?',message:`${$('#delete-user-name').textContent} and their profile-owned tasks and report history will be permanently deleted. This action cannot be undone. Add the reason to the durable administrator audit log.`,confirmLabel:'Continue to delete',danger:true,withReason:true,reasonLabel:'Deletion reason',reasonPlaceholder:'Explain the policy or operational reason'});
+    if (!decision) return;
+    if (!decision.reason) { notify('A deletion reason is required.','error'); return; }
+    const button=confirmDeleteUser;
+    setButtonBusy(button,true,'Deleting account...');
+    try {
+      const payload=await api('api/admin_actions',{method:'POST',body:JSON.stringify({action:'delete_user',user_id:userId,reason:decision.reason})});
+      closeModal('delete-user-modal');
+      notify(payload.message);
+      await loadAccountActivity();
+      await loadAdminUsers(true);
+      showPage('user-management-page');
+    } catch(error) { notify(error.message,'error'); }
+    finally { setButtonBusy(button,false); }
+    return;
+  }
   const accountActivityButton = event.target.closest('[data-activity-dashboard]');
-  if (accountActivityButton) { event.preventDefault(); await openAccountActivity(); return; }
+  if (accountActivityButton) {
+    event.preventDefault();
+    if (state.user?.role==='superadmin') await openAccountActivity();
+    else if (state.user?.role==='support') showPage('user-management-page');
+    else if (['admin','moderator'].includes(state.user?.role)) showPage('task-management-page');
+    return;
+  }
   const reportButton = event.target.closest('[data-report-task]');
   if (reportButton) {
     $('#report-task-id').value = reportButton.dataset.reportTask;
@@ -2169,7 +2445,19 @@ document.addEventListener('click', async (event) => {
   const reviewButton = event.target.closest('[data-review-report]');
   if (reviewButton) {
     if (reviewButton.closest('#reporters-detail-modal')) closeModal('reporters-detail-modal');
-    try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'review_report', report_id: reviewButton.dataset.reviewReport, status: reviewButton.dataset.reportStatus }) }); notify(payload.message); await loadAccountActivity(); }
+    let note=reviewButton.closest('[data-admin-report-row]')?.querySelector('[name="resolution_note"]')?.value.trim()||'';
+    if (!note) {
+      const decision=await decisionModal({title:`${reviewButton.dataset.reportStatus} this report?`,message:'Add a resolution note so the review decision is recorded.',confirmLabel:'Continue',withReason:true,reasonLabel:'Resolution note',reasonPlaceholder:'Summarize your decision and any action taken'});
+      if (!decision) return;
+      note=decision.reason;
+      if (!note) { notify('A resolution note is required.','error'); return; }
+    }
+    try {
+      const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'review_report', report_id: reviewButton.dataset.reviewReport, status: reviewButton.dataset.reportStatus,note }) });
+      notify(payload.message);
+      await loadAdminReports(true);
+      if (state.user?.role==='superadmin') await loadAccountActivity();
+    }
     catch (error) { notify(error.message, 'error'); }
     return;
   }
@@ -2252,7 +2540,19 @@ document.addEventListener('click', async (event) => {
   if (event.target.closest('[data-menu]')) { $('#mobile-drawer').classList.remove('-translate-x-full'); $('#drawer-overlay').classList.remove('hidden'); }
   if (event.target.id === 'drawer-overlay' || event.target.closest('[data-close-drawer]')) closeDrawer();
   const logout = event.target.closest('[data-action="logout"]'); if (logout) { state.logoutTrigger = logout; closeDesktopProfileMenu(); openModal('#logout-confirm-modal'); requestAnimationFrame(() => $('#cancel-logout')?.focus({ preventScroll: true })); return; }
-  const deleteButton = event.target.closest('[data-delete]'); if (deleteButton) { $('#delete-task-id').value = deleteButton.dataset.delete; openModal('#delete-task-modal'); }
+  const deleteButton = event.target.closest('[data-delete]');
+  if (deleteButton) {
+    if (['superadmin','admin','moderator'].includes(state.user?.role)) {
+      const decision=await decisionModal({title:'Remove this marketplace listing?',message:'This permanently removes the task and its related bids and conversations. Record the moderation reason in the audit log.',confirmLabel:'Remove listing',danger:true,withReason:true,reasonLabel:'Moderation reason',reasonPlaceholder:'Explain why this listing is being removed'});
+      if (!decision) return;
+      if (!decision.reason) { notify('A moderation reason is required.','error'); return; }
+      try { await removeTaskFromModeration(deleteButton.dataset.delete,decision.reason); }
+      catch(error) { notify(error.message,'error'); }
+      return;
+    }
+    $('#delete-task-id').value = deleteButton.dataset.delete;
+    openModal('#delete-task-modal');
+  }
   const editButton = event.target.closest('[data-edit]'); if (editButton) { const task = state.tasks.find((item) => Number(item.id) === Number(editButton.dataset.edit)); if (task) fillEditForm(task); }
   const acceptButton = event.target.closest('[data-accept-bid]');
   if (acceptButton) {
@@ -2294,8 +2594,9 @@ document.addEventListener('click', async (event) => {
   const resolveTaskButton=event.target.closest('[data-resolve-task]');
   if(resolveTaskButton) {
     const taskId=Number(resolveTaskButton.dataset.resolveTask), resolution=resolveTaskButton.dataset.resolutionStatus;
-    const decision=await decisionModal({title:`Resolve this task as ${resolution}?`,message:'This closes the open dispute, updates the task status, and notifies both the poster and tasker.',confirmLabel:`Set ${resolution}`,danger:resolution==='Cancelled',withReason:true,reasonLabel:'Resolution note',reasonPlaceholder:'Summarize the decision or next steps (optional)'});
+    const decision=await decisionModal({title:`Resolve this task as ${resolution}?`,message:'This closes the open dispute, updates the task status, and notifies both the poster and tasker. A resolution note is required for the audit history.',confirmLabel:`Set ${resolution}`,danger:resolution==='Cancelled',withReason:true,reasonLabel:'Resolution note',reasonPlaceholder:'Summarize the decision and next steps'});
     if(!decision) return;
+    if(!decision.reason) { notify('A resolution note is required.','error'); return; }
     try { const payload=await api('api/task_lifecycle',{method:'POST',body:JSON.stringify({action:'resolve_dispute',task_id:taskId,status:resolution,resolution:decision.reason})}); notify(payload.message); await searchSuperadminTasks(); const task=accountActivityData.tasks.find((item)=>Number(item.id)===taskId)||{id:taskId}; await openSuperadminTask(task); }
     catch(error){notify(error.message,'error');}
     return;
@@ -2367,6 +2668,23 @@ $('#glass-opacity').addEventListener('input', (event) => applyGlassOpacity(event
 document.addEventListener('input', (event) => {
   if (event.target.id === 'desktop-glass-opacity') applyGlassOpacity(event.target.value, { persist: true });
   if (event.target.id === 'superadmin-glass-opacity') applyGlassOpacity(event.target.value, { persist: true });
+  if (event.target.id === 'superadmin-user-search') {
+    clearTimeout(adminUserSearchTimer);
+    adminUserSearchTimer=setTimeout(()=>void loadAdminUsers(true),300);
+  }
+  if (event.target.id === 'admin-report-search') {
+    clearTimeout(adminReportSearchTimer);
+    adminReportSearchTimer=setTimeout(()=>void loadAdminReports(true),300);
+  }
+  if (event.target.id === 'admin-audit-search') {
+    clearTimeout(adminAuditSearchTimer);
+    adminAuditSearchTimer=setTimeout(()=>void loadAdminAudit(true),300);
+  }
+});
+document.addEventListener('change',(event)=>{
+  if (event.target.matches('#superadmin-user-filter')) void loadAdminUsers(true);
+  if (event.target.matches('#admin-report-status, #admin-report-reason, #admin-report-from, #admin-report-to')) void loadAdminReports(true);
+  if (event.target.matches('#admin-trend-days, #admin-trend-category')) void loadDashboardTrends();
 });
 $('#status-filter').addEventListener('change', (event) => { state.filters.status = event.target.value; loadTasks(); });
 $('#category-filter').addEventListener('change', (event) => { state.filters.category = event.target.value; loadTasks(); });
@@ -2457,7 +2775,7 @@ $('#admin-edit-user-form')?.addEventListener('submit', async (event) => {
   event.preventDefault(); const form = event.currentTarget; setBusy(form, true, 'Saving account...');
   try {
     const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'update_user', ...Object.fromEntries(new FormData(form)) }) });
-    closeModal('admin-edit-user-modal'); notify(payload.message); await loadAccountActivity();
+    closeModal('admin-edit-user-modal'); notify(payload.message); await loadAccountActivity(); await loadAdminUsers(false,superadminUserPage);
   } catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); }
 });
 $('#admin-edit-profile')?.addEventListener('submit', async (event) => {
@@ -2476,11 +2794,9 @@ $('#admin-change-password')?.addEventListener('submit', async (event) => {
   catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); }
 });
 $('#profile-picture-input').addEventListener('change', async (event) => { const input = event.target, file = input.files?.[0]; if (!file) return; const edit = input.closest('.profile-avatar-wrap')?.querySelector('.profile-avatar-edit'); const original = edit?.innerHTML; setActionProgress(input, 'Uploading profile photo...', true); input.disabled = true; input.closest('.profile-avatar-wrap')?.setAttribute('aria-busy', 'true'); if (edit) edit.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span class="sr-only">Uploading photo...</span>'; try { const avatar_data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const payload = await api('api/profile_actions?action=upload_avatar', { method: 'POST', body: JSON.stringify({ avatar_data }) }); state.user = payload.user; renderAuth(); renderProfile(); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setActionProgress(input, '', false); input.value = ''; input.disabled = false; input.closest('.profile-avatar-wrap')?.removeAttribute('aria-busy'); if (edit) edit.innerHTML = original; } });
-$('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
+$('#admin-form').addEventListener('submit', async (event) => { event.preventDefault(); setBusy(event.target, true); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'create_admin', ...Object.fromEntries(new FormData(event.target)) }) }); event.target.reset(); closeModal('admin-modal'); notify(payload.message); await loadAccountActivity(); } catch (error) { notify(error.message, 'error'); } finally { setBusy(event.target, false); } });
 $('#account-activity-filter')?.addEventListener('change', renderAccountActivityUsers);
 $('#account-activity-search')?.addEventListener('input', renderAccountActivityUsers);
-$('#superadmin-user-filter')?.addEventListener('change', () => { superadminUserPage = 1; renderSuperadminUsers(); });
-$('#superadmin-user-search')?.addEventListener('input', () => { superadminUserPage = 1; renderSuperadminUsers(); });
 $('#superadmin-task-search')?.addEventListener('input', () => { clearTimeout(superadminTaskSearchTimer); superadminTaskSearchTimer = setTimeout(searchSuperadminTasks, 300); });
 $('#superadmin-task-status-filter')?.addEventListener('change', () => { clearTimeout(superadminTaskSearchTimer); searchSuperadminTasks(); });
 $('#admin-global-search')?.addEventListener('keydown', (event) => {
@@ -2488,7 +2804,7 @@ $('#admin-global-search')?.addEventListener('keydown', (event) => {
   event.preventDefault();
   $('#superadmin-user-search').value = event.currentTarget.value.trim();
   showPage('user-management-page');
-  renderSuperadminUsers();
+  void loadAdminUsers(true);
 });
 $('#refresh-account-activity')?.addEventListener('click', async (event) => { const button = event.currentTarget; button.disabled = true; try { await loadAccountActivity(); } finally { button.disabled = false; } });
 $('#report-task-form').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; const taskId = Number($('#report-task-id').value); setBusy(form, true, 'Sending report...'); try { await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'submit_report', task_id: taskId, reason: form.elements.reason.value, details: form.elements.details.value }) }); closeModal('report-task-modal'); form.reset(); setTaskReportButtonState(taskId, true); notify('Thank you for your report. Our team will review it shortly.'); } catch (error) { notify(error.message, 'error'); } finally { setBusy(form, false); } });
@@ -2548,6 +2864,5 @@ document.addEventListener('submit', async (event) => {
 $('#conversation-body').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#conversation-form').requestSubmit(); } });
 $('#confirm-delete-bid').addEventListener('click', async () => { const button = $('#confirm-delete-bid'); setButtonBusy(button, true, 'Deleting bid...'); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'delete', bid_id: $('#delete-bid-id').value, task_id: $('#delete-bid-task-id').value }) }); closeModal('delete-bid-modal'); notify(payload.message); await loadMyBids(); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
 $('#confirm-remove-bid').addEventListener('click', async () => { const button = $('#confirm-remove-bid'); const reason = $('#remove-bid-reason').value.trim(); if (!reason) { notify('Please provide a reason for removing the bidder.', 'error'); return; } setButtonBusy(button, true, 'Removing bidder...'); try { const payload = await api('api/bid_actions', { method: 'POST', body: JSON.stringify({ action: 'remove_bid', bid_id: $('#remove-bid-id').value, task_id: $('#remove-bid-task-id').value, reason }) }); closeModal('remove-bid-modal'); notify(payload.message); const task = state.tasks.find((item) => Number(item.id) === Number($('#remove-bid-task-id').value)) || state.activeTask; if (task) await openTask(task); await loadTasks(); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
-$('#confirm-delete-task').addEventListener('click', async () => { const button = $('#confirm-delete-task'); const taskId = $('#delete-task-id').value; setButtonBusy(button, true, 'Deleting task...'); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_task', task_id: taskId }) }); closeModal('delete-task-modal'); notify(payload.message); await loadTasks(); if (state.user?.role === 'superadmin') { await loadAccountActivity(); showPage('task-management-page'); } else showPage('marketplace-page'); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
-$('#confirm-delete-user').addEventListener('click', async () => { const button = $('#confirm-delete-user'); const userId = $('#delete-user-id').value; if (!userId) return; setButtonBusy(button, true, 'Deleting account...'); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_user', user_id: userId }) }); closeModal('delete-user-modal'); notify(payload.message); await loadAccountActivity(); showPage('user-management-page'); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
+$('#confirm-delete-task').addEventListener('click', async () => { const button = $('#confirm-delete-task'); const taskId = $('#delete-task-id').value; setButtonBusy(button, true, 'Deleting task...'); try { const payload = await api('api/admin_actions', { method: 'POST', body: JSON.stringify({ action: 'delete_task', task_id: taskId }) }); closeModal('delete-task-modal'); notify(payload.message); await loadTasks(); if (state.user?.role === 'superadmin') { await loadAccountActivity(); showPage('task-management-page'); } else if (['admin','moderator'].includes(state.user?.role)) { await loadModeratorTasks(); showPage('task-management-page'); } else showPage('marketplace-page'); } catch (error) { notify(error.message, 'error'); } finally { setButtonBusy(button, false); } });
 init();

@@ -71,6 +71,8 @@ const getProfile = async (s, authId) => {
   if (error || !data) throw fail('Your account profile could not be found.', 401);
   return data;
 };
+const suspensionIsActive = (profile) => Boolean(profile.is_suspended)
+  && (!profile.suspended_until || new Date(profile.suspended_until).getTime() > Date.now());
 const touchPresence = async (s, userId, isLogin = false) => {
   const { error } = await s.rpc('touch_account_presence', { p_user_id: userId, p_is_login: isLogin });
   if (error) console.error('Account presence update failed:', error.message);
@@ -78,6 +80,21 @@ const touchPresence = async (s, userId, isLogin = false) => {
 const logActivity = async (s, userId, eventType, summary, referenceType = null, referenceId = null) => {
   const { error } = await s.from('account_activity').insert({ user_id: userId, event_type: eventType, summary: clean(summary, 180), reference_type: referenceType, reference_id: referenceId == null ? null : String(referenceId) });
   if (error) console.error('Account activity log failed:', error.message);
+};
+const recordAdminAudit = async (s, actor, event) => {
+  const actorName = `${actor.first_name || ''} ${actor.last_name || ''}`.trim() || 'Administrator';
+  await rows(s.from('admin_audit_events').insert({
+    actor_id: Number(actor.id),
+    actor_name: actorName,
+    actor_email: actor.email || '',
+    action: clean(event.action, 80),
+    target_type: clean(event.target_type, 40) || null,
+    target_id: event.target_id == null ? null : String(event.target_id),
+    target_label: clean(event.target_label, 240) || null,
+    reason: clean(event.reason, 1000),
+    before_state: event.before_state || null,
+    after_state: event.after_state || null
+  }));
 };
 const taskNotice = async (s, userId, taskId, eventType, title, message, dedupeKey) => {
   if (!userId || !taskId) return;
@@ -95,10 +112,15 @@ const userFor = async (req, s, trackActivity = false) => {
   const { data, error } = await s.auth.getUser(token);
   if (error || !data.user) throw fail('Your session has ended. Please log in again.', 401);
   const profile = await getProfile(s, data.user.id);
+  if (suspensionIsActive(profile)) {
+    const expiry = profile.suspended_until ? ` until ${new Date(profile.suspended_until).toLocaleString('en-PH')}` : '';
+    throw fail(`Your account is suspended${expiry}. Contact support if you believe this is an error.`, 403);
+  }
   if (trackActivity) await touchPresence(s, profile.id);
   return { auth: data.user, profile, token };
 };
-const isMod = (u) => ['admin', 'superadmin'].includes(u.role);
+const isMod = (u) => ['admin', 'moderator', 'superadmin'].includes(u.role);
+const canModerate = (u) => ['admin', 'moderator', 'superadmin'].includes(u.role);
 const loadMyBids = async (s, profile) => {
   const bids = await rows(s.from('bids').select('*').eq('bidder_id', profile.id).order('created_at', { ascending: false }));
   if (!bids.length) return [];
@@ -247,6 +269,10 @@ export default async function handler(req, res) {
         const { data, error } = await ac.auth.signInWithPassword({ email: clean(body.email).toLowerCase(), password: String(body.password || '') });
         if (error || !data.session) throw fail('The email or password is incorrect.', 401);
         profile = await getProfile(s, data.user.id);
+        if (suspensionIsActive(profile)) {
+          const expiry = profile.suspended_until ? ` until ${new Date(profile.suspended_until).toLocaleString('en-PH')}` : '';
+          throw fail(`Your account is suspended${expiry}. Contact support if you believe this is an error.`, 403);
+        }
         await touchPresence(s, profile.id, true);
         return res.status(200).json(ok(`Welcome back, ${profile.first_name}!`, { user: publicUser(profile), access_token: data.session.access_token, refresh_token: data.session.refresh_token }));
       }
@@ -487,31 +513,131 @@ export default async function handler(req, res) {
       }
       if (action === 'activity_dashboard') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view account activity.',403);
-        const [accounts, events, reports, tasks, underReviewTasks, totalTasks, completedTasks, openTasks] = await Promise.all([
-          rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at').order('role').order('first_name')),
+        const [accounts, events, reports, tasks, underReviewTasks, totalTasks, completedTasks, openTasks, openReportCount, trendResult, metricsResult] = await Promise.all([
+          rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at,is_suspended,suspension_reason,suspended_until').order('created_at',{ascending:false}).limit(50)),
           rows(s.from('account_activity').select('id,event_type,summary,reference_type,reference_id,created_at,user:user_profiles!account_activity_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).limit(40)),
-          rows(s.from('task_reports').select('id,task_id,reporter_id,reason,details,status,created_at,task:tasks!task_reports_task_id_fkey(id,user_id,title,description,category,status,budget,location,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)),reporter:user_profiles!task_reports_reporter_id_fkey(id,first_name,last_name,email)').order('created_at',{ascending:false}).limit(1000)),
+          rows(s.from('task_reports').select('id,task_id,reporter_id,reason,details,status,created_at,resolution_note,reviewed_at,task:tasks!task_reports_task_id_fkey(id,user_id,title,description,category,status,budget,location,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)),reporter:user_profiles!task_reports_reporter_id_fkey(id,first_name,last_name,email)').order('created_at',{ascending:false}).limit(20)),
           rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)').order('created_at',{ascending:false}).order('id',{ascending:false}).limit(50)),
           rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)').eq('status','Under Review').order('created_at',{ascending:false}).limit(200)),
           s.from('tasks').select('id',{count:'exact',head:true}),
           s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Completed'),
-          s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Open')
+          s.from('tasks').select('id',{count:'exact',head:true}).eq('status','Open'),
+          s.from('task_reports').select('id',{count:'exact',head:true}).eq('status','Open'),
+          s.rpc('admin_dashboard_trends',{p_days:30,p_category:null}),
+          s.rpc('admin_dashboard_metrics')
         ]);
         for (const result of [totalTasks,completedTasks,openTasks]) if (result.error) throw fail(result.error.message);
+        if (openReportCount.error || trendResult.error || metricsResult.error) throw fail((openReportCount.error || trendResult.error || metricsResult.error).message);
         const ids = accounts.map((account) => account.id);
         const presence = ids.length ? await rows(s.from('account_presence').select('user_id,last_login_at,last_seen_at').in('user_id',ids)) : [];
         const presenceByUser = new Map(presence.map((item) => [Number(item.user_id), item]));
         const users = accounts.map((account) => ({
           id: Number(account.id), first_name: account.first_name, middle_initial: account.middle_initial || '',
           last_name: account.last_name, email: account.email, role: account.role, created_at: account.created_at,
+          is_suspended: suspensionIsActive(account), suspension_reason: account.suspension_reason || '',
+          suspended_until: account.suspended_until || null,
           ...(presenceByUser.get(Number(account.id)) || { last_login_at: null, last_seen_at: null })
         }));
         const taskItems = tasks.map((task) => ({ ...task, id:Number(task.id), user_id:Number(task.user_id), budget:Number(task.budget)||0, owner_name:task.owner ? `${task.owner.first_name} ${task.owner.last_name}`.trim() : 'TaskerPH member' }));
         const reviewTaskItems = underReviewTasks.map((task) => ({ ...task, id:Number(task.id), user_id:Number(task.user_id), budget:Number(task.budget)||0, owner_name:task.owner ? `${task.owner.first_name} ${task.owner.last_name}`.trim() : 'TaskerPH member' }));
-        return res.status(200).json(ok('',{users,events,reports,tasks:taskItems,under_review_tasks:reviewTaskItems,has_more_tasks:tasks.length < (totalTasks.count||0),stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0,open_tasks:openTasks.count||0}}));
+        const metrics = metricsResult.data?.[0] || {};
+        return res.status(200).json(ok('',{users,events,reports,tasks:taskItems,under_review_tasks:reviewTaskItems,trends:trendResult.data||[],has_more_tasks:tasks.length < (totalTasks.count||0),stats:{total_users:Number(metrics.account_count)||0,admin_count:Number(metrics.admin_count)||0,active_count:Number(metrics.active_count)||0,total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0,open_tasks:openTasks.count||0,open_reports:openReportCount.count||0}}));
+      }
+      if (action === 'dashboard_trends') {
+        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view dashboard trends.',403);
+        const days=Number(body.days||30), category=clean(body.category,80)||null;
+        const categories=['Home & Repair','Cleaning Services','Moving & Transport','Delivery & Logistics','IT & Tech Support','Digital & Creative','Events & Entertainment','Errands & Shopping','Tutoring & Training','Beauty & Wellness','Pet Care','Business Services'];
+        if (![7,30,90].includes(days) || (category && !categories.includes(category))) throw fail('Choose a valid trend period and task category.',422);
+        const {data,error}=await s.rpc('admin_dashboard_trends',{p_days:days,p_category:category});
+        if (error) throw fail(error.message);
+        return res.status(200).json(ok('',{trends:data||[]}));
+      }
+      if (action === 'list_users') {
+        if (!['superadmin','support'].includes(profile.role)) throw fail('Only Superadmins or Support staff can view account records.',403);
+        const offset = Number(body.offset || 0);
+        const search = clean(body.search,80).replace(/[,%()]/g,' ').replace(/\s+/g,' ').trim();
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw fail('Choose a valid account page.',422);
+        let query = s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,created_at,is_suspended,suspension_reason,suspended_until',{count:'exact'}).neq('role','superadmin');
+        const role = clean(body.role,20) || 'all';
+        if (!['all','user','admin','moderator','support'].includes(role)) throw fail('Choose a valid account role.',422);
+        if (role !== 'all') query = query.eq('role',role);
+        if (search) query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`);
+        const {data,error,count} = await query.order('created_at',{ascending:false}).range(offset,offset+49);
+        if (error) throw fail(error.message);
+        return res.status(200).json(ok('',{users:(data||[]).map((user)=>({...user,id:Number(user.id),is_suspended:suspensionIsActive(user)})),total_count:count||0,has_more:offset+(data||[]).length<(count||0)}));
+      }
+      if (action === 'list_reports') {
+        if (!canModerate(profile)) throw fail('Only moderation staff can review task reports.',403);
+        const offset = Number(body.offset || 0);
+        const status = clean(body.status,20) || 'all';
+        const reason = clean(body.reason,80) || 'all';
+        const search = clean(body.search,80).replace(/[,%()]/g,' ').replace(/\s+/g,' ').trim();
+        const from = clean(body.from,10), to = clean(body.to,10);
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw fail('Choose a valid report page.',422);
+        if (!['all','Open','Reviewed','Dismissed'].includes(status)) throw fail('Choose a valid report status.',422);
+        if (!['all','Scam or fraud','Inappropriate content','Misleading information','Other'].includes(reason)) throw fail('Choose a valid report reason.',422);
+        const isDate = (value) => !value || (/^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)));
+        if (!isDate(from) || !isDate(to) || (from && to && from > to)) throw fail('Choose a valid report date range.',422);
+        let query = s.from('task_reports').select('id,task_id,reporter_id,reason,details,status,created_at,resolution_note,reviewed_at,task:tasks!task_reports_task_id_fkey(id,user_id,title,description,category,status,budget,location,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)),reporter:user_profiles!task_reports_reporter_id_fkey(id,first_name,last_name,email)',{count:'exact'});
+        if (status !== 'all') query = query.eq('status',status);
+        if (reason !== 'all') query = query.eq('reason',reason);
+        if (from) query = query.gte('created_at',`${from}T00:00:00.000Z`);
+        if (to) {
+          const dayAfter = new Date(`${to}T00:00:00.000Z`);
+          dayAfter.setUTCDate(dayAfter.getUTCDate()+1);
+          query = query.lt('created_at',dayAfter.toISOString());
+        }
+        if (search) {
+          const safeSearch = search.replace(/[%_]/g,' ');
+          const filters = [`reason.ilike.%${safeSearch}%`,`details.ilike.%${safeSearch}%`];
+          const matchingTasks = await rows(s.from('tasks').select('id').ilike('title',`%${safeSearch}%`).limit(500));
+          const matchingReporters = await rows(s.from('user_profiles').select('id').or(`first_name.ilike.%${safeSearch}%,last_name.ilike.%${safeSearch}%,email.ilike.%${safeSearch}%`).limit(500));
+          if (matchingTasks.length) filters.push(`task_id.in.(${matchingTasks.map((task)=>Number(task.id)).join(',')})`);
+          if (matchingReporters.length) filters.push(`reporter_id.in.(${matchingReporters.map((user)=>Number(user.id)).join(',')})`);
+          query = query.or(filters.join(','));
+        }
+        const {data,error,count} = await query.order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+49);
+        if (error) throw fail(error.message);
+        const taskIds=[...new Set((data||[]).map((report)=>Number(report.task_id)).filter((id)=>id>0))];
+        const relatedReports=[];
+        if (taskIds.length) {
+          for (let relatedOffset=0;;relatedOffset+=1000) {
+            const batch=await rows(s.from('task_reports').select('task_id,status').in('task_id',taskIds).range(relatedOffset,relatedOffset+999));
+            relatedReports.push(...batch);
+            if (batch.length<1000) break;
+          }
+        }
+        const counts=new Map();
+        for (const report of relatedReports) {
+          const key=Number(report.task_id), current=counts.get(key)||{total:0,open:0};
+          current.total+=1;
+          if (report.status==='Open') current.open+=1;
+          counts.set(key,current);
+        }
+        const reportItems=(data||[]).map((report)=>({...report,task_report_count:counts.get(Number(report.task_id))?.total||1,task_open_report_count:counts.get(Number(report.task_id))?.open||0}));
+        return res.status(200).json(ok('',{reports:reportItems,total_count:count||0,has_more:offset+(data||[]).length<(count||0)}));
+      }
+      if (action === 'list_audit') {
+        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view the audit log.',403);
+        const offset = Number(body.offset || 0);
+        const search = clean(body.search,80).replace(/[,%()]/g,' ').replace(/\s+/g,' ').trim();
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw fail('Choose a valid audit page.',422);
+        let query = s.from('admin_audit_events').select('*',{count:'exact'});
+        if (search) query = query.or(`actor_name.ilike.%${search}%,actor_email.ilike.%${search}%,action.ilike.%${search}%,target_label.ilike.%${search}%,reason.ilike.%${search}%`);
+        const {data,error,count} = await query.order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+49);
+        if (error) throw fail(error.message);
+        return res.status(200).json(ok('',{events:data||[],total_count:count||0,has_more:offset+(data||[]).length<(count||0)}));
+      }
+      if (action === 'export_audit') {
+        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can export the audit log.',403);
+        const offset = Number(body.offset || 0);
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) throw fail('Choose a valid audit export page.',422);
+        const {data,error} = await s.from('admin_audit_events').select('*').order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+499);
+        if (error) throw fail(error.message);
+        return res.status(200).json(ok('',{events:data||[],has_more:(data||[]).length===500}));
       }
       if (action === 'more_tasks') {
-        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can load platform tasks.',403);
+        if (!canModerate(profile)) throw fail('Only moderation staff can load platform tasks.',403);
         const offset = Number(body.offset);
         if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw fail('Choose a valid task page.',422);
         const search = clean(body.search,80).replace(/[^a-zA-Z0-9@.\- ]/g,' ').replace(/\s+/g,' ').trim();
@@ -538,7 +664,7 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('',{tasks:taskItems,total_count:totalCount,has_more_tasks:offset+taskItems.length<totalCount}));
       }
       if (action === 'view_task_details') {
-        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view task moderation details.',403);
+        if (!canModerate(profile)) throw fail('Only moderation staff can view task details.',403);
         const taskId = Number(body.task_id);
         if (!Number.isSafeInteger(taskId) || taskId < 1) throw fail('Choose a valid task.',422);
         const [task, bids, totalBids, acceptedBids, pendingBids, rejectedBids] = await Promise.all([
@@ -557,7 +683,7 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('',{task:taskData,bids:bidItems,disputes,stats:{total_bids:totalBids.count||0,accepted_bids:acceptedBids.count||0,pending_bids:pendingBids.count||0,rejected_bids:rejectedBids.count||0}}));
       }
       if (action === 'view_user_profile') {
-        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view member profiles.',403);
+        if (!['superadmin','support','admin','moderator'].includes(profile.role)) throw fail('Only staff can view member profiles.',403);
         const userId = Number(body.user_id);
         if (!Number.isSafeInteger(userId) || userId < 1) throw fail('Choose a valid account.',422);
         const [account, tasks, totalTasks, completedTasks, presence, recentActivity, submittedBids, totalBids, acceptedBids] = await Promise.all([
@@ -591,12 +717,40 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('Report sent to the Superadmin for review.'));
       }
       if (action === 'review_report') {
-        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can review reports.',403);
-        const id=Number(body.report_id), status=body.status;
+        if (!canModerate(profile)) throw fail('Only moderation staff can review reports.',403);
+        const id=Number(body.report_id), status=body.status, note=clean(body.note,1000);
         if (!Number.isSafeInteger(id) || !['Reviewed','Dismissed'].includes(status)) throw fail('Choose a valid report status.',422);
-        await rows(s.from('task_reports').update({status}).eq('id',id));
+        if (!note) throw fail('Add a resolution note before closing the report.',422);
+        const report = await rows(s.from('task_reports').select('id,task_id,status,resolution_note,task:tasks!task_reports_task_id_fkey(title)').eq('id',id).maybeSingle());
+        if (!report) throw fail('Report not found.',404);
+        await rows(s.from('task_reports').update({status,resolution_note:note,reviewed_by:Number(profile.id),reviewed_at:new Date().toISOString()}).eq('id',id));
+        await recordAdminAudit(s,profile,{action:'report_reviewed',target_type:'report',target_id:id,target_label:report.task?.title||`Report #${id}`,reason:note,before_state:{status:report.status,resolution_note:report.resolution_note||''},after_state:{status,resolution_note:note}});
         await logActivity(s,profile.id,'report_reviewed',`Report #${id} marked ${status.toLowerCase()}`,'report',id);
         return res.status(200).json(ok('Report updated.'));
+      }
+      if (action === 'suspend_user' || action === 'unsuspend_user') {
+        if (profile.role !== 'superadmin') throw fail('Only the Superadmin can manage account suspensions.',403);
+        const targetId = Number(body.user_id);
+        if (!Number.isSafeInteger(targetId) || targetId < 1 || targetId === Number(profile.id)) throw fail('Choose a valid account to manage.',422);
+        const target = await rows(s.from('user_profiles').select('id,first_name,last_name,email,role,is_suspended,suspension_reason,suspended_until').eq('id',targetId).maybeSingle());
+        if (!target) throw fail('Account not found.',404);
+        if (target.role === 'superadmin') throw fail('Superadmin accounts cannot be suspended.',403);
+        const label = `${target.first_name} ${target.last_name}`.trim();
+        if (action === 'unsuspend_user') {
+          if (!target.is_suspended) throw fail('This account is not suspended.',409);
+          await rows(s.from('user_profiles').update({is_suspended:false,suspension_reason:null,suspended_until:null}).eq('id',targetId));
+          await recordAdminAudit(s,profile,{action:'account_unsuspended',target_type:'user',target_id:targetId,target_label:label,reason:clean(body.reason,1000),before_state:{is_suspended:true,suspension_reason:target.suspension_reason,suspended_until:target.suspended_until},after_state:{is_suspended:false}});
+          await logActivity(s,profile.id,'account_unsuspended',`Reactivated account: ${label}`,'user',targetId);
+          return res.status(200).json(ok('Account reactivated.'));
+        }
+        const reason = clean(body.reason,1000), duration = clean(body.duration,20);
+        if (!reason) throw fail('Enter a reason for the suspension.',422);
+        if (!['24h','7d','30d','permanent'].includes(duration)) throw fail('Choose a valid suspension duration.',422);
+        const until = duration === 'permanent' ? null : new Date(Date.now() + ({'24h':24,'7d':168,'30d':720}[duration] * 60 * 60 * 1000)).toISOString();
+        await rows(s.from('user_profiles').update({is_suspended:true,suspension_reason:reason,suspended_until:until}).eq('id',targetId));
+        await recordAdminAudit(s,profile,{action:'account_suspended',target_type:'user',target_id:targetId,target_label:label,reason,before_state:{is_suspended:Boolean(target.is_suspended),suspended_until:target.suspended_until},after_state:{is_suspended:true,suspended_until:until}});
+        await logActivity(s,profile.id,'account_suspended',`Suspended account: ${label}`,'user',targetId);
+        return res.status(200).json(ok(until ? `Account suspended until ${new Date(until).toLocaleString('en-PH')}.` : 'Account suspended indefinitely.'));
       }
       if (action === 'update_user') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can edit user accounts.',403);
@@ -609,13 +763,14 @@ export default async function handler(req, res) {
         const email = clean(body.email,190).toLowerCase(), role = clean(body.role,20);
         if (!first_name || !last_name) throw fail('Enter the user’s first and last name.',422);
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail('Enter a valid email address.',422);
-        if (!['user','admin'].includes(role)) throw fail('Choose either User or Admin as the role.',422);
+        if (!['user','admin','moderator','support'].includes(role)) throw fail('Choose a valid account role.',422);
         if (email !== String(target.email).toLowerCase()) {
           const { error } = await s.auth.admin.updateUserById(target.auth_user_id,{email,email_confirm:true});
           if (error) throw fail(error.message,400);
         }
         const [updated] = await rows(s.from('user_profiles').update({first_name,middle_initial,last_name,email,role}).eq('id',targetId).select('id,first_name,middle_initial,last_name,email,role,created_at').limit(1));
         if (!updated) throw fail('The account could not be updated.',500);
+        await recordAdminAudit(s,profile,{action:'user_updated',target_type:'user',target_id:targetId,target_label:`${first_name} ${last_name}`,reason:clean(body.reason,1000),before_state:{role:target.role,email:target.email},after_state:{role,email}});
         await logActivity(s,profile.id,'user_updated',`Updated account: ${first_name} ${last_name} (${role})`,'user',targetId);
         return res.status(200).json(ok('User account updated.',{user:{...updated,id:Number(updated.id)}}));
       }
@@ -626,6 +781,9 @@ export default async function handler(req, res) {
         const target=await rows(s.from('user_profiles').select('id,auth_user_id,first_name,last_name,role').eq('id',targetId).maybeSingle());
         if (!target) throw fail('Account not found.',404);
         if (target.role === 'superadmin') throw fail('Superadmin accounts are protected from deletion.',403);
+        const reason=clean(body.reason,1000);
+        if (!reason) throw fail('Enter a reason before permanently deleting this account.',422);
+        await recordAdminAudit(s,profile,{action:'user_deleted',target_type:'user',target_id:target.id,target_label:`${target.first_name} ${target.last_name}`,reason,before_state:{role:target.role}});
         const {error}=await s.auth.admin.deleteUser(target.auth_user_id);
         if(error) throw fail(error.message,400);
         await logActivity(s,profile.id,'user_deleted',`Deleted account: ${target.first_name} ${target.last_name} (${target.role})`,'user',target.id);
@@ -633,13 +791,25 @@ export default async function handler(req, res) {
       }
       if (action==='create_admin') {
         if(profile.role!=='superadmin') throw fail('Only the Superadmin can create Admin accounts.',403);
+        const role = clean(body.role,20) || 'admin';
+        if (!['admin','moderator','support'].includes(role)) throw fail('Choose a valid staff role.',422);
         const {data,error}=await s.auth.admin.createUser({email:clean(body.email,190).toLowerCase(),password:String(body.password||''),email_confirm:true,user_metadata:{first_name:clean(body.first_name,80),middle_initial:clean(body.middle_initial,1),last_name:clean(body.last_name,80)}});
-        if(error) throw fail(error.message,400); await rows(s.from('user_profiles').update({role:'admin'}).eq('auth_user_id',data.user.id)); return res.status(200).json(ok('Admin account provisioned.'));
+        if(error) throw fail(error.message,400);
+        const [created] = await rows(s.from('user_profiles').update({role}).eq('auth_user_id',data.user.id).select('id,first_name,last_name,email').limit(1));
+        if (!created) throw fail('The staff profile could not be assigned its role.',500);
+        await recordAdminAudit(s,profile,{action:'staff_created',target_type:'user',target_id:created.id,target_label:`${created.first_name} ${created.last_name}`,reason:'Staff account provisioned',after_state:{role,email:created.email}});
+        return res.status(200).json(ok(`${role[0].toUpperCase()}${role.slice(1)} account provisioned.`));
       }
-      const id=Number(body.task_id); const taskColumns=['update_task','delete_task','reopen_task'].includes(action)?'user_id,image_urls,status':'user_id'; const t=await rows(s.from('tasks').select(taskColumns).eq('id',id).maybeSingle());
+      const id=Number(body.task_id); const taskColumns=action==='update_task'?'user_id,image_urls,status,title,category,budget,location,description':(['delete_task','reopen_task'].includes(action)?'user_id,image_urls,status,title':'user_id'); const t=await rows(s.from('tasks').select(taskColumns).eq('id',id).maybeSingle());
       if(!t || (!isMod(profile)&&Number(t.user_id)!==Number(profile.id))) throw fail('You can only manage your own task postings.',403);
       if(action==='delete_task') {
         if(t.status==='Completed'&&!isMod(profile)) throw fail('Completed tasks cannot be deleted by their owner.',409);
+        if (isMod(profile) && Number(t.user_id) !== Number(profile.id)) {
+          const reason=clean(body.reason,1000);
+          if (!reason) throw fail('A moderation reason is required to remove another member’s task.',422);
+          const taskSnapshot = await rows(s.from('tasks').select('title,status,user_id').eq('id',id).maybeSingle());
+          await recordAdminAudit(s,profile,{action:'task_removed',target_type:'task',target_id:id,target_label:taskSnapshot?.title||`Task #${id}`,reason,before_state:taskSnapshot?{status:taskSnapshot.status,owner_id:taskSnapshot.user_id}:null});
+        }
         await rows(s.from('tasks').delete().eq('id',id));
         const bucketPrefix=`${url.replace(/\/$/,'')}/storage/v1/object/public/task-photos/`;
         const photoPaths=(Array.isArray(t.image_urls)?t.image_urls:[]).filter((photoUrl)=>photoUrl.startsWith(bucketPrefix)).map((photoUrl)=>decodeURIComponent(photoUrl.slice(bucketPrefix.length).split('?')[0]));
@@ -684,6 +854,9 @@ export default async function handler(req, res) {
           patch.image_urls=[...uniqueKeepUrls,...newUrls];
           await rows(s.from('tasks').update(patch).eq('id',id));
           if (patch.status === 'Completed' && t.status !== 'Completed') await logActivity(s,profile.id,'task_completed',`Task completed: ${patch.title}`,'task',id);
+          if (isMod(profile) && Number(t.user_id) !== Number(profile.id)) {
+            await recordAdminAudit(s,profile,{action:'task_updated',target_type:'task',target_id:id,target_label:patch.title,reason:clean(body.reason,1000),before_state:{title:t.title,category:t.category,budget:Number(t.budget),location:t.location,description:t.description,status:t.status},after_state:{title:patch.title,category:patch.category,budget:patch.budget,location:patch.location,description:patch.description,status:patch.status}});
+          }
         } catch(error) {
           if(uploadedPaths.length) await s.storage.from('task-photos').remove(uploadedPaths).catch(()=>{});
           throw error;
@@ -792,13 +965,16 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('Your review was submitted.'));
       }
       if(action==='resolve_dispute') {
-        if(profile.role!=='superadmin') throw fail('Only the Superadmin can resolve a task dispute.',403);
+        if(!canModerate(profile)) throw fail('Only moderation staff can resolve a task dispute.',403);
         const resolutionStatus=body.status;
         if(!['In Progress','Completed','Cancelled'].includes(resolutionStatus)) throw fail('Choose a valid dispute resolution.',422);
         if(task.status!=='Under Review') throw fail('This task is not under review.',409);
-        const resolution=clean(body.resolution,1000)||`Superadmin set task status to ${resolutionStatus}.`, now=new Date().toISOString();
+        const resolution=clean(body.resolution,1000);
+        if (!resolution) throw fail('Enter a resolution note before closing this dispute.',422);
+        const now=new Date().toISOString();
         const resolvedTask=await rows(s.from('tasks').update({status:resolutionStatus,...(resolutionStatus==='Completed'?{completion_confirmed_at:now}:{})}).eq('id',taskId).eq('status','Under Review').select('id'));
         if(!resolvedTask.length) throw fail('The task status changed. Refresh and review the dispute again.',409);
+        await recordAdminAudit(s,profile,{action:'dispute_resolved',target_type:'task',target_id:taskId,target_label:task.title,reason:resolution,before_state:{status:'Under Review'},after_state:{status:resolutionStatus,resolution}});
         await rows(s.from('task_disputes').update({status:'Resolved',resolution,resolved_by:profile.id,resolved_at:now}).eq('task_id',taskId).eq('status','Open'));
         if(resolutionStatus==='Cancelled') await rows(s.from('bids').update({status:'Cancelled'}).eq('task_id',taskId).eq('id',acceptedBid.id));
         for(const recipient of [posterId,taskerId]) await taskNotice(s,recipient,taskId,'dispute_resolved','Task issue reviewed',`The Superadmin reviewed “${task.title}”. Resolution: ${resolutionStatus}.`,`task:${taskId}:dispute-resolved:${recipient}:${randomUUID()}`);

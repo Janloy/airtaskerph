@@ -1311,3 +1311,41 @@ body.superadmin-mode:not(.dark-mode) .superadmin-task-card-owner small { color:#
   .task-draft-resume { width:100%; }
   .task-draft-delete { width:2.75rem; }
 }
+
+.admin-workspace-controls { display:flex; flex-wrap:wrap; align-items:end; gap:.7rem; margin:1rem 0; }
+.admin-workspace-controls label { display:grid; min-width:150px; flex:1; gap:.35rem; color:#475569; font-size:.72rem; font-weight:750; }
+.admin-workspace-controls input, .admin-workspace-controls select { min-height:40px; border:1px solid #dbe3e7; border-radius:9px; background:#fff; padding:.45rem .65rem; color:#17202a; font-size:.82rem; }
+.superadmin-trends { margin-top:1rem; }
+.superadmin-trend-legend { display:flex; flex-wrap:wrap; gap:.9rem; padding:.8rem 1rem 0; color:#475569; font-size:.72rem; }
+.superadmin-trend-legend span { display:flex; align-items:center; gap:.35rem; }
+.superadmin-trend-legend i { display:inline-block; width:9px; height:9px; border-radius:3px; background:#0284c7; }
+.superadmin-trend-legend [data-series="tasks"] i, .superadmin-trend-day [data-series="tasks"] { background:#0d9488; }
+.superadmin-trend-legend [data-series="completions"] i, .superadmin-trend-day [data-series="completions"] { background:#16a34a; }
+.superadmin-trend-legend [data-series="reports"] i, .superadmin-trend-day [data-series="reports"] { background:#e11d48; }
+.superadmin-trend-bars { display:flex; min-height:155px; align-items:end; gap:3px; overflow-x:auto; padding:1rem 1rem .6rem; }
+.superadmin-trend-day { display:grid; min-width:14px; flex:1; grid-template-rows:1fr auto; gap:.35rem; text-align:center; }
+.superadmin-trend-day > div { display:flex; height:112px; align-items:end; justify-content:center; gap:1px; }
+.superadmin-trend-day i { width:4px; min-height:0; border-radius:4px 4px 0 0; background:#0284c7; }
+.superadmin-trend-day small { color:#64748b; font-size:.55rem; white-space:nowrap; }
+.admin-report-card { align-items:flex-start; }
+.admin-report-details { white-space:pre-wrap; overflow-wrap:anywhere; }
+.admin-report-review { width:min(100%,300px); flex-direction:column; align-items:stretch; }
+.admin-report-review label { display:grid; gap:.35rem; color:#475569; font-size:.7rem; font-weight:700; }
+.admin-report-review textarea { width:100%; border:1px solid #dbe3e7; border-radius:8px; padding:.5rem; font-size:.78rem; }
+.admin-report-resolution { border-left:3px solid #0d9488; padding-left:.6rem; }
+.admin-audit-row { align-items:flex-start; }
+.admin-audit-row p { margin:.35rem 0 0; color:#475569; font-size:.75rem; }
+.admin-audit-row details { margin-top:.4rem; color:#475569; font-size:.7rem; }
+.admin-audit-row pre { max-width:100%; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:7px; background:#f1f5f9; padding:.5rem; }
+.superadmin-status-pill.is-suspended { display:inline-flex; margin-top:.35rem; background:#fff1f2; color:#be123c; }
+body.dark-mode .admin-workspace-controls label, body.dark-mode .admin-report-review label,
+body.dark-mode .admin-audit-row p, body.dark-mode .admin-audit-row details,
+body.dark-mode .superadmin-trend-legend { color:#cbd5e1; }
+body.dark-mode .admin-workspace-controls input, body.dark-mode .admin-workspace-controls select,
+body.dark-mode .admin-report-review textarea { border-color:#475569; background:#0f172a; color:#e2e8f0; }
+body.dark-mode .admin-audit-row pre { background:#0f172a; }
+@media(max-width:700px) {
+  .admin-report-card { display:grid; }
+  .admin-report-review { width:100%; }
+  .superadmin-trend-day { min-width:20px; }
+}
