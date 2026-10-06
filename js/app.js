@@ -1,5 +1,6 @@
 const state = { user: null, tasks: [], myTasks: [], savedTasks: [], savedTaskIds: new Set(), activeTask: null, taskDetailReturn: null, publicProfileReturn: null, publicProfileTasks: [], conversationReturnPage: 'marketplace-page', conversationTimer: null, conversationMessages: [], conversationLastFullSync: 0, conversationFetchInFlight: false, pendingMessages: [], sendingMessage: false, notificationTimer: null, taskRefreshTimer: null, logoutTrigger: null, authPromptOpen: false, authReturnIntent: null, authPromptTrigger: null, preserveAuthIntent: false, glassOpacity: 0, themeUsesSystem: true, filters: { status: '', category: '', search: '' } };
 let mfaLoginChallenge = '';
+let mfaEnrollmentPromise = null;
 let myBidsData = [];
 let notificationCenterItems = [];
 const seenTaskUpdateToasts = new Set();
@@ -133,6 +134,15 @@ const api = async (url, options = {}, hasRetried = false) => {
     }
     const requestError = new Error(payload.message || 'Request failed.');
     requestError.suspensionAppealAvailable = Boolean(payload.suspension_appeal_available);
+    if(payload.mfa_setup_required&&state.user?.role==='superadmin') {
+      state.user.mfa_setup_required=true;
+      showPage('superadmin-account-page');
+      renderSuperadminAccountSettings();
+      if(!url.includes('action=mfa_begin')&&!url.includes('action=mfa_enable')) {
+        requestError.message='Authenticator setup is required. Complete the setup dialog to continue using Superadmin tools.';
+        void openSuperadminMfaEnrollment();
+      }
+    }
     throw requestError;
   }
   if (state.user) recordAuthActivity();
@@ -1832,7 +1842,8 @@ function renderSuperadminAccountSettings() {
   }
 }
 async function openSuperadminMfaEnrollment() {
-  try {
+  if(mfaEnrollmentPromise) return mfaEnrollmentPromise;
+  mfaEnrollmentPromise=(async()=>{try {
     const setup=await api('api/auth?action=mfa_begin',{method:'POST',body:JSON.stringify({})});
     let modal=$('#superadmin-mfa-enroll-modal');
     if(!modal) {
@@ -1876,6 +1887,9 @@ async function openSuperadminMfaEnrollment() {
     $('#superadmin-mfa-enroll-form').reset();
     openModal('#superadmin-mfa-enroll-modal');
   } catch(error) { notify(error.message,'error'); }
+  finally { mfaEnrollmentPromise=null; }
+  })();
+  return mfaEnrollmentPromise;
 }
 async function openProfile(formId = null) {
   closeDrawer();
