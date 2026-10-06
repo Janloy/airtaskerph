@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { createSign, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, createSign, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
 const url = process.env.SUPABASE_URL;
 const anon = process.env.SUPABASE_ANON_KEY;
@@ -8,12 +8,88 @@ let serviceClient;
 let publicAuthClient;
 const db = () => serviceClient || (serviceClient = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } }));
 const authClient = () => publicAuthClient || (publicAuthClient = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } }));
-const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+const fail = (message, status = 400, details = {}) => Object.assign(new Error(message), { status, ...details });
 const ok = (message = '', data = {}) => ({ success: true, message, ...data });
 const clean = (v, n = 255) => String(v ?? '').trim().slice(0, n);
 let cachedFcmAccessToken = '';
 let cachedFcmAccessTokenExpiresAt = 0;
 const base64url = (value) => Buffer.from(value).toString('base64url');
+const base32Encode = (bytes) => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0, value = 0, output = '';
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) { output += alphabet[(value >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits) output += alphabet[(value << (5 - bits)) & 31];
+  return output;
+};
+const base32Decode = (value) => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0, buffer = 0;
+  const bytes = [];
+  for (const char of String(value).replace(/=+$/,'').toUpperCase()) {
+    const digit = alphabet.indexOf(char);
+    if (digit < 0) throw fail('The authenticator setup secret is invalid.',500);
+    buffer = (buffer << 5) | digit;
+    bits += 5;
+    if (bits >= 8) { bytes.push((buffer >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  return Buffer.from(bytes);
+};
+const mfaEncryptionKey = () => {
+  const value = process.env.SUPERADMIN_MFA_ENCRYPTION_KEY || '';
+  if (!/^[a-f0-9]{64}$/i.test(value)) throw fail('Set SUPERADMIN_MFA_ENCRYPTION_KEY to a random 32-byte hex value in Vercel before enabling Superadmin MFA.',503);
+  return Buffer.from(value,'hex');
+};
+const jwtIssuedAt = (token) => {
+  try {
+    const payload=JSON.parse(Buffer.from(String(token).split('.')[1]||'','base64url').toString('utf8'));
+    return Number.isSafeInteger(payload.iat)?payload.iat:null;
+  } catch { return null; }
+};
+const encryptMfaValue = (value) => {
+  const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm',mfaEncryptionKey(),iv);
+  const encrypted = Buffer.concat([cipher.update(String(value),'utf8'),cipher.final()]);
+  return [iv.toString('base64url'),cipher.getAuthTag().toString('base64url'),encrypted.toString('base64url')].join('.');
+};
+const decryptMfaValue = (value) => {
+  const [iv,tag,data] = String(value||'').split('.');
+  if (!iv||!tag||!data) throw fail('Stored MFA data is invalid. Contact support.',500);
+  const decipher = createDecipheriv('aes-256-gcm',mfaEncryptionKey(),Buffer.from(iv,'base64url'));
+  decipher.setAuthTag(Buffer.from(tag,'base64url'));
+  return Buffer.concat([decipher.update(Buffer.from(data,'base64url')),decipher.final()]).toString('utf8');
+};
+const totpAt = (secret, timestamp = Date.now()) => {
+  const counter = Math.floor(timestamp/30000), message = Buffer.alloc(8);
+  message.writeBigUInt64BE(BigInt(counter));
+  const digest = createHmac('sha1',base32Decode(secret)).update(message).digest();
+  const offset = digest[digest.length-1]&15;
+  const value = (digest.readUInt32BE(offset)&0x7fffffff)%1_000_000;
+  return String(value).padStart(6,'0');
+};
+const verifyTotp = (secret, code) => {
+  const supplied = String(code||'').trim();
+  if (!/^\d{6}$/.test(supplied)) return false;
+  const candidate = Buffer.from(supplied);
+  return [-1,0,1].some((window) => {
+    const expected = Buffer.from(totpAt(secret,Date.now()+window*30000));
+    return candidate.length===expected.length&&timingSafeEqual(candidate,expected);
+  });
+};
+const hashRecoveryCode = (value) => createHash('sha256').update(String(value).replace(/[\s-]/g,'').toUpperCase()).digest('hex');
+const verifyMfaCredential = async (s, userId, code) => {
+  const record=await rows(s.from('superadmin_mfa').select('secret_ciphertext,enabled_at').eq('user_id',userId).maybeSingle());
+  if(!record) return false;
+  const secret=decryptMfaValue(record.secret_ciphertext);
+  if(verifyTotp(secret,code)) return true;
+  if(!record.enabled_at) return false;
+  const hash=hashRecoveryCode(code);
+  const {data,error}=await s.rpc('consume_superadmin_recovery_code',{p_user_id:userId,p_code_hash:hash});
+  if(error) throw fail('Recovery-code verification is temporarily unavailable.',503);
+  return data===true;
+};
 async function sendPushToUser(s, userId, title, messageBody, data = {}) {
   const projectId = process.env.FCM_PROJECT_ID;
   const clientEmail = process.env.FCM_CLIENT_EMAIL;
@@ -60,7 +136,7 @@ async function sendPushToUser(s, userId, title, messageBody, data = {}) {
     }
   }));
 }
-const publicUser = (p) => ({ id: Number(p.id), first_name: p.first_name, middle_initial: p.middle_initial || '', last_name: p.last_name, email: p.email, role: p.role, avatar_path: p.avatar_path || null, ...(p.staff_permissions?{staff_permissions:p.staff_permissions}:{}) });
+const publicUser = (p) => ({ id: Number(p.id), first_name: p.first_name, middle_initial: p.middle_initial || '', last_name: p.last_name, email: p.email, role: p.role, avatar_path: p.avatar_path || null, ...(p.staff_permissions?{staff_permissions:p.staff_permissions}:{}), ...(p.role==='superadmin'?{mfa_enabled:Boolean(p.mfa_enabled),mfa_setup_required:!p.mfa_enabled}:{}) });
 const publicAvatarUrl = (s, path) => {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
@@ -91,6 +167,19 @@ const getStaffPermissions = async (s, profile) => {
     can_resolve_disputes: Boolean(override.can_resolve_disputes)
   } : defaults;
 };
+const countAnnouncementAudience = async (s, audience) => {
+  let query=s.from('user_profiles').select('id',{count:'exact',head:true});
+  if(audience==='members') query=query.eq('role','user');
+  else if(audience==='staff') query=query.in('role',['admin','moderator','support','superadmin']);
+  const {count,error}=await query;
+  if(error) throw fail('Could not estimate the announcement audience.',500);
+  return count||0;
+};
+const announcementPreview = (title, text, audience, startsAt, expiresAt, isPublished, estimatedRecipients) => ({
+  title,body:text,audience,starts_at:startsAt.toISOString(),expires_at:expiresAt?.toISOString()||null,
+  is_published:isPublished,estimated_recipients:estimatedRecipients,
+  delivery_state:!isPublished?'draft':startsAt>Date.now()?'scheduled':'ready'
+});
 const touchPresence = async (s, userId, isLogin = false) => {
   const { error } = await s.rpc('touch_account_presence', { p_user_id: userId, p_is_login: isLogin });
   if (error) console.error('Account presence update failed:', error.message);
@@ -124,7 +213,31 @@ const taskNotice = async (s, userId, taskId, eventType, title, message, dedupeKe
   }
 };
 const rows = async (q) => { const { data, error } = await q; if (error) throw fail(error.message, error.code === '23505' ? 409 : 400); return data; };
-const userFor = async (req, s, trackActivity = false) => {
+const moderationListData = async (s, caseType, cases) => {
+  const caseIds=cases.map((item)=>Number(item.id));
+  const [staff, permissions, notes]=await Promise.all([
+    rows(s.from('user_profiles').select('id,first_name,last_name,role').in('role',['superadmin','admin','moderator','support']).order('first_name')),
+    rows(s.from('staff_permissions').select('user_id,can_review_reports,can_resolve_disputes')),
+    caseIds.length
+      ? rows(s.from('moderation_case_notes').select('id,case_id,author_id,author_name,note,created_at').eq('case_type',caseType).in('case_id',caseIds).order('created_at',{ascending:false}).limit(1000))
+      : Promise.resolve([])
+  ]);
+  const permissionByUser=new Map(permissions.map((entry)=>[Number(entry.user_id),entry]));
+  const permissionName=caseType==='report'?'can_review_reports':'can_resolve_disputes';
+  const eligibleStaff=staff.filter((entry)=>entry.role==='superadmin'
+    || (permissionByUser.has(Number(entry.id))
+      ? Boolean(permissionByUser.get(Number(entry.id))[permissionName])
+      : Boolean(defaultStaffPermissions(entry.role)[permissionName])))
+    .map((entry)=>({id:Number(entry.id),first_name:entry.first_name,last_name:entry.last_name,role:entry.role}));
+  const notesByCase=new Map();
+  for(const note of notes) {
+    const caseId=Number(note.case_id), current=notesByCase.get(caseId)||[];
+    current.push({author_name:note.author_name,note:note.note,created_at:note.created_at});
+    notesByCase.set(caseId,current);
+  }
+  return {staff:eligibleStaff,cases:cases.map((item)=>({...item,notes:notesByCase.get(Number(item.id))||[]}))};
+};
+const userFor = async (req, s, trackActivity = false, allowMfaSetup = false) => {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token) throw fail('Please log in to continue.', 401);
   const { data, error } = await s.auth.getUser(token);
@@ -133,6 +246,16 @@ const userFor = async (req, s, trackActivity = false) => {
   if (suspensionIsActive(profile)) {
     const expiry = profile.suspended_until ? ` until ${new Date(profile.suspended_until).toLocaleString('en-PH')}` : '';
     throw fail(`Your account is suspended${expiry}. Contact support if you believe this is an error.`, 403);
+  }
+  if (profile.role==='superadmin') {
+    const profileMfaEnabled=Boolean(profile.mfa_enabled);
+    const mfa=await rows(s.from('superadmin_mfa').select('enabled_at').eq('user_id',profile.id).maybeSingle());
+    profile.mfa_enabled=Boolean(mfa?.enabled_at);
+    if(profileMfaEnabled!==profile.mfa_enabled) throw fail('Superadmin MFA configuration is inconsistent. Contact support before using this account.',503);
+    if(profile.mfa_enabled&&(!mfa||jwtIssuedAt(token)===null||jwtIssuedAt(token)*1000<Date.parse(mfa.enabled_at))) {
+      throw fail('Authenticator verification is required. Sign in again with your password and authenticator code.',401);
+    }
+    if (!profile.mfa_enabled&&!allowMfaSetup) throw fail('Set up authenticator verification before using Superadmin tools.',403,{mfa_setup_required:true});
   }
   profile.staff_permissions = await getStaffPermissions(s,profile);
   if (trackActivity) await touchPresence(s, profile.id);
@@ -296,18 +419,118 @@ export default async function handler(req, res) {
           return res.status(403).json({success:false,message:`Your account is suspended${expiry}. Submit an appeal if you believe this is an error.`,suspension_appeal_available:true,access_token:data.session.access_token,refresh_token:data.session.refresh_token});
         }
         profile.staff_permissions=await getStaffPermissions(s,profile);
+        if (profile.role==='superadmin') {
+          const profileMfaEnabled=Boolean(profile.mfa_enabled);
+          const mfa=await rows(s.from('superadmin_mfa').select('enabled_at').eq('user_id',profile.id).maybeSingle());
+          profile.mfa_enabled=Boolean(mfa?.enabled_at);
+          if (profileMfaEnabled!==profile.mfa_enabled) {
+            throw fail('Superadmin MFA configuration is inconsistent. Contact support before signing in.',503);
+          }
+          if (profile.mfa_enabled && !mfa) throw fail('Superadmin MFA configuration is missing. Contact support before signing in.',503);
+          if (profile.mfa_enabled) {
+            const challenge=randomUUID();
+            await rows(s.from('superadmin_mfa_login_challenges').delete().lt('expires_at',new Date().toISOString()));
+            await rows(s.from('superadmin_mfa_login_challenges').delete().eq('user_id',profile.id));
+            await rows(s.from('superadmin_mfa_login_challenges').insert({
+              challenge_hash:createHash('sha256').update(challenge).digest('hex'),
+              user_id:profile.id,
+              refresh_token_ciphertext:encryptMfaValue(data.session.refresh_token),
+              expires_at:new Date(Date.now()+5*60_000).toISOString()
+            }));
+            return res.status(200).json(ok('Enter the code from your authenticator app.',{mfa_required:true,mfa_challenge:challenge}));
+          }
+        }
         await touchPresence(s, profile.id, true);
         return res.status(200).json(ok(`Welcome back, ${profile.first_name}!`, { user: publicUser(profile), access_token: data.session.access_token, refresh_token: data.session.refresh_token }));
+      }
+      if (action === 'verify_mfa_login') {
+        const challenge=clean(body.challenge,100);
+        const code=clean(body.code,80);
+        if (!challenge||!code) throw fail('Enter the authenticator or recovery code.',422);
+        const challengeHash=createHash('sha256').update(challenge).digest('hex');
+        const record=await rows(s.from('superadmin_mfa_login_challenges').select('*').eq('challenge_hash',challengeHash).maybeSingle());
+        if (!record||Date.parse(record.expires_at)<=Date.now()||Number(record.attempts)>=5) {
+          if (record) await rows(s.from('superadmin_mfa_login_challenges').delete().eq('challenge_hash',challengeHash));
+          throw fail('This sign-in challenge expired. Sign in again.',401);
+        }
+        const nextAttempts=Number(record.attempts)+1;
+        const claimed=await rows(s.from('superadmin_mfa_login_challenges').update({attempts:nextAttempts})
+          .eq('challenge_hash',challengeHash).eq('attempts',Number(record.attempts))
+          .gt('expires_at',new Date().toISOString()).select('challenge_hash'));
+        if(!claimed.length) throw fail('This sign-in challenge is already being verified. Try again.',409);
+        const valid=await verifyMfaCredential(s,Number(record.user_id),code);
+        if (!valid) {
+          if (nextAttempts>=5) await rows(s.from('superadmin_mfa_login_challenges').delete().eq('challenge_hash',challengeHash).eq('attempts',nextAttempts));
+          throw fail(nextAttempts>=5?'Too many incorrect codes. Sign in again.':'The authenticator code is incorrect.',401);
+        }
+        const consumed=await rows(s.from('superadmin_mfa_login_challenges').delete().eq('challenge_hash',challengeHash).eq('attempts',nextAttempts).select('challenge_hash'));
+        if(!consumed.length) throw fail('This sign-in challenge has already been used. Sign in again.',409);
+        const {data,error}=await ac.auth.refreshSession({refresh_token:decryptMfaValue(record.refresh_token_ciphertext)});
+        if(error||!data.session||!data.user) throw fail('Your sign-in expired. Please enter your password and authenticator code again.',401);
+        profile=await getProfile(s,data.user.id);
+        if (suspensionIsActive(profile)) throw fail('Your account is suspended. Contact support if you believe this is an error.',403);
+        if(profile.role==='superadmin') {
+          const currentMfa=await rows(s.from('superadmin_mfa').select('enabled_at').eq('user_id',profile.id).maybeSingle());
+          if(!currentMfa?.enabled_at||!profile.mfa_enabled) throw fail('Superadmin MFA changed during sign-in. Sign in again.',409);
+          profile.mfa_enabled=true;
+        }
+        profile.staff_permissions=await getStaffPermissions(s,profile);
+        await touchPresence(s,profile.id,true);
+        return res.status(200).json(ok(`Welcome back, ${profile.first_name}!`,{user:publicUser(profile),access_token:data.session.access_token,refresh_token:data.session.refresh_token}));
+      }
+      if (action === 'mfa_begin' || action === 'mfa_enable' || action === 'mfa_disable') {
+        ({profile}=await userFor(req,s, false, action!=='mfa_disable'));
+        if(profile.role!=='superadmin') throw fail('Only the Superadmin can manage authenticator MFA.',403);
+        if(action==='mfa_begin') {
+          if(profile.mfa_enabled) throw fail('Authenticator MFA is already enabled.',409);
+          const secret=base32Encode(randomBytes(20));
+          const account=encodeURIComponent(profile.email||`superadmin-${profile.id}`);
+          const issuer=encodeURIComponent('TaskerPH');
+          const uri=`otpauth://totp/${issuer}:${account}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+          await rows(s.from('superadmin_mfa').upsert({user_id:profile.id,secret_ciphertext:encryptMfaValue(secret),recovery_code_hashes:[],enabled_at:null,updated_at:new Date().toISOString()},{onConflict:'user_id'}));
+          return res.status(200).json(ok('',{secret,otpauth_uri:uri}));
+        }
+        const mfa=await rows(s.from('superadmin_mfa').select('secret_ciphertext,enabled_at,recovery_code_hashes').eq('user_id',profile.id).maybeSingle());
+        if(!mfa) throw fail('Start authenticator setup first.',409);
+        if(action==='mfa_enable'&&mfa.enabled_at) throw fail('Authenticator MFA is already enabled.',409);
+        if(action==='mfa_disable'&&!mfa.enabled_at) throw fail('Authenticator MFA is not enabled.',409);
+        const valid=await verifyMfaCredential(s,Number(profile.id),clean(body.code,80));
+        if(!valid) throw fail('The authenticator code is incorrect.',401);
+        if(action==='mfa_enable') {
+          if(mfa.enabled_at) throw fail('Authenticator MFA is already enabled.',409);
+          const recoveryCodes=Array.from({length:10},()=>base32Encode(randomBytes(8)));
+          const {error}=await s.rpc('enable_superadmin_mfa',{p_user_id:profile.id,p_recovery_code_hashes:recoveryCodes.map(hashRecoveryCode)});
+          if(error) {
+            if(/setup changed|already enabled/i.test(error.message||'')) throw fail('Authenticator MFA setup changed. Refresh and try again.',409);
+            throw fail('Authenticator MFA could not be enabled. Please try again.',500);
+          }
+          await recordAdminAudit(s,profile,{action:'superadmin_mfa_enabled',target_type:'user',target_id:profile.id,target_label:'Superadmin authenticator MFA'});
+          return res.status(200).json(ok('Authenticator MFA enabled. Sign in again with an authenticator code, and store these recovery codes somewhere safe.',{recovery_codes:recoveryCodes,user:{...publicUser(profile),mfa_enabled:true,mfa_setup_required:false}}));
+        }
+        const {error}=await s.rpc('disable_superadmin_mfa',{p_user_id:profile.id});
+        if(error) {
+          if(/not enabled/i.test(error.message||'')) throw fail('Authenticator MFA is not enabled.',409);
+          throw fail('Authenticator MFA could not be disabled. Please try again.',500);
+        }
+        await rows(s.from('superadmin_mfa_login_challenges').delete().eq('user_id',profile.id));
+        await recordAdminAudit(s,profile,{action:'superadmin_mfa_disabled',target_type:'user',target_id:profile.id,target_label:'Superadmin authenticator MFA'});
+        return res.status(200).json(ok('Authenticator MFA disabled.',{user:{...publicUser(profile),mfa_enabled:false,mfa_setup_required:true}}));
       }
       if (action === 'refresh') {
         const refreshToken = String(body.refresh_token || '');
         if (!refreshToken) throw fail('Your session has ended. Please log in again.', 401);
         const { data, error } = await ac.auth.refreshSession({ refresh_token: refreshToken });
-        if (error || !data.session) throw fail('Your session has ended. Please log in again.', 401);
+        if (error || !data.session || !data.user) throw fail('Your session has ended. Please log in again.', 401);
+        const refreshedProfile=await getProfile(s,data.user.id);
+        if(refreshedProfile.role==='superadmin') {
+          const mfa=await rows(s.from('superadmin_mfa').select('enabled_at').eq('user_id',refreshedProfile.id).maybeSingle());
+          if(Boolean(refreshedProfile.mfa_enabled)!==Boolean(mfa?.enabled_at)) throw fail('Superadmin MFA configuration is inconsistent. Contact support before refreshing this session.',503);
+          if(mfa?.enabled_at) throw fail('Authenticator verification is required. Sign in again with your password and authenticator code.',401);
+        }
         return res.status(200).json(ok('', { access_token: data.session.access_token, refresh_token: data.session.refresh_token }));
       }
       if (action === 'session') {
-        try { ({ profile } = await userFor(req, s, true)); return res.status(200).json(ok('', { user: publicUser(profile) })); }
+        try { ({ profile } = await userFor(req, s, true, true)); return res.status(200).json(ok('', { user: publicUser(profile) })); }
         catch { return res.status(200).json(ok('', { user: null, expired: false })); }
       }
       if (action === 'logout') { const token=(req.headers.authorization||'').replace(/^Bearer\s+/i,''); if(token) await s.auth.admin.signOut(token).catch(()=>{}); return res.status(200).json(ok('You have been logged out.')); }
@@ -606,9 +829,10 @@ export default async function handler(req, res) {
       }
       if (action === 'list_disputes') {
         if (!canResolveDisputes(profile)) throw fail('You do not have permission to view disputes.',403);
-        const {data,error}=await s.from('task_disputes').select('id,task_id,opened_by,details,status,resolution,created_at,resolved_at,task:tasks!task_disputes_task_id_fkey(id,title,status,user_id,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email))').order('created_at',{ascending:false}).limit(100);
+        const {data,error}=await s.from('task_disputes').select('id,task_id,opened_by,details,status,resolution,created_at,resolved_at,assigned_to,priority,sla_due_at,task:tasks!task_disputes_task_id_fkey(id,title,status,user_id,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email))').order('created_at',{ascending:false}).limit(100);
         if (error) throw fail(error.message);
-        return res.status(200).json(ok('',{disputes:data||[]}));
+        const enriched=await moderationListData(s,'dispute',data||[]);
+        return res.status(200).json(ok('',{disputes:enriched.cases,staff:enriched.staff}));
       }
       if (action === 'list_staff') {
         if (profile.role!=='superadmin') throw fail('Only the Superadmin can manage staff permissions.',403);
@@ -642,10 +866,48 @@ export default async function handler(req, res) {
         if (summary.error||categories.error) throw fail((summary.error||categories.error).message);
         return res.status(200).json(ok('',{summary:summary.data?.[0]||{},categories:categories.data||[],days}));
       }
+      if (action === 'staff_activity_summary') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can view staff activity summaries.',403);
+        const days=Number(body.days||30);
+        if(![7,30,90].includes(days)) throw fail('Choose a valid staff activity period.',422);
+        const {data,error}=await s.rpc('admin_staff_activity_summary',{p_days:days});
+        if(error) throw fail('Staff activity summaries are temporarily unavailable.',500);
+        return res.status(200).json(ok('',{days,staff:data||[]}));
+      }
+      if (action === 'announcement_audience_preview') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can preview announcement audiences.',403);
+        const audience=clean(body.audience,20)||'everyone';
+        const startsAt=body.starts_at?new Date(body.starts_at):new Date();
+        const expiresAt=body.expires_at?new Date(body.expires_at):null;
+        if(!['everyone','members','staff'].includes(audience)||typeof body.is_published!=='boolean'||!Number.isFinite(startsAt.getTime())||(expiresAt&&(!Number.isFinite(expiresAt.getTime())||expiresAt<=startsAt))) {
+          throw fail('Choose a valid audience, publication status, and date window.',422);
+        }
+        const audiences=['everyone','members','staff'];
+        const counts=Object.fromEntries(await Promise.all(audiences.map(async(value)=>[value,await countAnnouncementAudience(s,value)])));
+        return res.status(200).json(ok('',{audience,counts,estimated_recipients:counts[audience],starts_at:startsAt.toISOString(),expires_at:expiresAt?.toISOString()||null,is_published:body.is_published,delivery_state:!body.is_published?'draft':startsAt>Date.now()?'scheduled':'ready'}));
+      }
+      if (action === 'preview_announcement') {
+        if (profile.role!=='superadmin') throw fail('Only the Superadmin can preview announcements.',403);
+        const title=clean(body.title,120), text=clean(body.body,2000), audience=clean(body.audience,20)||'everyone';
+        const startsAt=body.starts_at?new Date(body.starts_at):new Date();
+        const expiresAt=body.expires_at?new Date(body.expires_at):null;
+        const published=body.is_published===undefined?true:body.is_published;
+        if(!title||!text||!['everyone','members','staff'].includes(audience)||typeof published!=='boolean'||!Number.isFinite(startsAt.getTime())||(expiresAt&&(!Number.isFinite(expiresAt.getTime())||expiresAt<=startsAt))) {
+          throw fail('Enter a title, message, audience, publication status, and valid date window.',422);
+        }
+        const estimatedRecipients=await countAnnouncementAudience(s,audience);
+        return res.status(200).json(ok('',{preview:announcementPreview(title,text,audience,startsAt,expiresAt,published,estimatedRecipients)}));
+      }
       if (action === 'list_announcements') {
         if (profile.role!=='superadmin') throw fail('Only the Superadmin can manage announcements.',403);
         const announcements=await rows(s.from('platform_announcements').select('id,title,body,audience,starts_at,expires_at,is_published,created_at,updated_at').order('created_at',{ascending:false}).limit(100));
-        return res.status(200).json(ok('',{announcements}));
+        const audiences=[...new Set(announcements.map((announcement)=>announcement.audience))];
+        const estimates=Object.fromEntries(await Promise.all(audiences.map(async(audience)=>[audience,await countAnnouncementAudience(s,audience)])));
+        const announcementsWithEstimates=announcements.map((announcement)=>({
+          ...announcement,estimated_recipients:estimates[announcement.audience]||0,
+          delivery_state:!announcement.is_published?'draft':new Date(announcement.starts_at)>new Date()?'scheduled':'ready'
+        }));
+        return res.status(200).json(ok('',{announcements:announcementsWithEstimates}));
       }
       if (action === 'save_announcement') {
         if (profile.role!=='superadmin') throw fail('Only the Superadmin can manage announcements.',403);
@@ -656,10 +918,11 @@ export default async function handler(req, res) {
         const id=hasId?Number(body.id):0;
         if (!title||!text||!['everyone','members','staff'].includes(audience)||typeof body.is_published!=='boolean'||(hasId&&(!Number.isSafeInteger(id)||id<1))||!Number.isFinite(startsAt.getTime())||(expiresAt&&(!Number.isFinite(expiresAt.getTime())||expiresAt<=startsAt))) throw fail('Enter a title, message, audience, publication status, and valid date window.',422);
         const patch={title,body:text,audience,starts_at:startsAt.toISOString(),expires_at:expiresAt?.toISOString()||null,is_published:body.is_published,updated_at:new Date().toISOString()};
+        const estimatedRecipients=await countAnnouncementAudience(s,audience);
         const saved=id?await rows(s.from('platform_announcements').update(patch).eq('id',id).select('id')):await rows(s.from('platform_announcements').insert({...patch,created_by:profile.id}).select('id'));
         if (!saved.length) throw fail('Announcement not found or could not be saved.',404);
         await recordAdminAudit(s,profile,{action:id?'announcement_updated':'announcement_created',target_type:'announcement',target_id:saved[0].id,target_label:title,after_state:{audience,is_published:patch.is_published}});
-        return res.status(200).json(ok('Announcement saved.'));
+        return res.status(200).json(ok('Announcement saved.',{announcement_id:Number(saved[0].id),preview:announcementPreview(title,text,audience,startsAt,expiresAt,patch.is_published,estimatedRecipients)}));
       }
       if (action === 'delete_announcement') {
         if (profile.role!=='superadmin') throw fail('Only the Superadmin can manage announcements.',403);
@@ -734,6 +997,74 @@ export default async function handler(req, res) {
         if (error) throw fail(error.message);
         return res.status(200).json(ok('',{trends:data||[]}));
       }
+      if (action === 'update_moderation_case' || action === 'add_moderation_note' || action === 'list_moderation_notes') {
+        const caseType=clean(body.case_type,12);
+        if(!['report','dispute'].includes(caseType)) throw fail('Choose a valid moderation case type.',422);
+        const caseId=Number(body.case_id);
+        if(!Number.isSafeInteger(caseId)||caseId<1) throw fail('Choose a valid moderation case.',422);
+        const canAccessCase=caseType==='report'?canReviewReports(profile):canResolveDisputes(profile);
+        if(!canAccessCase) throw fail(caseType==='report'?'You do not have permission to manage reports.':'You do not have permission to manage disputes.',403);
+        const table=caseType==='report'?'task_reports':'task_disputes';
+        const caseRecord=await rows(s.from(table).select('id,status').eq('id',caseId).maybeSingle());
+        if(!caseRecord) throw fail('Moderation case not found.',404);
+        if(action==='list_moderation_notes') {
+          const notes=await rows(s.from('moderation_case_notes').select('id,author_id,author_name,note,created_at').eq('case_type',caseType).eq('case_id',caseId).order('created_at',{ascending:false}).limit(100));
+          return res.status(200).json(ok('',{notes}));
+        }
+        if(action==='add_moderation_note') {
+          const rawNote=String(body.note??'').trim(), note=clean(rawNote,2000);
+          if(!note||rawNote.length>2000) throw fail('Enter a private case note between 1 and 2000 characters.',422);
+          const authorName=clean(`${profile.first_name||''} ${profile.last_name||''}`.trim(),160)||'Staff member';
+          const [created]=await rows(s.from('moderation_case_notes').insert({case_type:caseType,case_id:caseId,author_id:profile.id,author_name:authorName,note}).select('id,author_id,author_name,note,created_at'));
+          return res.status(200).json(ok('Private moderation note added.',{note:created}));
+        }
+        if(caseRecord.status!=='Open') throw fail('Only open moderation cases can be reassigned or updated.',409);
+        const patch={},priority=clean(body.priority,12);
+        if(Object.prototype.hasOwnProperty.call(body,'assigned_to')) {
+          if(body.assigned_to===null||body.assigned_to==='') patch.assigned_to=null;
+          else {
+            const assigneeId=Number(body.assigned_to);
+            if(!Number.isSafeInteger(assigneeId)||assigneeId<1) throw fail('Choose a valid staff assignee.',422);
+            const assignee=await rows(s.from('user_profiles').select('id,role,first_name,last_name').eq('id',assigneeId).maybeSingle());
+            const staffPermission=caseType==='report'?'can_review_reports':'can_resolve_disputes';
+            if(!assignee||!['superadmin','admin','moderator','support'].includes(assignee.role)||!(await getStaffPermissions(s,assignee))[staffPermission]) {
+              throw fail('The selected assignee is not authorized to manage this case type.',422);
+            }
+            patch.assigned_to=assigneeId;
+          }
+        }
+        if(Object.prototype.hasOwnProperty.call(body,'priority')) {
+          if(!['low','normal','high','urgent'].includes(priority)) throw fail('Choose a valid case priority.',422);
+          patch.priority=priority;
+        }
+        if(Object.prototype.hasOwnProperty.call(body,'sla_due_at')) {
+          const dueAt=new Date(body.sla_due_at);
+          if(!body.sla_due_at||!Number.isFinite(dueAt.getTime())) throw fail('Choose a valid SLA due date.',422);
+          patch.sla_due_at=dueAt.toISOString();
+        }
+        if(!Object.keys(patch).length) throw fail('Choose an assignee, priority, or SLA due date to update.',422);
+        const [updated]=await rows(s.from(table).update(patch).eq('id',caseId).eq('status','Open').select('id,assigned_to,priority,sla_due_at'));
+        if(!updated) throw fail('The case changed before it could be updated. Refresh and try again.',409);
+        await recordAdminAudit(s,profile,{action:`${caseType}_case_updated`,target_type:caseType,target_id:caseId,target_label:`${caseType} #${caseId}`,after_state:patch});
+        return res.status(200).json(ok('Moderation case updated.',{case:updated}));
+      }
+      if(action==='bulk_suspend_users'||action==='bulk_suspend_members') {
+        if(profile.role!=='superadmin'&&!(profile.role==='admin'&&canViewUsers(profile))) {
+          throw fail('Only the Superadmin or an Admin with user-record access can bulk suspend accounts.',403);
+        }
+        if(!Array.isArray(body.user_ids)||body.user_ids.length<1||body.user_ids.length>50) throw fail('Choose between 1 and 50 member accounts.',422);
+        const userIds=body.user_ids.map(Number);
+        if(userIds.some((id)=>!Number.isSafeInteger(id)||id<1)||new Set(userIds).size!==userIds.length) throw fail('Choose distinct valid account IDs.',422);
+        const rawReason=String(body.reason??'').trim(),reason=clean(rawReason,1000),duration=clean(body.duration,20);
+        if(rawReason.length>1000||reason.length<3) throw fail('Enter a suspension reason between 3 and 1000 characters.',422);
+        if(!['24h','7d','30d','permanent'].includes(duration)) throw fail('Choose a valid suspension duration.',422);
+        const {data,error}=await s.rpc('admin_bulk_suspend_members',{p_actor_id:profile.id,p_user_ids:userIds,p_reason:reason,p_duration:duration});
+        if(error) {
+          if(/only authorized administrators|user-record permission|admins may bulk suspend|selected account|distinct member/i.test(error.message||'')) throw fail(error.message,403);
+          throw fail('Bulk suspension could not be completed. Check the selected accounts and try again.',400);
+        }
+        return res.status(200).json(ok(`${Number(data)||0} member account(s) suspended.`,{suspended_count:Number(data)||0}));
+      }
       if (action === 'list_users') {
         if (!canViewUsers(profile)) throw fail('You do not have permission to view account records.',403);
         const offset = Number(body.offset || 0);
@@ -761,7 +1092,7 @@ export default async function handler(req, res) {
         if (!['all','Scam or fraud','Inappropriate content','Misleading information','Other'].includes(reason)) throw fail('Choose a valid report reason.',422);
         const isDate = (value) => !value || (/^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)));
         if (!isDate(from) || !isDate(to) || (from && to && from > to)) throw fail('Choose a valid report date range.',422);
-        let query = s.from('task_reports').select('id,task_id,reporter_id,reason,details,status,created_at,resolution_note,reviewed_at,task:tasks!task_reports_task_id_fkey(id,user_id,title,description,category,status,budget,location,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)),reporter:user_profiles!task_reports_reporter_id_fkey(id,first_name,last_name,email)',{count:'exact'});
+        let query = s.from('task_reports').select('id,task_id,reporter_id,reason,details,status,created_at,resolution_note,reviewed_at,assigned_to,priority,sla_due_at,task:tasks!task_reports_task_id_fkey(id,user_id,title,description,category,status,budget,location,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)),reporter:user_profiles!task_reports_reporter_id_fkey(id,first_name,last_name,email)',{count:'exact'});
         if (status !== 'all') query = query.eq('status',status);
         if (reason !== 'all') query = query.eq('reason',reason);
         if (from) query = query.gte('created_at',`${from}T00:00:00.000Z`);
@@ -798,7 +1129,8 @@ export default async function handler(req, res) {
           counts.set(key,current);
         }
         const reportItems=(data||[]).map((report)=>({...report,task_report_count:counts.get(Number(report.task_id))?.total||1,task_open_report_count:counts.get(Number(report.task_id))?.open||0}));
-        return res.status(200).json(ok('',{reports:reportItems,total_count:count||0,has_more:offset+(data||[]).length<(count||0)}));
+        const enriched=await moderationListData(s,'report',reportItems);
+        return res.status(200).json(ok('',{reports:enriched.cases,staff:enriched.staff,total_count:count||0,has_more:offset+(data||[]).length<(count||0)}));
       }
       if (action === 'list_audit') {
         if (profile.role !== 'superadmin') throw fail('Only the Superadmin can view the audit log.',403);
@@ -866,10 +1198,11 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('',{task:taskData,bids:bidItems,disputes,stats:{total_bids:totalBids.count||0,accepted_bids:acceptedBids.count||0,pending_bids:pendingBids.count||0,rejected_bids:rejectedBids.count||0}}));
       }
       if (action === 'view_user_profile') {
-        if (!['superadmin','support','admin','moderator'].includes(profile.role)) throw fail('Only staff can view member profiles.',403);
+        if (!canViewUsers(profile)&&!canModerate(profile)&&!canReviewReports(profile)&&!canResolveDisputes(profile)) throw fail('You do not have permission to view member profiles.',403);
         const userId = Number(body.user_id);
         if (!Number.isSafeInteger(userId) || userId < 1) throw fail('Choose a valid account.',422);
-        const [account, tasks, totalTasks, completedTasks, presence, recentActivity, submittedBids, totalBids, acceptedBids] = await Promise.all([
+        const canViewModerationHistory=canModerate(profile)||canReviewReports(profile)||canResolveDisputes(profile);
+        const [account, tasks, totalTasks, completedTasks, presence, recentActivity, submittedBids, totalBids, acceptedBids, moderationHistory] = await Promise.all([
           rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,email,role,avatar_path,created_at').eq('id',userId).maybeSingle()),
           rows(s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(25)),
           s.from('tasks').select('id',{count:'exact',head:true}).eq('user_id',userId),
@@ -878,14 +1211,17 @@ export default async function handler(req, res) {
           rows(s.from('account_activity').select('id,event_type,summary,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(10)),
           rows(s.from('bids').select('id,task_id,amount,message,status,created_at,task:tasks!bids_task_id_fkey(id,title,category,status,budget,location,owner:user_profiles!tasks_user_id_fkey(first_name,last_name))').eq('bidder_id',userId).order('created_at',{ascending:false}).limit(30)),
           s.from('bids').select('id',{count:'exact',head:true}).eq('bidder_id',userId),
-          s.from('bids').select('id',{count:'exact',head:true}).eq('bidder_id',userId).eq('status','Accepted')
+          s.from('bids').select('id',{count:'exact',head:true}).eq('bidder_id',userId).eq('status','Accepted'),
+          canViewModerationHistory
+            ? rows(s.from('admin_audit_events').select('id,actor_name,action,target_type,target_id,target_label,reason,before_state,after_state,created_at').eq('target_type','user').eq('target_id',String(userId)).order('created_at',{ascending:false}).limit(50))
+            : Promise.resolve([])
         ]);
         if (!account) throw fail('Account not found.',404);
         for (const result of [totalTasks,completedTasks,totalBids,acceptedBids]) if (result.error) throw fail(result.error.message);
         const profileData = {...account,id:Number(account.id),...(presence||{last_login_at:null,last_seen_at:null})};
         const taskItems = tasks.map((task)=>({...task,id:Number(task.id),user_id:Number(task.user_id),budget:Number(task.budget)||0,owner_name:`${account.first_name} ${account.last_name}`.trim(),owner:{first_name:account.first_name,last_name:account.last_name,email:account.email}}));
         const bidItems = submittedBids.map((bid)=>({...bid,id:Number(bid.id),task_id:Number(bid.task_id),amount:Number(bid.amount)||0}));
-        return res.status(200).json(ok('',{profile:profileData,tasks:taskItems,submitted_bids:bidItems,recent_activity:recentActivity,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0,total_bids:totalBids.count||0,accepted_bids:acceptedBids.count||0}}));
+        return res.status(200).json(ok('',{profile:profileData,tasks:taskItems,submitted_bids:bidItems,recent_activity:recentActivity,moderation_history:moderationHistory,stats:{total_tasks:totalTasks.count||0,completed_tasks:completedTasks.count||0,total_bids:totalBids.count||0,accepted_bids:acceptedBids.count||0}}));
       }
       if (action === 'submit_report') {
         const taskId=Number(body.task_id), reason=clean(body.reason,80), details=clean(body.details,1000);
@@ -906,7 +1242,9 @@ export default async function handler(req, res) {
         if (!note) throw fail('Add a resolution note before closing the report.',422);
         const report = await rows(s.from('task_reports').select('id,task_id,status,resolution_note,task:tasks!task_reports_task_id_fkey(title)').eq('id',id).maybeSingle());
         if (!report) throw fail('Report not found.',404);
-        await rows(s.from('task_reports').update({status,resolution_note:note,reviewed_by:Number(profile.id),reviewed_at:new Date().toISOString()}).eq('id',id));
+        if(report.status!=='Open') throw fail('This report has already been reviewed.',409);
+        const reviewed=await rows(s.from('task_reports').update({status,resolution_note:note,reviewed_by:Number(profile.id),reviewed_at:new Date().toISOString()}).eq('id',id).eq('status','Open').select('id'));
+        if(!reviewed.length) throw fail('This report was already reviewed. Refresh and try again.',409);
         await recordAdminAudit(s,profile,{action:'report_reviewed',target_type:'report',target_id:id,target_label:report.task?.title||`Report #${id}`,reason:note,before_state:{status:report.status,resolution_note:report.resolution_note||''},after_state:{status,resolution_note:note}});
         await logActivity(s,profile.id,'report_reviewed',`Report #${id} marked ${status.toLowerCase()}`,'report',id);
         return res.status(200).json(ok('Report updated.'));
@@ -1279,5 +1617,5 @@ export default async function handler(req, res) {
       if(action==='task_messages') {const {count}=await s.from('messages').select('id',{count:'exact',head:true}).eq('task_id',Number(query.get('task_id'))).eq('recipient_id',profile.id).is('read_at',null);return res.status(200).json(ok('',{unread_count:count||0}));}
     }
     throw fail('Unknown action.',404);
-  } catch (e) { const status=e.status||500; console.error(e); return res.status(status).json({success:false,message:status===500?'Something went wrong while processing your request.':e.message,...(status===401?{auth_required:true}:{} )}); }
+  } catch (e) { const status=e.status||500; console.error(e); return res.status(status).json({success:false,message:status===500?'Something went wrong while processing your request.':e.message,...(status===401?{auth_required:true}:{}),...(e.mfa_setup_required?{mfa_setup_required:true}:{})}); }
 }
