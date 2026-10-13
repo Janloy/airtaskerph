@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f5fbf8"/><stop offset="1" stop-color="#e8f4f0"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#087d76"/><stop offset="1" stop-color="#05635f"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#154d49" flood-opacity=".13"/></filter>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#bg)"/>
+  <circle cx="990" cy="210" r="250" fill="#d4eee5" opacity=".75"/>
+  <circle cx="40" cy="1510" r="230" fill="#fde6d8" opacity=".72"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="72" y="78" width="64" height="64" rx="20" fill="#08746f"/>
+    <path d="M89 112l13-13 8 7 12-7M90 119l12 10 9-7 9 7 9-10M95 107l-7-5-7 8 10 11M124 105l7-5 7 8-10 12" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="154" y="122" font-size="42" font-weight="800" fill="#172b2a">Tasker</text><text x="294" y="122" font-size="42" font-weight="800" fill="#ef6b5b">PH</text>
+    <text x="76" y="238" font-size="21" font-weight="700" letter-spacing="4" fill="#08746f">THE PHILIPPINES' TASK MARKETPLACE</text>
+    <text x="76" y="360" font-size="77" font-weight="800" fill="#172b2a">Everyday tasks,</text>
+    <text x="76" y="453" font-size="77" font-weight="800" fill="#ef6b5b">meet local help.</text>
+    <text x="80" y="520" font-size="31" fill="#526564">A simpler way to get things done, together.</text>
+    <g filter="url(#shadow)">
+      <rect x="84" y="652" width="912" height="966" rx="52" fill="#fff"/>
+      <rect x="432" y="673" width="216" height="12" rx="6" fill="#d8e1df"/>
+      <text x="136" y="764" font-size="23" font-weight="700" letter-spacing="2" fill="#08746f">EXAMPLE TASK LISTINGS</text>
+      <text x="136" y="817" font-size="38" font-weight="800" fill="#172b2a">Tasks waiting for you</text>
+      <rect x="136" y="858" width="808" height="76" rx="20" fill="#f4f7f6"/>
+      <circle cx="174" cy="896" r="13" fill="none" stroke="#758582" stroke-width="4"/><path d="m184 906 12 12" stroke="#758582" stroke-width="4" stroke-linecap="round"/>
+      <text x="217" y="907" font-size="24" fill="#82908d">Search tasks or places...</text>
+      <rect x="136" y="966" width="238" height="52" rx="26" fill="#e0f3ec"/><text x="160" y="1001" font-size="20" font-weight="700" fill="#08746f">Home &amp; Repair</text>
+      <rect x="390" y="966" width="194" height="52" rx="26" fill="#f7f1e9"/><text x="414" y="1001" font-size="20" font-weight="700" fill="#806c45">Cleaning</text>
+      <rect x="600" y="966" width="194" height="52" rx="26" fill="#f7f1e9"/><text x="624" y="1001" font-size="20" font-weight="700" fill="#806c45">Delivery</text>
+      <rect x="136" y="1050" width="808" height="230" rx="28" fill="#fff" stroke="#e3eae8" stroke-width="2"/>
+      <rect x="164" y="1080" width="190" height="142" rx="20" fill="#d8efe8"/>
+      <path d="M204 1168l51-47 53 47v39h-36v-35h-33v35h-35z" fill="#08746f" opacity=".8"/>
+      <text x="384" y="1104" font-size="19" font-weight="700" letter-spacing="1.5" fill="#08746f">HOME &amp; REPAIR</text>
+      <text x="384" y="1151" font-size="30" font-weight="800" fill="#172b2a">Fix a leaky kitchen tap</text>
+      <text x="384" y="1198" font-size="22" fill="#697774">Quezon City</text>
+      <text x="384" y="1246" font-size="25" font-weight="800" fill="#172b2a">₱1,500 budget</text>
+      <rect x="854" y="1076" width="54" height="54" rx="17" fill="#f3faf7"/><path d="M881 1090l15 9v18l-15 9-15-9v-18z" fill="none" stroke="#08746f" stroke-width="3"/>
+      <rect x="136" y="1302" width="808" height="230" rx="28" fill="#fff" stroke="#e3eae8" stroke-width="2"/>
+      <rect x="164" y="1332" width="190" height="142" rx="20" fill="#fff0e5"/>
+      <path d="M207 1402h103v49H207zM217 1384h83l10 18H207zM232 1371h50v13h-50z" fill="#ef8d62"/>
+      <text x="384" y="1356" font-size="19" font-weight="700" letter-spacing="1.5" fill="#08746f">ERRANDS &amp; SHOPPING</text>
+      <text x="384" y="1403" font-size="30" font-weight="800" fill="#172b2a">Grocery run this weekend</text>
+      <text x="384" y="1450" font-size="22" fill="#697774">Makati</text>
+      <text x="384" y="1498" font-size="25" font-weight="800" fill="#172b2a">₱800 budget</text>
+      <text x="540" y="1699" text-anchor="middle" font-size="24" font-weight="700" fill="#73817e">Browse by category. Search by place. Find your fit.</text>
+    </g>
+    <rect x="76" y="1791" width="168" height="8" rx="4" fill="#08746f"/>
+    <rect x="260" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="444" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="628" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="812" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+  </g>
+</svg>

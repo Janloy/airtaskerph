@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#086e68"/><stop offset="1" stop-color="#064b4a"/></linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#edf8f4"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#002b29" flood-opacity=".25"/></filter>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#bg)"/>
+  <circle cx="1030" cy="200" r="280" fill="#238c80" opacity=".35"/>
+  <circle cx="35" cy="1520" r="240" fill="#ef6b5b" opacity=".16"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="72" y="78" width="64" height="64" rx="20" fill="#fff"/>
+    <path d="M89 112l13-13 8 7 12-7M90 119l12 10 9-7 9 7 9-10M95 107l-7-5-7 8 10 11M124 105l7-5 7 8-10 12" fill="none" stroke="#08746f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="154" y="122" font-size="42" font-weight="800" fill="#fff">Tasker</text><text x="294" y="122" font-size="42" font-weight="800" fill="#ff9a85">PH</text>
+    <text x="76" y="238" font-size="21" font-weight="700" letter-spacing="4" fill="#b9eee0">LOCAL HELP, MADE SIMPLE.</text>
+    <text x="76" y="370" font-size="82" font-weight="800" fill="#fff">Get it done.</text>
+    <text x="76" y="468" font-size="82" font-weight="800" fill="#ffab96">Together.</text>
+    <text x="80" y="542" font-size="30" fill="#d5f1e8">Your task, your choice, all in one place.</text>
+    <g filter="url(#shadow)">
+      <rect x="116" y="680" width="848" height="630" rx="46" fill="url(#card)"/>
+      <circle cx="540" cy="833" r="90" fill="#dff4eb"/>
+      <circle cx="540" cy="833" r="63" fill="#08746f"/>
+      <path d="m511 835 20 20 42-47" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="540" y="1000" text-anchor="middle" font-size="44" font-weight="800" fill="#172b2a">Task complete</text>
+      <text x="540" y="1050" text-anchor="middle" font-size="24" fill="#697774">Confirmed by you</text>
+      <line x1="200" y1="1095" x2="880" y2="1095" stroke="#dce9e4" stroke-width="2"/>
+      <text x="540" y="1161" text-anchor="middle" font-size="21" font-weight="700" letter-spacing="1.5" fill="#52615d">SHARE YOUR EXPERIENCE</text>
+      <text x="540" y="1225" text-anchor="middle" font-size="44" fill="#edaa37">★★★★★</text>
+    </g>
+    <text x="540" y="1438" text-anchor="middle" font-size="31" font-weight="700" fill="#e2f5ee">Discover help. Post a task. Pick your offer.</text>
+    <rect x="215" y="1510" width="650" height="93" rx="28" fill="#ef6b5b"/>
+    <text x="540" y="1570" text-anchor="middle" font-size="30" font-weight="800" fill="#fff">Get started with TaskerPH</text>
+    <text x="540" y="1680" text-anchor="middle" font-size="22" fill="#b9dfd4">Built for communities across the Philippines.</text>
+    <text x="540" y="1722" text-anchor="middle" font-size="17" fill="#9ccbc0">Illustrative demo · sample task and profile details</text>
+    <rect x="76" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="260" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="444" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="628" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="812" y="1791" width="168" height="8" rx="4" fill="#ffab96"/>
+  </g>
+</svg>

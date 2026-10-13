@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#effaf7"/><stop offset="1" stop-color="#e6f3f5"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#154d49" flood-opacity=".13"/></filter>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#bg)"/>
+  <circle cx="1010" cy="250" r="250" fill="#d4eee5" opacity=".8"/>
+  <circle cx="45" cy="1505" r="235" fill="#fff0e5" opacity=".8"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="72" y="78" width="64" height="64" rx="20" fill="#08746f"/>
+    <path d="M89 112l13-13 8 7 12-7M90 119l12 10 9-7 9 7 9-10M95 107l-7-5-7 8 10 11M124 105l7-5 7 8-10 12" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="154" y="122" font-size="42" font-weight="800" fill="#172b2a">Tasker</text><text x="294" y="122" font-size="42" font-weight="800" fill="#ef6b5b">PH</text>
+    <text x="76" y="238" font-size="21" font-weight="700" letter-spacing="4" fill="#08746f">ONE PLACE FOR THE DETAILS</text>
+    <text x="76" y="360" font-size="77" font-weight="800" fill="#172b2a">Stay in the</text>
+    <text x="76" y="453" font-size="77" font-weight="800" fill="#ef6b5b">loop.</text>
+    <text x="80" y="520" font-size="31" fill="#526564">Keep your conversation and task status together.</text>
+    <g filter="url(#shadow)">
+      <rect x="92" y="658" width="896" height="972" rx="44" fill="#fff"/>
+      <text x="148" y="753" font-size="21" font-weight="700" letter-spacing="2" fill="#08746f">TASK UPDATE</text>
+      <text x="148" y="808" font-size="38" font-weight="800" fill="#172b2a">Move my sofa</text>
+      <rect x="148" y="844" width="241" height="48" rx="24" fill="#e1f3ec"/>
+      <circle cx="174" cy="868" r="8" fill="#0b987c"/><text x="195" y="876" font-size="19" font-weight="800" fill="#08746f">IN PROGRESS</text>
+      <line x1="178" y1="960" x2="178" y2="1266" stroke="#d9e8e3" stroke-width="5"/>
+      <circle cx="178" cy="968" r="17" fill="#08746f"/><path d="m170 968 6 6 11-13" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+      <text x="222" y="960" font-size="26" font-weight="800" fill="#172b2a">Offer accepted</text>
+      <text x="222" y="997" font-size="21" fill="#75817e">Your tasker is selected</text>
+      <circle cx="178" cy="1075" r="17" fill="#08746f"/><path d="m170 1075 6 6 11-13" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+      <text x="222" y="1068" font-size="26" font-weight="800" fill="#172b2a">In progress</text>
+      <text x="222" y="1105" font-size="21" fill="#75817e">Message to coordinate the work</text>
+      <circle cx="178" cy="1182" r="17" fill="#f0a76e"/>
+      <text x="222" y="1175" font-size="26" font-weight="800" fill="#172b2a">Awaiting your confirmation</text>
+      <text x="222" y="1212" font-size="21" fill="#75817e">Confirm when the task is finished</text>
+      <rect x="148" y="1307" width="784" height="254" rx="28" fill="#f7faf9" stroke="#e2eae7" stroke-width="2"/>
+      <circle cx="204" cy="1365" r="31" fill="#d8efe8"/><text x="204" y="1375" text-anchor="middle" font-size="23" font-weight="800" fill="#08746f">JM</text>
+      <text x="254" y="1362" font-size="22" font-weight="800" fill="#172b2a">Juan M. · Tasker</text>
+      <rect x="254" y="1390" width="467" height="70" rx="22" fill="#e7f2ee"/>
+      <text x="280" y="1434" font-size="21" fill="#344441">All done! Please check the sofa delivery.</text>
+      <text x="254" y="1510" font-size="17" fill="#84918e">Messages about this task</text>
+      <rect x="736" y="1481" width="153" height="52" rx="20" fill="#08746f"/>
+      <text x="812" y="1515" text-anchor="middle" font-size="18" font-weight="800" fill="#fff">Open chat</text>
+    </g>
+    <text x="540" y="1710" text-anchor="middle" font-size="24" font-weight="700" fill="#61716d">Get updates. Ask questions. Follow every step.</text>
+    <rect x="76" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="260" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="444" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+    <rect x="628" y="1791" width="168" height="8" rx="4" fill="#08746f"/>
+    <rect x="812" y="1791" width="168" height="8" rx="4" fill="#cedcd7"/>
+  </g>
+</svg>
