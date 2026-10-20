@@ -2592,7 +2592,7 @@ async function openConversation(taskId, otherUserId) {
   $('#conversation-task-id').value = taskId;
   $('#conversation-user-id').value = otherUserId;
   if (!$('#conversation-task-summary')) {
-    $('#conversation-user-id').insertAdjacentHTML('afterend', '<div id="conversation-task-summary" class="card mt-6 flex flex-col justify-between gap-4 border-l-4 border-l-[#008f8c] p-4 sm:flex-row sm:items-center"><div><p class="text-xs font-bold uppercase tracking-wider text-[#008f8c]">About this task</p><h2 id="conversation-task-title" class="mt-1 text-lg font-bold">Loading task...</h2><p id="conversation-task-meta" class="mt-1 text-sm text-[#52616c]"></p></div><button type="button" data-conversation-task-details class="touch-target shrink-0 rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">View task details</button></div>');
+    $('#conversation-user-id').insertAdjacentHTML('afterend', '<div id="conversation-task-summary" class="conversation-task-summary card"><span class="conversation-task-icon" aria-hidden="true"><i class="fa-solid fa-clipboard-list"></i></span><div class="conversation-task-copy"><span class="conversation-task-label">ABOUT THIS TASK</span><h2 id="conversation-task-title">Loading task...</h2><p id="conversation-task-meta"></p></div><button type="button" data-conversation-task-details class="conversation-task-details touch-target"><span>Task details</span><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button></div>');
   }
   $('#conversation-task-title').textContent = 'Loading task...';
   $('#conversation-task-meta').textContent = '';
@@ -2656,7 +2656,7 @@ function renderConversation(messages, scrollToBottom = true) {
   $('#conversation-list').innerHTML = items.length ? items.map((message) => {
     const mine = Number(message.sender_id) === Number(state.user.id);
     const status = mine ? (message.delivery_status || (message.read_at ? 'Seen' : 'Sent Â· Delivered')) : '';
-    return `<div class="message-bubble ${mine ? 'message-mine' : 'message-theirs'}"><p class="text-sm">${escapeHtml(message.body)}</p><p class="mt-1 text-[11px] opacity-70">${escapeHtml(message.sender_name)} &middot; ${escapeHtml(formatMessageTime(message.created_at))}</p>${mine ? `<p class="message-status">${status}</p>` : ''}</div>`;
+    return `<article class="message-bubble ${mine ? 'message-mine' : 'message-theirs'}"><p class="message-text">${escapeHtml(message.body)}</p><div class="message-meta"><span>${escapeHtml(message.sender_name)} · ${escapeHtml(formatMessageTime(message.created_at))}</span>${mine ? `<span class="message-status">${escapeHtml(status)}</span>` : ''}</div></article>`;
   }).join('') : '<p class="text-sm text-[#68727c]">Start the conversation about this task.</p>';
   if (scrollToBottom) $('#conversation-list').scrollTop = $('#conversation-list').scrollHeight;
 }
