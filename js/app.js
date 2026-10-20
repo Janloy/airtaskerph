@@ -1062,7 +1062,7 @@ function showPage(pageId) {
   $('main')?.classList.toggle('hidden', pageId && pageId !== 'marketplace-page');
   const mobileNav = document.querySelector('.mobile-bottom-nav');
   const activeMobileNavItem = {
-    'marketplace-page': mobileNav?.querySelector('a[href="#marketplace"]'),
+    'marketplace-page': mobileNav?.querySelector('[data-page="marketplace-page"]'),
     'my-tasks-modal': mobileNav?.querySelector('[data-my-tasks]'),
     'my-bids-page': mobileNav?.querySelector('[data-my-bids]'),
     'profile-page': mobileNav?.querySelector('[data-profile-page]'),
