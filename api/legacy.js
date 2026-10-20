@@ -588,11 +588,24 @@ export default async function handler(req, res) {
       try { ({ profile } = await userFor(req, s, false)); } catch {}
       let q = s.from('tasks').select('*').order('created_at', { ascending: false });
       if (query.get('mine') === '1') { if (!profile) throw fail('Please log in to continue.', 401); q = q.eq('user_id', profile.id); }
-      if (['Open','In Progress','Completed','Awaiting Confirmation','Under Review','Cancelled'].includes(query.get('status'))) q = q.eq('status', query.get('status'));
+      const requestedStatus = query.get('status');
+      const recognizedStatus = ['Open','In Progress','Completed','Awaiting Confirmation','Under Review','Cancelled'].includes(requestedStatus);
+      if (recognizedStatus && requestedStatus !== 'Open' && !profile) throw fail('Please log in to view this task status.', 401);
+      if (recognizedStatus) q = q.eq('status', requestedStatus);
       else if (query.get('mine') !== '1') q = q.not('status','in','(In Progress,Completed,Awaiting Confirmation,Under Review,Cancelled)');
       if (query.get('category')) q = q.eq('category', query.get('category'));
       if (query.get('search')) { const term = query.get('search').replace(/[,%()]/g, ' '); q = q.or(`title.ilike.%${term}%,description.ilike.%${term}%,location.ilike.%${term}%`); }
-      const tasks = await rows(q); return res.status(200).json(ok('', { tasks: await shapeTasks(s, tasks, profile, { mine: query.get('mine') === '1' }) }));
+      let tasks = await rows(q);
+      if (recognizedStatus && requestedStatus !== 'Open' && query.get('mine') !== '1') {
+        const ownedTasks = tasks.filter((task) => Number(task.user_id) === Number(profile.id));
+        const otherTaskIds = tasks.filter((task) => Number(task.user_id) !== Number(profile.id)).map((task) => Number(task.id));
+        const participantBids = otherTaskIds.length
+          ? await rows(s.from('bids').select('task_id').eq('bidder_id', profile.id).in('task_id', otherTaskIds))
+          : [];
+        const participantTaskIds = new Set(participantBids.map((bid) => Number(bid.task_id)));
+        tasks = [...ownedTasks, ...tasks.filter((task) => participantTaskIds.has(Number(task.id)))];
+      }
+      return res.status(200).json(ok('', { tasks: await shapeTasks(s, tasks, profile, { mine: query.get('mine') === '1' }) }));
     }
     if (route === 'push_devices') {
       ({ profile } = await userFor(req, s, true));
@@ -747,8 +760,8 @@ export default async function handler(req, res) {
         const publicProfile = await rows(s.from('user_profiles').select('id,first_name,middle_initial,last_name,avatar_path,created_at').eq('id', publicId).maybeSingle());
         if (!publicProfile) throw fail('This tasker profile could not be found.', 404);
         const [listingResult, totalResult, completedResult, reviewsResult] = await Promise.all([
-          s.from('tasks').select('id,user_id,title,category,budget,location,description,status,created_at,image_urls,schedule_date,task_mode,budget_type,materials_included,requirements,checklist').eq('user_id', publicId).order('created_at', { ascending: false }).limit(12),
-          s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId),
+          s.from('tasks').select('id,user_id,title,category,budget,location,description,status,created_at,image_urls,schedule_date,task_mode,budget_type,materials_included,requirements,checklist').eq('user_id', publicId).in('status', ['Open','Completed']).order('created_at', { ascending: false }).limit(12),
+          s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId).in('status', ['Open','Completed']),
           s.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', publicId).eq('status', 'Completed'),
           s.from('task_reviews').select('rating,comment,created_at,reviewer:user_profiles!task_reviews_reviewer_id_fkey(first_name,last_name)').eq('reviewee_id',publicId).order('created_at',{ascending:false}).limit(20)
         ]);
