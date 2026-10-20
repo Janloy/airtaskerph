@@ -1747,7 +1747,7 @@ body.dark-mode .conversation-composer-hint { color:#9aa8b7; }
   .conversation-task-copy p { margin-top:.08rem; font-size:.65rem; }
   .conversation-task-details { min-height:38px; width:38px; justify-content:center; border:0; border-radius:.7rem; padding:0; background:#eff8f6; }
   .conversation-task-details span { display:none; }
-  .conversation-content { min-height:0; border:1px solid #e1eaea; border-radius:1.1rem; box-shadow:0 8px 26px rgba(23,53,64,.06); }
+  .conversation-content { min-height:0; margin-bottom:1.25rem; border:1px solid #e1eaea; border-radius:1.1rem; box-shadow:0 8px 26px rgba(23,53,64,.06); }
   .message-list { min-height:0; gap:.7rem; padding:.95rem .75rem; }
   .message-bubble { max-width:88%; border-radius:1rem; padding:.7rem .8rem .55rem; }
   .message-text { font-size:.9rem; }
