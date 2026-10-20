@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["icn1"],
+  "outputDirectory": ".",
   "rewrites": [
     { "source": "/api/auth", "destination": "/api/legacy?path=auth" },
     { "source": "/api/admin_actions", "destination": "/api/legacy?path=admin_actions" },
