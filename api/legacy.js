@@ -1640,14 +1640,19 @@ export default async function handler(req, res) {
         const after = clean(query.get('after') || '', 50);
         const hasCursor = Boolean(after) && Number.isFinite(Date.parse(after));
         let messageQuery = s.from('messages').select('id,sender_id,recipient_id,body,read_at,created_at,sender:user_profiles!messages_sender_id_fkey(first_name,last_name)').eq('task_id',taskId).or(`and(sender_id.eq.${profile.id},recipient_id.eq.${other}),and(sender_id.eq.${other},recipient_id.eq.${profile.id})`).order('created_at');
-        let readQuery = s.from('messages').update({read_at:new Date().toISOString()}).eq('task_id',taskId).eq('sender_id',other).eq('recipient_id',profile.id).is('read_at',null);
-        if (hasCursor) { messageQuery = messageQuery.gt('created_at', after); readQuery = readQuery.gt('created_at', after); }
-        const [ms] = await Promise.all([
+        if (hasCursor) messageQuery = messageQuery.gt('created_at', after);
+        const [ms,readReceipts] = await Promise.all([
           rows(messageQuery),
-          rows(readQuery)
+          rows(s.from('messages').select('id,read_at').eq('task_id',taskId).eq('sender_id',profile.id).eq('recipient_id',other).not('read_at','is',null))
         ]);
         const messages=ms.map((m)=>({...m,sender_name:m.sender?`${m.sender.first_name} ${m.sender.last_name}`.trim():'TaskerPH member'}));
-        return res.status(200).json(ok('',{messages}));
+        return res.status(200).json(ok('',{messages,read_receipts:readReceipts}));
+      }
+      if(action==='mark_read') {
+        if(req.method!=='POST') throw fail('Use POST to mark messages as read.',405);
+        const readAt=new Date().toISOString();
+        const readMessages=await rows(s.from('messages').update({read_at:readAt}).eq('task_id',taskId).eq('sender_id',other).eq('recipient_id',profile.id).is('read_at',null).select('id,read_at'));
+        return res.status(200).json(ok('',{read_receipts:readMessages}));
       }
       if(action==='send') {const text=clean(body.body,2000);if(!text)throw fail('Message cannot be empty.',422);const [message]=await rows(s.from('messages').insert({task_id:taskId,sender_id:profile.id,recipient_id:other,body:text}).select('*'));try{await sendPushToUser(s,other,`Message from ${profile.first_name} ${profile.last_name}`.trim(),'You have a new message about a task.',{type:'message',task_id:taskId,other_user_id:profile.id});}catch(pushError){console.error('Message push notification failed:',pushError.message);}return res.status(200).json(ok('Message sent.',{message}));}
     }

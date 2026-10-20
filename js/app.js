@@ -2576,10 +2576,31 @@ async function refreshConversation() {
       payload.messages.forEach((message) => merged.set(String(message.id), message));
       state.conversationMessages = [...merged.values()].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     }
+    const readReceipts = new Map((payload.read_receipts || []).map((receipt) => [String(receipt.id), receipt.read_at]));
+    state.conversationMessages = state.conversationMessages.map((message) =>
+      readReceipts.has(String(message.id)) ? { ...message, read_at: readReceipts.get(String(message.id)) } : message
+    );
     const hasNewIncomingMessage = payload.messages.some((message) =>
       Number(message.sender_id) !== Number(state.user.id) && !previousMessageIds.has(String(message.id))
     );
     renderConversation(state.conversationMessages, !previous.length || hasNewIncomingMessage);
+    const hasUnreadIncomingMessage = payload.messages.some((message) =>
+      Number(message.sender_id) !== Number(state.user.id) && !message.read_at
+    );
+    if (hasUnreadIncomingMessage) {
+      const readPayload = await api('api/messages', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'mark_read', task_id: taskId, other_user_id: otherUserId })
+      });
+      if (taskId === Number($('#conversation-task-id')?.value) && otherUserId === Number($('#conversation-user-id')?.value)) {
+        const newlyRead = new Map((readPayload.read_receipts || []).map((receipt) => [String(receipt.id), receipt.read_at]));
+        state.conversationMessages = state.conversationMessages.map((message) =>
+          newlyRead.has(String(message.id)) ? { ...message, read_at: newlyRead.get(String(message.id)) } : message
+        );
+        renderConversation(state.conversationMessages, false);
+        void updateNotificationCounts();
+      }
+    }
     if (state.activeTask) { state.activeTask.unread_message_count = 0; updateTaskMessageCount(0); }
     const badgeSelector = state.conversationReturnPage === 'my-bids-page'
       ? `[data-bid-message-count="${taskId}"]`
