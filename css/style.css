@@ -1732,8 +1732,8 @@ body.dark-mode .conversation-composer { border-color:#334155; background:#172334
 body.dark-mode .conversation-composer .form-control { border-color:#405166; color:#f1f5f9; background:#0f172a; }
 body.dark-mode .conversation-composer-hint { color:#9aa8b7; }
 @media(max-width:767px) {
-  .conversation-page:not(.hidden) { position:fixed; inset:0; z-index:55; width:100%; height:100vh; height:100dvh; min-height:0; overflow:hidden; padding:0; background:#f4f8f8; animation:none; }
-  .conversation-shell { width:100%; height:100%; min-height:0; gap:.6rem; padding:calc(env(safe-area-inset-top,0px) + .55rem) max(.75rem,env(safe-area-inset-right,0px)) 0 max(.75rem,env(safe-area-inset-left,0px)); }
+  .conversation-page:not(.hidden) { position:fixed; inset:0; z-index:40; width:100%; height:100vh; height:100dvh; min-height:0; overflow:hidden; padding:0; background:#f4f8f8; animation:none; }
+  .conversation-shell { width:100%; height:100%; min-height:0; gap:.6rem; padding:calc(env(safe-area-inset-top,0px) + .55rem) max(.75rem,env(safe-area-inset-right,0px)) calc(80px + env(safe-area-inset-bottom,0px)) max(.75rem,env(safe-area-inset-left,0px)); }
   .conversation-heading { min-height:52px; flex:none; gap:.5rem; }
   .conversation-eyebrow { margin-bottom:.05rem; font-size:.57rem; letter-spacing:.13em; }
   .conversation-heading h1 { font-size:1.3rem; line-height:1.1; }

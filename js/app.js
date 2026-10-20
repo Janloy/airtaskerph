@@ -2561,6 +2561,7 @@ async function refreshConversation() {
   try {
     const params = new URLSearchParams({ action: 'list', task_id: String(taskId), other_user_id: String(otherUserId) });
     const previous = state.conversationMessages.filter((message) => Number.isFinite(Number(message.id)));
+    const previousMessageIds = new Set(previous.map((message) => String(message.id)));
     const latest = previous.at(-1);
     const fullSync = !latest || Date.now() - state.conversationLastFullSync >= 30_000;
     if (!fullSync && latest?.created_at) params.set('after', latest.created_at);
@@ -2575,7 +2576,10 @@ async function refreshConversation() {
       payload.messages.forEach((message) => merged.set(String(message.id), message));
       state.conversationMessages = [...merged.values()].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     }
-    renderConversation(state.conversationMessages, false);
+    const hasNewIncomingMessage = payload.messages.some((message) =>
+      Number(message.sender_id) !== Number(state.user.id) && !previousMessageIds.has(String(message.id))
+    );
+    renderConversation(state.conversationMessages, !previous.length || hasNewIncomingMessage);
     if (state.activeTask) { state.activeTask.unread_message_count = 0; updateTaskMessageCount(0); }
     const badgeSelector = state.conversationReturnPage === 'my-bids-page'
       ? `[data-bid-message-count="${taskId}"]`
