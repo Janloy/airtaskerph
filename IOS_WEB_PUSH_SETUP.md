@@ -1,6 +1,6 @@
 # iPhone Home Screen push notifications
 
-TaskerPH supports Web Push for its iPhone Home Screen web app on iOS/iPadOS 16.4 or later. This is separate from native APNs notifications: people must add the site to their Home Screen, open that installed app, sign in, and tap **Enable notifications** in Profile. Notifications require permission and an internet connection.
+TaskerPH supports Web Push for its iPhone Home Screen web app on iOS/iPadOS 16.4 or later. This is separate from native APNs notifications: people must add the site to their Home Screen, open that installed app, sign in, and tap **Enable notifications** in Profile. Notifications require permission and an internet connection. The manifest and root-scoped service worker are served from `/manifest.webmanifest` and `/sw.js`.
 
 ## Configure the server
 
