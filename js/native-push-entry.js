@@ -65,6 +65,11 @@ async function initNativePush() {
   await PushNotifications.addListener('pushNotificationActionPerformed', ({ notification }) => {
     window.dispatchEvent(new CustomEvent('taskerph:push-open', { detail: notification.data || {} }));
   });
+  await PushNotifications.addListener('pushNotificationReceived', ({ title, body, data }) => {
+    window.dispatchEvent(new CustomEvent('taskerph:native-push-received', {
+      detail: { title, body, data: data || {} }
+    }));
+  });
   window.addEventListener('taskerph:auth-updated', () => {
     if (localStorage.getItem(accessTokenKey)) void requestPushPermissionAndRegister();
   });

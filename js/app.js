@@ -282,6 +282,18 @@ if ('serviceWorker' in navigator) {
     if (event.data?.type === 'taskerph:web-push-open') void handleNativePushOpen(event.data.payload||{});
   });
 }
+function isMobileNotificationClient() {
+  return document.documentElement.classList.contains('capacitor-native-app')
+    || window.matchMedia('(max-width: 1023px)').matches;
+}
+window.addEventListener('taskerph:native-push-received', (event) => {
+  if (!state.user) return;
+  const { title, body, data = {} } = event.detail || {};
+  const openAction = data.type === 'message' && Number(data.task_id) && Number(data.other_user_id)
+    ? () => openConversation(Number(data.task_id), Number(data.other_user_id))
+    : () => loadNotificationCenter();
+  notifyReceived(title || 'TaskerPH', body || 'You have a new update.', openAction);
+});
 ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
   document.addEventListener(eventName, recordAuthActivity, { passive: true });
 });
@@ -453,14 +465,16 @@ async function updateNotificationCounts() {
     setNotificationCount('#desktop-message-count', payload.bidder_unread_messages);
     setNotificationCount('#mobile-message-count', payload.bidder_unread_messages);
     const updates = await api('api/notifications?action=task_updates');
-    (updates.updates || []).reverse().forEach((item) => {
-      const toastKey = `${state.user.id}:${item.id}`;
-      if (seenTaskUpdateToasts.has(toastKey)) return;
-      seenTaskUpdateToasts.add(toastKey);
-      const title = item.title && item.title !== 'undefined' ? item.title : 'New notification';
-      const body = item.body && item.body !== 'undefined' ? item.body : 'There is a new update about one of your tasks.';
-      notifyReceived(title, body);
-    });
+    if (!isMobileNotificationClient()) {
+      (updates.updates || []).reverse().forEach((item) => {
+        const toastKey = `${state.user.id}:${item.id}`;
+        if (seenTaskUpdateToasts.has(toastKey)) return;
+        seenTaskUpdateToasts.add(toastKey);
+        const title = item.title && item.title !== 'undefined' ? item.title : 'New notification';
+        const body = item.body && item.body !== 'undefined' ? item.body : 'There is a new update about one of your tasks.';
+        notifyReceived(title, body);
+      });
+    }
     const center = await api('api/notifications?action=center');
     setNotificationCount('#desktop-notification-count', center.unread_count || 0);
     setNotificationCount('#mobile-notification-count', center.unread_count || 0);
@@ -468,13 +482,15 @@ async function updateNotificationCounts() {
       staffUnreadAnnouncementCount = Number(center.unread_announcement_count) || 0;
       setStaffNotificationBadge(staffActionNotificationCount + staffUnreadAnnouncementCount);
     }
-    (center.items || []).filter((item) => item.type === 'message' && !item.is_read)
-      .slice(0, 3).reverse().forEach((item) => {
-        const toastKey = `${state.user.id}:${item.id}:${item.latest_message_id||''}`;
-        if (seenMessageToasts.has(toastKey)) return;
-        seenMessageToasts.add(toastKey);
-        notifyReceived(item.title, item.body, () => openConversation(item.task_id, item.other_user_id));
-      });
+    if (!isMobileNotificationClient()) {
+      (center.items || []).filter((item) => item.type === 'message' && !item.is_read)
+        .slice(0, 3).reverse().forEach((item) => {
+          const toastKey = `${state.user.id}:${item.id}:${item.latest_message_id||''}`;
+          if (seenMessageToasts.has(toastKey)) return;
+          seenMessageToasts.add(toastKey);
+          notifyReceived(item.title, item.body, () => openConversation(item.task_id, item.other_user_id));
+        });
+    }
   } catch (error) { void error; }
 }
 function startNotificationPolling() {
