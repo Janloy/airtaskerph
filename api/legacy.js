@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { createCipheriv, createDecipheriv, createHash, createHmac, createSign, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import webpush from 'web-push';
 
 const url = process.env.SUPABASE_URL;
 const anon = process.env.SUPABASE_ANON_KEY;
@@ -94,48 +95,91 @@ async function sendPushToUser(s, userId, title, messageBody, data = {}) {
   const projectId = process.env.FCM_PROJECT_ID;
   const clientEmail = process.env.FCM_CLIENT_EMAIL;
   const privateKey = (process.env.FCM_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-  if (!projectId || !clientEmail || !privateKey || !userId) return;
-  const devices = await rows(s.from('push_device_tokens').select('token').eq('user_id', userId));
-  if (!devices.length) return;
-  if (!cachedFcmAccessToken || Date.now() >= cachedFcmAccessTokenExpiresAt - 60_000) {
-    const issuedAt = Math.floor(Date.now() / 1000);
-    const unsigned = `${base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${base64url(JSON.stringify({
-      iss: clientEmail,
-      scope: 'https://www.googleapis.com/auth/firebase.messaging',
-      aud: 'https://oauth2.googleapis.com/token',
-      iat: issuedAt,
-      exp: issuedAt + 3600
-    }))}`;
-    const assertion = `${unsigned}.${createSign('RSA-SHA256').update(unsigned).sign(privateKey, 'base64url')}`;
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion })
-    });
-    const credentials = await response.json().catch(() => ({}));
-    if (!response.ok || !credentials.access_token) throw new Error(`Could not authenticate with Firebase: ${credentials.error_description || credentials.error || response.status}`);
-    cachedFcmAccessToken = credentials.access_token;
-    cachedFcmAccessTokenExpiresAt = Date.now() + Number(credentials.expires_in || 3600) * 1000;
-  }
-  const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`;
-  await Promise.all(devices.map(async ({ token }) => {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${cachedFcmAccessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: {
-        token,
-        notification: { title: String(title || 'TaskerPH'), body: String(messageBody || '') },
-        data: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value ?? '')])),
-        android: { priority: 'HIGH', notification: { channel_id: 'taskerph_activity', sound: 'default' } }
-      } })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const status = result.error?.details?.find((detail) => detail.errorCode)?.errorCode;
-      if (status === 'UNREGISTERED') await s.from('push_device_tokens').delete().eq('token', token);
-      throw new Error(`Firebase push failed (${response.status}): ${result.error?.message || 'Unknown response'}`);
-    }
-  }));
+  const webPushPublicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '';
+  const webPushPrivateKey = process.env.WEB_PUSH_VAPID_PRIVATE_KEY || '';
+  const webPushSubject = process.env.WEB_PUSH_VAPID_SUBJECT || '';
+  if (!userId) return;
+  const webPushDelivery = webPushPublicKey && webPushPrivateKey && webPushSubject
+    ? rows(s.from('web_push_subscriptions').select('endpoint,subscription,user_id').eq('user_id',userId)).then(async (subscriptions) => {
+      if (!subscriptions.length) return;
+      webpush.setVapidDetails(webPushSubject,webPushPublicKey,webPushPrivateKey);
+      const results = await Promise.allSettled(subscriptions.map(({subscription}) => webpush.sendNotification(subscription,JSON.stringify({
+        title:String(title||'TaskerPH'),
+        body:String(messageBody||''),
+        data:Object.fromEntries(Object.entries(data).map(([key,value])=>[key,String(value??'')]))
+      }),{TTL:60*60*24})));
+      for (let index=0;index<results.length;index++) {
+        const result=results[index];
+        if(result.status==='fulfilled') continue;
+        if([404,410].includes(result.reason?.statusCode)) {
+          await rows(s.from('web_push_subscriptions').delete().eq('endpoint',subscriptions[index].endpoint).eq('user_id',subscriptions[index].user_id));
+          continue;
+        }
+        throw new Error(`Web Push delivery failed: ${result.reason?.message||'Unknown response'}`);
+      }
+    })
+    : Promise.resolve();
+  const fcmDelivery = projectId && clientEmail && privateKey
+    ? rows(s.from('push_device_tokens').select('token').eq('user_id',userId).eq('platform','android')).then(async (devices) => {
+      if (!devices.length) return;
+      if (!cachedFcmAccessToken || Date.now() >= cachedFcmAccessTokenExpiresAt - 60_000) {
+        const issuedAt = Math.floor(Date.now() / 1000);
+        const unsigned = `${base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${base64url(JSON.stringify({
+          iss: clientEmail,
+          scope: 'https://www.googleapis.com/auth/firebase.messaging',
+          aud: 'https://oauth2.googleapis.com/token',
+          iat: issuedAt,
+          exp: issuedAt + 3600
+        }))}`;
+        const assertion = `${unsigned}.${createSign('RSA-SHA256').update(unsigned).sign(privateKey, 'base64url')}`;
+        const response = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion })
+        });
+        const credentials = await response.json().catch(() => ({}));
+        if (!response.ok || !credentials.access_token) throw new Error(`Could not authenticate with Firebase: ${credentials.error_description || credentials.error || response.status}`);
+        cachedFcmAccessToken = credentials.access_token;
+        cachedFcmAccessTokenExpiresAt = Date.now() + Number(credentials.expires_in || 3600) * 1000;
+      }
+      const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`;
+      await Promise.all(devices.map(async ({ token }) => {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${cachedFcmAccessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: {
+            token,
+            notification: { title: String(title || 'TaskerPH'), body: String(messageBody || '') },
+            data: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value ?? '')])),
+            android: { priority: 'HIGH', notification: { channel_id: 'taskerph_activity', sound: 'default' } }
+          } })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const status = result.error?.details?.find((detail) => detail.errorCode)?.errorCode;
+          if (status === 'UNREGISTERED') await s.from('push_device_tokens').delete().eq('token', token);
+          throw new Error(`Firebase push failed (${response.status}): ${result.error?.message || 'Unknown response'}`);
+        }
+      }));
+    })
+    : Promise.resolve();
+  const results = await Promise.allSettled([webPushDelivery,fcmDelivery]);
+  const failed = results.find((result)=>result.status==='rejected');
+  if (failed) throw failed.reason;
 }
+const isAllowedWebPushEndpoint = (value) => {
+  try {
+    const endpoint = new URL(value);
+    const hostname = endpoint.hostname.toLowerCase();
+    return endpoint.protocol === 'https:' && (
+      hostname === 'web.push.apple.com'
+      || hostname.endsWith('.push.apple.com')
+      || hostname === 'fcm.googleapis.com'
+      || hostname.endsWith('.push.services.mozilla.com')
+    );
+  } catch {
+    return false;
+  }
+};
 const publicUser = (p) => ({ id: Number(p.id), first_name: p.first_name, middle_initial: p.middle_initial || '', last_name: p.last_name, email: p.email, role: p.role, avatar_path: p.avatar_path || null, ...(p.staff_permissions?{staff_permissions:p.staff_permissions}:{}), ...(p.role==='superadmin'?{mfa_enabled:Boolean(p.mfa_enabled),mfa_setup_required:!p.mfa_enabled}:{}) });
 const publicAvatarUrl = (s, path) => {
   if (!path) return null;
@@ -653,6 +697,39 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('Push notifications disabled for this device.'));
       }
       throw fail('Unknown push device action.', 422);
+    }
+    if (route === 'web_push') {
+      ({ profile } = await userFor(req,s,true));
+      if (action === 'config' && req.method === 'GET') {
+        const publicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '';
+        const configured = Boolean(publicKey && process.env.WEB_PUSH_VAPID_PRIVATE_KEY && process.env.WEB_PUSH_VAPID_SUBJECT);
+        return res.status(200).json(ok('',{configured,public_key:configured?publicKey:''}));
+      }
+      if (req.method !== 'POST') throw fail('Use POST to manage web push notifications.',405);
+      if (action === 'register') {
+        const subscription = body.subscription;
+        const endpoint = typeof subscription?.endpoint === 'string' ? subscription.endpoint : '';
+        const keys = subscription?.keys;
+        if (!isAllowedWebPushEndpoint(endpoint) || typeof keys?.p256dh !== 'string' || !/^[A-Za-z0-9_-]{80,100}$/.test(keys.p256dh) || typeof keys?.auth !== 'string' || !/^[A-Za-z0-9_-]{20,30}$/.test(keys.auth)) {
+          throw fail('The browser returned an invalid push subscription. Please try enabling notifications again.',422);
+        }
+        const safeSubscription = {
+          endpoint,
+          expirationTime:Number.isFinite(subscription.expirationTime)?subscription.expirationTime:null,
+          keys:{p256dh:keys.p256dh,auth:keys.auth}
+        };
+        await rows(s.from('web_push_subscriptions').upsert({
+          endpoint,user_id:profile.id,subscription:safeSubscription,updated_at:new Date().toISOString()
+        },{onConflict:'endpoint'}));
+        return res.status(200).json(ok('Web push notifications are enabled on this device.'));
+      }
+      if (action === 'unregister') {
+        const endpoint = typeof body.endpoint === 'string' ? body.endpoint : '';
+        if (!isAllowedWebPushEndpoint(endpoint)) throw fail('The push subscription endpoint is invalid.',422);
+        await rows(s.from('web_push_subscriptions').delete().eq('endpoint',endpoint).eq('user_id',profile.id));
+        return res.status(200).json(ok('Web push notifications are disabled on this device.'));
+      }
+      throw fail('Unknown web push action.',422);
     }
     if (route === 'create_task') {
       ({ profile } = await userFor(req, s, true));

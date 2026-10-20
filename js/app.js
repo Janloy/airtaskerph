@@ -148,6 +148,144 @@ const api = async (url, options = {}, hasRetried = false) => {
   if (state.user) recordAuthActivity();
   return payload;
 };
+let webPushServiceWorkerPromise = null;
+let lastWebPushRegistrationKey = '';
+function isAppleMobileDevice() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+function registerPwaServiceWorker() {
+  if (!('serviceWorker' in navigator)) return Promise.reject(new Error('This browser does not support service workers.'));
+  if (!webPushServiceWorkerPromise) {
+    webPushServiceWorkerPromise = navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .catch((error) => {
+        webPushServiceWorkerPromise = null;
+        throw error;
+      });
+  }
+  return webPushServiceWorkerPromise;
+}
+function decodeWebPushKey(value) {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
+async function refreshWebPushControls() {
+  const group = $('#web-push-enable')?.closest('.profile-group');
+  const status = $('#web-push-status');
+  const enable = $('#web-push-enable');
+  const disable = $('#web-push-disable');
+  if (!group || !status || !enable || !disable) return;
+  const supported = 'Notification' in window && 'PushManager' in window && 'serviceWorker' in navigator;
+  group.classList.toggle('hidden', !isAppleMobileDevice());
+  disable.classList.add('hidden');
+  enable.classList.remove('hidden');
+  enable.disabled = !supported;
+  if (!supported) {
+    status.textContent = 'Web Push is not supported by this browser.';
+    return;
+  }
+  if (isAppleMobileDevice() && !isStandaloneApp()) {
+    status.textContent = 'First add TaskerPH to your Home Screen, open it from there, then enable notifications. Requires iOS 16.4 or later.';
+    enable.disabled = true;
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    status.textContent = 'Notifications are blocked. Enable them for TaskerPH in iPhone Settings, then return here.';
+    enable.disabled = true;
+    return;
+  }
+  try {
+    const registration = await registerPwaServiceWorker();
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      status.textContent = 'Push notifications are enabled on this device.';
+      disable.classList.remove('hidden');
+      enable.classList.add('hidden');
+      return;
+    }
+  } catch (error) {
+    console.error('Could not check Web Push registration.', error);
+  }
+  enable.classList.remove('hidden');
+  status.textContent = Notification.permission === 'granted'
+    ? 'Notifications are allowed. Tap Enable to connect this device to your account.'
+    : 'Get messages and task updates even when TaskerPH is closed. iPhone requires iOS 16.4 or later and Add to Home Screen.';
+}
+async function registerWebPushSubscription(subscription) {
+  await api('api/web_push?action=register', {
+    method: 'POST',
+    body: JSON.stringify({ subscription: subscription.toJSON() })
+  });
+  lastWebPushRegistrationKey = `${state.user?.id}:${subscription.endpoint}`;
+}
+async function enableWebPush() {
+  if (!isAppleMobileDevice() || !isStandaloneApp()) {
+    notify('Add TaskerPH to your iPhone Home Screen and open it there before enabling push notifications.', 'error');
+    return;
+  }
+  if (!('Notification' in window) || !('PushManager' in window)) {
+    notify('Web Push requires iOS 16.4 or later. Update iOS and open the installed Home Screen app.', 'error');
+    return;
+  }
+  try {
+    const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+    if (permission !== 'granted') {
+      await refreshWebPushControls();
+      if (permission === 'denied') notify('Notifications are blocked. Enable them for TaskerPH in iPhone Settings.', 'error');
+      return;
+    }
+    const registration = await registerPwaServiceWorker();
+    const configuration = await api('api/web_push?action=config');
+    if (!configuration.configured || !configuration.public_key) throw new Error('Web Push is not configured on the server yet.');
+    const subscription = await registration.pushManager.getSubscription()
+      || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decodeWebPushKey(configuration.public_key) });
+    await registerWebPushSubscription(subscription);
+    await refreshWebPushControls();
+    notify('Push notifications are enabled on this iPhone.');
+  } catch (error) {
+    notify(`Could not enable push notifications: ${error.message}`, 'error');
+  }
+}
+async function syncExistingWebPushSubscription() {
+  if (!state.user || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const registration = await registerPwaServiceWorker();
+    const subscription = await registration.pushManager.getSubscription();
+    const registrationKey = subscription ? `${state.user.id}:${subscription.endpoint}` : '';
+    if (subscription && registrationKey !== lastWebPushRegistrationKey) await registerWebPushSubscription(subscription);
+  } catch (error) {
+    console.error('Could not sync Web Push subscription for the signed-in user.', error);
+  }
+}
+window.taskerphWebPushLogout = async () => {
+  lastWebPushRegistrationKey = '';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  const registration = await navigator.serviceWorker.getRegistration('/');
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) return;
+  await api('api/web_push?action=unregister', {
+    method: 'POST',
+    body: JSON.stringify({ endpoint: subscription.endpoint })
+  });
+};
+async function unregisterPushForLogout() {
+  const results = await Promise.allSettled([
+    window.taskerphPushLogout?.(),
+    window.taskerphWebPushLogout?.()
+  ]);
+  results.filter((result)=>result.status==='rejected').forEach((result)=>console.warn('Could not unregister push notifications during sign-out.',result.reason));
+}
+window.addEventListener('taskerph:auth-updated', () => { void syncExistingWebPushSubscription(); });
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'taskerph:web-push-received') {
+      const payload = event.data.payload || {};
+      notifyReceived(payload.title,payload.body,()=>handleNativePushOpen(payload.data||{}));
+    }
+    if (event.data?.type === 'taskerph:web-push-open') void handleNativePushOpen(event.data.payload||{});
+  });
+}
 ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
   document.addEventListener(eventName, recordAuthActivity, { passive: true });
 });
@@ -1810,6 +1948,7 @@ function renderProfile() {
   avatar.classList.toggle('hidden', !user.avatar_path);
   $('#profile-avatar-fallback').classList.toggle('hidden', Boolean(user.avatar_path));
   if (user.avatar_path) avatar.src = `${user.avatar_path}?v=${encodeURIComponent(user.avatar_path)}`;
+  void refreshWebPushControls();
 }
 function renderSuperadminAccountSettings() {
   if (!['superadmin','admin','moderator'].includes(state.user?.role)) return;
@@ -1869,7 +2008,7 @@ async function openSuperadminMfaEnrollment() {
             closeModal('superadmin-mfa-enroll-modal');
             modal.remove();
             try {
-              await window.taskerphPushLogout?.();
+              await unregisterPushForLogout();
               await api('api/auth?action=logout',{method:'POST'});
             } catch(error) { console.error('MFA enrollment completed, but the old sign-in session could not be revoked:',error); }
             clearStoredAuth();
@@ -2552,6 +2691,18 @@ async function finishMobileSplash(controller) {
 }
 async function init() {
   const mobileSplash = startMobileSplash();
+  const pushParams = new URLSearchParams(window.location.search);
+  if (pushParams.get('push') === '1') {
+    pendingNativePushOpen = {
+      type:pushParams.get('type') || '',
+      task_id:pushParams.get('task_id') || '',
+      other_user_id:pushParams.get('other_user_id') || ''
+    };
+    window.history.replaceState({},'',`${window.location.pathname}${window.location.hash}`);
+  }
+  if ('serviceWorker' in navigator) {
+    void registerPwaServiceWorker().catch((error)=>console.error('Could not register the TaskerPH service worker.',error));
+  }
   const footer = document.querySelector('footer');
   if (footer) document.body.appendChild(footer);
   try {
@@ -2671,7 +2822,7 @@ window.addEventListener('storage', async (event) => {
   } catch (error) { notify(error.message, 'error'); }
 });
 async function performLogout() {
-  await window.taskerphPushLogout?.();
+  await unregisterPushForLogout();
   await api('api/auth?action=logout', { method: 'POST' });
   clearStoredAuth();
   state.logoutTrigger = null;
@@ -2782,6 +2933,33 @@ async function resumeAuthIntent(intent) {
   }
 }
 document.addEventListener('click', async (event) => {
+  if (event.target.closest('#web-push-enable')) {
+    const button = $('#web-push-enable');
+    button.disabled = true;
+    try { await enableWebPush(); }
+    finally { button.disabled = false; await refreshWebPushControls(); }
+    return;
+  }
+  if (event.target.closest('#web-push-disable')) {
+    const button = $('#web-push-disable');
+    button.disabled = true;
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription) {
+        await api('api/web_push?action=unregister',{method:'POST',body:JSON.stringify({endpoint:subscription.endpoint})});
+        await subscription.unsubscribe();
+      }
+      await refreshWebPushControls();
+      notify('Push notifications are turned off on this iPhone.');
+    } catch (error) {
+      notify(`Could not turn off push notifications: ${error.message}`,'error');
+    } finally {
+      button.disabled = false;
+      await refreshWebPushControls();
+    }
+    return;
+  }
   if (event.target.closest('[data-conversation-task-details]')) {
     const taskId = Number($('#conversation-task-id')?.value);
     if (!taskId) return;
