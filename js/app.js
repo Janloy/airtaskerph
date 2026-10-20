@@ -2659,7 +2659,7 @@ function renderConversation(messages, scrollToBottom = true) {
   const items = [...messages, ...pending].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   $('#conversation-list').innerHTML = items.length ? items.map((message) => {
     const mine = Number(message.sender_id) === Number(state.user.id);
-    const status = mine ? (message.delivery_status || (message.read_at ? 'Seen' : 'Sent Â· Delivered')) : '';
+    const status = mine ? (message.delivery_status || (message.read_at ? 'Seen' : 'Sent · Delivered')) : '';
     return `<article class="message-bubble ${mine ? 'message-mine' : 'message-theirs'}"><p class="message-text">${escapeHtml(message.body)}</p><div class="message-meta"><span>${escapeHtml(message.sender_name)} · ${escapeHtml(formatMessageTime(message.created_at))}</span>${mine ? `<span class="message-status">${escapeHtml(status)}</span>` : ''}</div></article>`;
   }).join('') : '<p class="text-sm text-[#68727c]">Start the conversation about this task.</p>';
   if (scrollToBottom) $('#conversation-list').scrollTop = $('#conversation-list').scrollHeight;
