@@ -372,7 +372,7 @@ function ensureNotificationControls() {
 }
 function ensureNotificationsPage() {
   if ($('#notifications-page')) return;
-  document.body.insertAdjacentHTML('beforeend', '<section id="notifications-page" class="app-page page-shell hidden"><div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10"><div class="flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-bold uppercase tracking-[.16em] text-[#008f8c]">Your activity</p><h1 class="mt-1 text-3xl font-bold sm:text-4xl">Notifications</h1><p class="mt-2 text-sm text-[#52616c]">Messages, bids, and updates about your tasks.</p></div><div class="flex gap-2"><button type="button" data-notifications-mark-all class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Mark all as read</button><button type="button" data-page="marketplace-page" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Browse tasks</button></div></div><div id="notification-center-list" class="mt-6 grid gap-3" aria-live="polite"></div></div></section>');
+  document.body.insertAdjacentHTML('beforeend', '<section id="notifications-page" class="app-page page-shell hidden"><div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10"><div class="flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-bold uppercase tracking-[.16em] text-[#008f8c]">Your activity</p><h1 class="mt-1 text-3xl font-bold sm:text-4xl">Notifications</h1><p class="mt-2 text-sm text-[#52616c]">Messages from the same person about the same task are grouped together, along with bids and task updates.</p></div><div class="flex gap-2"><button type="button" data-notifications-mark-all class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Mark all as read</button><button type="button" data-page="marketplace-page" class="touch-target rounded-lg border border-[#c9d4d9] px-4 text-sm font-bold text-[#006f70]">Browse tasks</button></div></div><div id="notification-center-list" class="mt-6 grid gap-3" aria-live="polite"></div></div></section>');
 }
 async function loadNotificationCenter() {
   ensureNotificationsPage();
@@ -470,7 +470,7 @@ async function updateNotificationCounts() {
     }
     (center.items || []).filter((item) => item.type === 'message' && !item.is_read)
       .slice(0, 3).reverse().forEach((item) => {
-        const toastKey = `${state.user.id}:${item.id}`;
+        const toastKey = `${state.user.id}:${item.id}:${item.latest_message_id||''}`;
         if (seenMessageToasts.has(toastKey)) return;
         seenMessageToasts.add(toastKey);
         notifyReceived(item.title, item.body, () => openConversation(item.task_id, item.other_user_id));

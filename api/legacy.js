@@ -1682,12 +1682,26 @@ export default async function handler(req, res) {
         const userById=new Map(userRows.map((user)=>[Number(user.id),user]));
         const seenBidIds=new Set(bidReads.map((row)=>Number(row.reference_id)));
         const notifiedBidIds=new Set(taskNotices.map((notice)=>/^bid:(\d+):received(?::|$)/.exec(notice.dedupe_key||'')?.[1]).filter(Boolean).map(Number));
+        const groupedMessages=new Map();
+        for(const message of messageRows) {
+          const taskId=Number(message.task_id),senderId=Number(message.sender_id),key=`${taskId}:${senderId}`;
+          const sender=userById.get(senderId);
+          const senderName=sender?`${sender.first_name} ${sender.last_name}`.trim():'TaskerPH member';
+          let group=groupedMessages.get(key);
+          if(!group) {
+            const taskTitle=taskById.get(taskId)?.title;
+            group={id:`message-${taskId}-${senderId}`,type:'message',event_type:'message',task_id:taskId,other_user_id:senderId,title:'',body:taskTitle?`About “${taskTitle}”: ${message.body}`:message.body,created_at:message.created_at,is_read:true,message_count:0,latest_message_id:Number(message.id),sender_name:senderName};
+            groupedMessages.set(key,group);
+          }
+          group.message_count++;
+          if(!message.read_at) group.is_read=false;
+        }
+        for(const group of groupedMessages.values()) {
+          group.title=group.message_count>1?`${group.message_count} messages from ${group.sender_name}`:`Message from ${group.sender_name}`;
+        }
         const items=[
           ...taskNotices.map((notice)=>({...notice,type:'task'})),
-          ...messageRows.map((message)=>{
-            const sender=userById.get(Number(message.sender_id));
-            return {id:`message-${message.id}`,type:'message',event_type:'message',task_id:Number(message.task_id),other_user_id:Number(message.sender_id),title:`Message from ${sender?`${sender.first_name} ${sender.last_name}`.trim():'TaskerPH member'}`,body:message.body,created_at:message.created_at,is_read:Boolean(message.read_at)};
-          }),
+          ...groupedMessages.values(),
           ...pendingBids.filter((bid)=>!notifiedBidIds.has(Number(bid.id))).map((bid)=>{
             const bidder=userById.get(Number(bid.bidder_id)), task=taskById.get(Number(bid.task_id));
             return {id:`bid-${bid.id}`,type:'bid',event_type:'pending_bid',entity_id:Number(bid.id),task_id:Number(bid.task_id),title:'New bid received',body:`${bidder?`${bidder.first_name} ${bidder.last_name}`.trim():'A tasker'} offered ${new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(Number(bid.amount)||0)} for “${task?.title||'your task'}”.`,created_at:bid.created_at,is_read:seenBidIds.has(Number(bid.id))};
