@@ -6,6 +6,7 @@
     { "source": "/api/admin_actions", "destination": "/api/legacy?path=admin_actions" },
     { "source": "/api/bid_actions", "destination": "/api/legacy?path=bid_actions" },
     { "source": "/api/create_task", "destination": "/api/legacy?path=create_task" },
+    { "source": "/api/expire_tasks", "destination": "/api/legacy?path=expire_tasks" },
     { "source": "/api/get_tasks", "destination": "/api/legacy?path=get_tasks" },
     { "source": "/api/messages", "destination": "/api/legacy?path=messages" },
     { "source": "/api/notifications", "destination": "/api/legacy?path=notifications" },
@@ -14,5 +15,8 @@
     { "source": "/api/saved_tasks", "destination": "/api/legacy?path=saved_tasks" },
     { "source": "/api/suspension_appeals", "destination": "/api/legacy?path=suspension_appeals" },
     { "source": "/api/task_lifecycle", "destination": "/api/legacy?path=task_lifecycle" }
+  ],
+  "crons": [
+    { "path": "/api/expire_tasks", "schedule": "0 16 * * *" }
   ]
 }

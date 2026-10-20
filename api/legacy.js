@@ -212,6 +212,26 @@ const taskNotice = async (s, userId, taskId, eventType, title, message, dedupeKe
     catch (pushError) { console.error('Task push notification failed:', pushError.message); }
   }
 };
+const manilaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Manila', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+const expireOverdueTasks = async (s) => {
+  const today = manilaToday();
+  const overdueOpen = await rows(s.from('tasks').select('id,title,user_id,schedule_date').eq('status','Open').lt('schedule_date',today).limit(500));
+  const expired = overdueOpen.length
+    ? await rows(s.from('tasks').update({status:'Expired'}).in('id',overdueOpen.map((task)=>task.id)).eq('status','Open').select('id,title,user_id,schedule_date'))
+    : [];
+  const expiredIds = expired.map((task)=>Number(task.id));
+  if (expiredIds.length) await rows(s.from('bids').update({status:'Cancelled'}).in('task_id',expiredIds).eq('status','Pending'));
+
+  const overdueExpired = await rows(s.from('tasks').select('id,title,user_id,schedule_date').eq('status','Expired').is('expired_notified_at',null).lt('schedule_date',today).order('schedule_date').limit(500));
+  if (overdueExpired.length) {
+    for (const task of overdueExpired) {
+      const dedupeKey = `task:${task.id}:expired:${task.schedule_date}`;
+      await taskNotice(s,task.user_id,task.id,'task_expired','Your task listing has expired',`The preferred date for “${task.title}” has passed. Update the preferred date to reopen the listing.`,dedupeKey);
+      await rows(s.from('tasks').update({expired_notified_at:new Date().toISOString()}).eq('id',task.id).is('expired_notified_at',null));
+    }
+  }
+  return expired.length;
+};
 const rows = async (q) => { const { data, error } = await q; if (error) throw fail(error.message, error.code === '23505' ? 409 : 400); return data; };
 const moderationListData = async (s, caseType, cases) => {
   const caseIds=cases.map((item)=>Number(item.id));
@@ -399,6 +419,13 @@ export default async function handler(req, res) {
   const action = query.get('action') || body.action || '';
   let viewer = null; let profile = null;
   try {
+    if (route === 'expire_tasks') {
+      const cronSecret = process.env.CRON_SECRET;
+      if (!cronSecret) throw fail('Set CRON_SECRET in Vercel to enable scheduled task expiration.',503);
+      if (req.method !== 'GET' || req.headers.authorization !== `Bearer ${cronSecret}`) throw fail('Unauthorized.',401);
+      const expiredCount = await expireOverdueTasks(s);
+      return res.status(200).json(ok('Overdue task expiration completed.',{expired_count:expiredCount}));
+    }
     if (route === 'auth') {
       if (action === 'register') {
         const email = clean(body.email, 190).toLowerCase(), password = String(body.password || ''), first = clean(body.first_name, 80), last = clean(body.last_name, 80);
@@ -585,18 +612,21 @@ export default async function handler(req, res) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
+      await expireOverdueTasks(s);
       try { ({ profile } = await userFor(req, s, false)); } catch {}
       let q = s.from('tasks').select('*').order('created_at', { ascending: false });
       if (query.get('mine') === '1') { if (!profile) throw fail('Please log in to continue.', 401); q = q.eq('user_id', profile.id); }
       const requestedStatus = query.get('status');
-      const recognizedStatus = ['Open','In Progress','Completed','Awaiting Confirmation','Under Review','Cancelled'].includes(requestedStatus);
+      const recognizedStatus = ['Open','In Progress','Completed','Awaiting Confirmation','Under Review','Cancelled','Expired'].includes(requestedStatus);
       if (recognizedStatus && requestedStatus !== 'Open' && !profile) throw fail('Please log in to view this task status.', 401);
       if (recognizedStatus) q = q.eq('status', requestedStatus);
-      else if (query.get('mine') !== '1') q = q.not('status','in','(In Progress,Completed,Awaiting Confirmation,Under Review,Cancelled)');
+      else if (query.get('mine') !== '1') q = q.not('status','in','(In Progress,Completed,Awaiting Confirmation,Under Review,Cancelled,Expired)');
       if (query.get('category')) q = q.eq('category', query.get('category'));
       if (query.get('search')) { const term = query.get('search').replace(/[,%()]/g, ' '); q = q.or(`title.ilike.%${term}%,description.ilike.%${term}%,location.ilike.%${term}%`); }
       let tasks = await rows(q);
-      if (recognizedStatus && requestedStatus !== 'Open' && query.get('mine') !== '1') {
+      if (requestedStatus === 'Expired' && query.get('mine') !== '1') {
+        tasks = tasks.filter((task) => Number(task.user_id) === Number(profile.id) || isMod(profile));
+      } else if (recognizedStatus && requestedStatus !== 'Open' && query.get('mine') !== '1') {
         const ownedTasks = tasks.filter((task) => Number(task.user_id) === Number(profile.id));
         const otherTaskIds = tasks.filter((task) => Number(task.user_id) !== Number(profile.id)).map((task) => Number(task.id));
         const participantBids = otherTaskIds.length
@@ -709,6 +739,7 @@ export default async function handler(req, res) {
       if (body.schedule_date) {
         const scheduleDate = new Date(`${body.schedule_date}T00:00:00Z`);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(body.schedule_date) || !Number.isFinite(scheduleDate.getTime()) || scheduleDate.toISOString().slice(0, 10) !== body.schedule_date) throw fail('Choose a valid preferred date.', 422);
+        if (body.schedule_date < manilaToday()) throw fail('The preferred date cannot be in the past.',422);
       }
       if (!body.allow_duplicate) {
         const activeTasks = await rows(s.from('tasks').select('id,title').eq('user_id', profile.id).in('status', ['Open', 'In Progress']));
@@ -1170,7 +1201,7 @@ export default async function handler(req, res) {
         if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw fail('Choose a valid task page.',422);
         const search = clean(body.search,80).replace(/[^a-zA-Z0-9@.\- ]/g,' ').replace(/\s+/g,' ').trim();
         const status = clean(body.status,20) || 'all';
-        if (!['all','Open','In Progress','Awaiting Confirmation','Under Review','Completed','Cancelled'].includes(status)) throw fail('Choose a valid task status.',422);
+        if (!['all','Open','In Progress','Awaiting Confirmation','Under Review','Completed','Cancelled','Expired'].includes(status)) throw fail('Choose a valid task status.',422);
         let ownerIds = [];
         if (search) ownerIds = (await rows(s.from('user_profiles').select('id').or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`).limit(500))).map((user)=>Number(user.id));
         let taskQuery = s.from('tasks').select('id,user_id,title,category,status,budget,location,description,image_urls,created_at,owner:user_profiles!tasks_user_id_fkey(first_name,last_name,email)',{count:'exact'});
@@ -1336,7 +1367,7 @@ export default async function handler(req, res) {
         await recordAdminAudit(s,profile,{action:'staff_created',target_type:'user',target_id:created.id,target_label:`${created.first_name} ${created.last_name}`,reason:'Staff account provisioned',after_state:{role,email:created.email}});
         return res.status(200).json(ok(`${role[0].toUpperCase()}${role.slice(1)} account provisioned.`));
       }
-      const id=Number(body.task_id); const taskColumns=action==='update_task'?'user_id,image_urls,status,title,category,budget,location,description':(['delete_task','reopen_task'].includes(action)?'user_id,image_urls,status,title':'user_id'); const t=await rows(s.from('tasks').select(taskColumns).eq('id',id).maybeSingle());
+      const id=Number(body.task_id); const taskColumns=action==='update_task'?'user_id,image_urls,status,title,category,budget,location,description,schedule_date':(['delete_task','reopen_task'].includes(action)?'user_id,image_urls,status,title':'user_id'); const t=await rows(s.from('tasks').select(taskColumns).eq('id',id).maybeSingle());
       if(!t || (!isMod(profile)&&Number(t.user_id)!==Number(profile.id))) throw fail('You can only manage your own task postings.',403);
       if(action==='delete_task') {
         if(t.status==='Completed'&&!isMod(profile)) throw fail('Completed tasks cannot be deleted by their owner.',409);
@@ -1364,10 +1395,12 @@ export default async function handler(req, res) {
         return res.status(200).json(ok('Task reopened. It is now accepting bids again.'));
       }
       if(action==='update_task') {
-        const allowedTaskStatuses=['Open','In Progress','Awaiting Confirmation','Under Review','Completed','Cancelled'];
+        const allowedTaskStatuses=['Open','In Progress','Awaiting Confirmation','Under Review','Completed','Cancelled','Expired'];
         if (isMod(profile) && body.status && !allowedTaskStatuses.includes(body.status)) throw fail('Choose a valid task status.',422);
-        const patch={title:clean(body.title,180),category:clean(body.category,80),budget:Number(body.budget),location:clean(body.location,160),description:clean(body.description,2000),status:isMod(profile)&&allowedTaskStatuses.includes(body.status)?body.status:t.status,schedule_date:body.schedule_date||null,task_mode:['on_site','online','hybrid'].includes(body.task_mode)?body.task_mode:'on_site',budget_type:['fixed','negotiable'].includes(body.budget_type)?body.budget_type:'fixed',materials_included:body.materials_included===true||body.materials_included==='on',requirements:clean(body.requirements,1500),checklist:Array.isArray(body.checklist)?body.checklist.slice(0,20).map((value)=>clean(value,180)).filter(Boolean):[]};
-        if (patch.schedule_date) { const date = new Date(`${patch.schedule_date}T00:00:00Z`); if (!/^\d{4}-\d{2}-\d{2}$/.test(patch.schedule_date) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== patch.schedule_date) throw fail('Choose a valid preferred date.',422); }
+        const scheduleDate=body.schedule_date||null;
+        if (scheduleDate) { const date = new Date(`${scheduleDate}T00:00:00Z`); if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduleDate) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== scheduleDate) throw fail('Choose a valid preferred date.',422); if(scheduleDate<manilaToday()) throw fail('The preferred date cannot be in the past.',422); }
+        const reactivatingExpiredTask=t.status==='Expired'&&(!scheduleDate||scheduleDate>=manilaToday());
+        const patch={title:clean(body.title,180),category:clean(body.category,80),budget:Number(body.budget),location:clean(body.location,160),description:clean(body.description,2000),status:isMod(profile)&&allowedTaskStatuses.includes(body.status)?body.status:reactivatingExpiredTask?'Open':t.status,schedule_date:scheduleDate,expired_notified_at:reactivatingExpiredTask?null:undefined,task_mode:['on_site','online','hybrid'].includes(body.task_mode)?body.task_mode:'on_site',budget_type:['fixed','negotiable'].includes(body.budget_type)?body.budget_type:'fixed',materials_included:body.materials_included===true||body.materials_included==='on',requirements:clean(body.requirements,1500),checklist:Array.isArray(body.checklist)?body.checklist.slice(0,20).map((value)=>clean(value,180)).filter(Boolean):[]};
         const photos=Array.isArray(body.photos)?body.photos:[];
         const oldUrls=Array.isArray(t.image_urls)?t.image_urls:[];
         const keepUrls=body.keep_image_urls===undefined?oldUrls:body.keep_image_urls;
@@ -1401,7 +1434,7 @@ export default async function handler(req, res) {
         const removedPaths=oldUrls.filter((photoUrl)=>!uniqueKeepUrls.includes(photoUrl)&&photoUrl.startsWith(bucketPrefix)).map((photoUrl)=>decodeURIComponent(photoUrl.slice(bucketPrefix.length).split('?')[0]));
         if(removedPaths.length) await s.storage.from('task-photos').remove(removedPaths).catch(()=>{});
 
-        return res.status(200).json(ok('Task updated.'));
+        return res.status(200).json(ok(reactivatingExpiredTask?'Task updated and reopened in the marketplace.':'Task updated.'));
       }
     }
     if (route === 'bid_actions') {
@@ -1543,6 +1576,7 @@ export default async function handler(req, res) {
     }
     if (route === 'notifications') {
       ({ profile } = await userFor(req,s, action !== 'counts' && action !== 'task_messages' && action !== 'task_updates' && action !== 'center'));
+      await expireOverdueTasks(s);
       if(action==='center') {
         const now=new Date().toISOString();
         const audience=profile.role==='user'?'members':'staff';
