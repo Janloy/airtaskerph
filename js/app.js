@@ -279,10 +279,6 @@ async function unregisterPushForLogout() {
 window.addEventListener('taskerph:auth-updated', () => { void syncExistingWebPushSubscription(); });
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data?.type === 'taskerph:web-push-received') {
-      const payload = event.data.payload || {};
-      notifyReceived(payload.title,payload.body,()=>handleNativePushOpen(payload.data||{}));
-    }
     if (event.data?.type === 'taskerph:web-push-open') void handleNativePushOpen(event.data.payload||{});
   });
 }

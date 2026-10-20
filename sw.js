@@ -7,12 +7,6 @@ self.addEventListener('push', (event) => {
   }
 
   event.waitUntil((async () => {
-    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const visibleClient = windows.find((client) => client.visibilityState === 'visible');
-    if (visibleClient) {
-      visibleClient.postMessage({ type: 'taskerph:web-push-received', payload });
-      return;
-    }
     await self.registration.showNotification(payload.title || 'TaskerPH', {
       body: payload.body || 'You have a new update.',
       icon: '/apple-touch-icon.png',
